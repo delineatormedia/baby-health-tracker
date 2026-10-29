@@ -225,8 +225,9 @@ export function nextVersion(version: number): number {
 
 /**
  * Fields every event version carries. An edit is a new version with the same id; a delete
- * is a version with deleted = true. recordedAt is the client clock at write time and decides
- * last-writer-wins; the server's sequence number (not part of this schema) breaks ties.
+ * is a version with deleted = true. recordedAt is the client clock at write time, kept for
+ * the record only: the highest version wins and the server's sequence number (not part of
+ * this schema) breaks ties, so a skewed clock never decides a conflict (compareVersions).
  */
 const envelope = {
   id: Id,

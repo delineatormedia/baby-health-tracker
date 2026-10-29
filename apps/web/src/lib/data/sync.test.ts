@@ -120,11 +120,11 @@ describe('SyncClient', () => {
     expect(await mom.store.events(babyId)).toEqual([event]);
   });
 
-  test('server-rejected versions are dropped and reported, not retried forever', async () => {
+  test('server-rejected versions are kept, counted and reported, not retried', async () => {
     const server = new FakeServer();
     const mom = await phone(server);
     const { event } = await mom.store.log(babyId, 'diaper', { kind: 'wet' });
-    // Simulate a version the server refuses (e.g. a schema change it no longer accepts).
+    // Simulate a version the server refuses (a server bug, or a schema it no longer accepts).
     const realPush = server.push.bind(server);
     server.push = (events) => ({
       results: events.map((e) => {
@@ -133,10 +133,43 @@ describe('SyncClient', () => {
       }),
     });
     await mom.sync.sync();
-    server.push = realPush;
     expect(mom.rejected).toEqual([{ id: event.id, version: 1, status: 'rejected', error: 'nope' }]);
     expect(await mom.store.pending(10)).toEqual([]);
     expect(mom.sync.status).toBe('idle');
+    // Still on the phone, and counted for Settings.
+    expect(await mom.store.events(babyId)).toEqual([event]);
+    expect(await mom.store.rejectedCount()).toBe(1);
+    const pushes = mom.transport.pushes;
+    await mom.sync.sync();
+    expect(mom.transport.pushes).toBe(pushes);
+
+    // A later edit of the same entry is a new version, and it is uploaded.
+    server.push = realPush;
+    const edit = await mom.store.edit(event.id, { notes: 'after the refusal' });
+    await mom.sync.sync();
+    expect(server.current(event.id)).toEqual(edit.event);
+    expect(await mom.store.pending(10)).toEqual([]);
+    // The accepted edit replaces the refusal, so Settings stops counting it. The refused
+    // version itself is still on the phone.
+    expect(await mom.store.rejectedCount()).toBe(0);
+    expect(await mom.store.current(event.id)).toEqual(edit.event);
+    expect(
+      (await mom.store.db.getAllFromIndex('versions', 'byRejected', 1)).map((r) => r.event),
+    ).toEqual([event]);
+  });
+
+  test('a 409 from an older server keeps every version pending', async () => {
+    const server = new FakeServer();
+    const mom = await phone(server);
+    const { event } = await mom.store.log(babyId, 'diaper', { kind: 'wet' });
+    mom.transport.status = 409;
+    await mom.sync.sync();
+    expect(mom.sync.status).toBe('offline');
+    expect(await mom.store.pending(10)).toEqual([event]);
+    expect(await mom.store.rejectedCount()).toBe(0);
+    mom.transport.status = null;
+    await mom.sync.sync();
+    expect(server.current(event.id)).toEqual(event);
   });
 
   test('pulls page through large backlogs', async () => {
@@ -148,6 +181,31 @@ describe('SyncClient', () => {
     await dad.sync.sync();
     expect(await dad.store.events(babyId)).toHaveLength(5);
     expect(await dad.store.cursor()).toBe(5);
+  });
+
+  test('a pull stops at its first page’s through; a push landing mid-pull waits for the next', async () => {
+    const server = new FakeServer();
+    const mom = await phone(server);
+    for (let i = 0; i < 3; i++) await mom.store.log(babyId, 'diaper', { kind: 'wet' });
+    await mom.sync.sync();
+    const dad = await phone(server, { pullLimit: 1 });
+    // Mom's next log reaches the server while dad is between his first and second page.
+    const late = await mom.store.log(babyId, 'diaper', { kind: 'wet' });
+    dad.transport.afterPull = () => {
+      dad.transport.afterPull = null;
+      server.push([late.event]);
+    };
+    await dad.sync.sync();
+    expect(server.log).toHaveLength(4);
+    expect(dad.transport.pulls.map((p) => p.through)).toEqual([undefined, 3, 3]);
+    expect(await dad.store.events(babyId)).toHaveLength(3);
+    expect(await dad.store.cursor()).toBe(3);
+
+    await dad.sync.sync();
+    expect((await dad.store.events(babyId)).map((e) => e.id)).toContain(late.event.id);
+    // A new pull starts a new snapshot: no through on its first page.
+    expect(dad.transport.pulls.at(-1)).toEqual({ after: 3, limit: 1, through: undefined });
+    expect(await dad.store.cursor()).toBe(4);
   });
 
   test('401 stops syncing until sign-in', async () => {

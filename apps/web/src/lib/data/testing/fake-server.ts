@@ -7,7 +7,7 @@ import {
   type SyncTransport,
 } from '../protocol.ts';
 
-/** In-memory implementation of the proposed /api/sync contract, for client tests. */
+/** In-memory implementation of the /api/sync contract, for client tests. */
 export class FakeServer {
   readonly log: { seq: number; event: BabyEvent }[] = [];
   #seq = 0;
@@ -16,10 +16,15 @@ export class FakeServer {
     return { results: events.map((e) => this.#accept(e)) };
   }
 
-  pull(after: number, limit: number): PullResponse {
-    const page = this.log.filter((v) => v.seq > after).slice(0, limit);
+  pull(after: number, limit: number, through = this.#seq): PullResponse {
+    const page = this.log.filter((v) => v.seq > after && v.seq <= through).slice(0, limit);
     const next = page.at(-1)?.seq ?? after;
-    return { versions: page, next, more: this.log.some((v) => v.seq > next) };
+    return {
+      versions: page,
+      next,
+      more: this.log.some((v) => v.seq > next && v.seq <= through),
+      through,
+    };
   }
 
   current(id: string): BabyEvent | undefined {
@@ -75,10 +80,18 @@ export class FakeTransport implements SyncTransport {
     return structuredClone(res);
   }
 
-  async pull(after: number, limit: number): Promise<PullResponse> {
+  /** Pull requests as sent, so tests can check the through a pull carries. */
+  readonly pulls: { after: number; limit: number; through?: number }[] = [];
+  /** Runs after each pull is answered, as when another phone pushes between pages. */
+  afterPull: (() => void) | null = null;
+
+  async pull(after: number, limit: number, through?: number): Promise<PullResponse> {
     this.#check();
     if (this.failPulls) throw new TypeError('network connection lost');
-    return structuredClone(this.server.pull(after, limit));
+    this.pulls.push({ after, limit, through });
+    const page = structuredClone(this.server.pull(after, limit, through));
+    this.afterPull?.();
+    return page;
   }
 
   #check() {

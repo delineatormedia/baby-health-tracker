@@ -1,26 +1,18 @@
-import type { BabyEvent } from '@bht/schema';
+import {
+  SCHEMA_VERSION,
+  type BabyEvent,
+  type PullResponse,
+  type PushRequest,
+  type PushResponse,
+} from '@bht/schema';
 
-// Wire format for /api/sync, as proposed for #5. Moves to @bht/schema once the server agrees.
-
-export const MAX_PUSH_BATCH = 500;
-
-export type PushResult =
-  | { id: string; version: number; seq: number; status: 'accepted' | 'duplicate' | 'superseded' }
-  | { id: string; version: number; status: 'rejected'; error: string };
-
-export interface PushResponse {
-  results: PushResult[];
-}
-
-export interface PullResponse {
-  versions: { seq: number; event: BabyEvent }[];
-  next: number;
-  more: boolean;
-}
+// The /api/sync wire format lives in @bht/schema (protocol.ts), shared with the server.
+export { MAX_PUSH_BATCH, type PullResponse, type PushResponse, type PushResult } from '@bht/schema';
 
 export interface SyncTransport {
   push(events: BabyEvent[]): Promise<PushResponse>;
-  pull(after: number, limit: number): Promise<PullResponse>;
+  /** One page after `after`. Pass the first page's `through` on every later page of a pull. */
+  pull(after: number, limit: number, through?: number): Promise<PullResponse>;
 }
 
 export class HttpError extends Error {
@@ -29,7 +21,11 @@ export class HttpError extends Error {
   }
 }
 
-/** Same-origin fetch transport; the session rides on an HttpOnly cookie. */
+/**
+ * Same-origin fetch transport; the session rides on an HttpOnly cookie. Pushes carry this
+ * app's SCHEMA_VERSION. A server older than the app answers 409, which surfaces as an
+ * HttpError, so the sync client backs off and every version stays pending.
+ */
 export function httpTransport(base = ''): SyncTransport {
   async function call<T>(input: string, init?: RequestInit): Promise<T> {
     const res = await fetch(base + input, { credentials: 'same-origin', ...init });
@@ -41,8 +37,12 @@ export function httpTransport(base = ''): SyncTransport {
       call('/api/sync', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ events }),
+        body: JSON.stringify({ schemaVersion: SCHEMA_VERSION, events } satisfies PushRequest),
       }),
-    pull: (after, limit) => call(`/api/sync?after=${after}&limit=${limit}`),
+    pull: (after, limit, through) =>
+      call(
+        `/api/sync?after=${after}&limit=${limit}` +
+          (through === undefined ? '' : `&through=${through}`),
+      ),
   };
 }

@@ -137,9 +137,16 @@ export class SyncClient {
     }
   }
 
+  /**
+   * Pages until the server's `through` from the first page. Versions pushed while this pull
+   * runs land past it and wait for the next pull, so one pull reads one snapshot's worth.
+   */
   async #pull() {
+    let through: number | undefined;
     for (;;) {
-      const page = await this.transport.pull(await this.store.cursor(), this.#opts.pullLimit);
+      const after = await this.store.cursor();
+      const page = await this.transport.pull(after, this.#opts.pullLimit, through);
+      through ??= page.through;
       await this.store.applyPull(page);
       if (!page.more) return;
     }
