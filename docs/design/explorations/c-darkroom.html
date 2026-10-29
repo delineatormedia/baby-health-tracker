@@ -1,0 +1,146 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>C · Darkroom</title>
+<script src="shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:48px 56px 56px}
+.board-h{font:600 28px/1.1 -apple-system,system-ui,sans-serif;color:#1F2A33}
+.board-s{font:400 15px/1.4 -apple-system,system-ui,sans-serif;color:#4F5B64;margin:6px 0 28px;max-width:1500px}
+.row{display:flex;gap:28px;margin-bottom:18px}
+.cap{font:500 12px/1 ui-monospace,Menlo,monospace;color:#4F5B64;text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px 4px}
+.phone{width:390px;height:844px;border-radius:46px;overflow:hidden;position:relative;box-shadow:0 0 0 10px #111,0 20px 50px rgba(0,0,0,.25);margin:10px;background:var(--bg);color:var(--ink)}
+.light{--bg:#ECEFF1;--panel:#FFFFFF;--ink:#1F2A33;--dim:#7A8791;--line:#D5DBE0;--acc:#2E6A8E;--accInk:#FFFFFF;--flag:#B4432F;--flagSoft:#F6E3DE;--band:#D6E4EC}
+.night{--bg:#000000;--panel:#0C0302;--ink:#C23A26;--dim:#6E1D12;--line:#2A0906;--acc:#A3301F;--accInk:#000;--flag:#E0563E;--flagSoft:#1E0603;--band:#2A0906}
+.sb{height:50px;display:flex;justify-content:space-between;align-items:flex-end;padding:0 30px 6px;font:600 15px -apple-system,system-ui,sans-serif}
+.m{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
+.lab{font:500 11px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.top{display:flex;justify-content:space-between;align-items:baseline;padding:14px 22px 0}
+.top b{font:600 17px -apple-system,system-ui,sans-serif}
+.dial{position:relative;width:300px;height:300px;margin:14px auto 0}
+.dial svg{position:absolute;inset:0}
+.center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.center .v{font:300 58px/1 -apple-system,system-ui,sans-serif;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.center .s{margin-top:8px}
+.legend{display:flex;justify-content:center;gap:16px;margin-top:10px}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.next{margin:14px 16px 0;display:flex;gap:8px}
+.next div{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.next b{display:block;font:500 20px -apple-system,system-ui,sans-serif;margin-top:4px;font-variant-numeric:tabular-nums}
+.rail{position:absolute;left:0;right:0;bottom:0;padding:10px 12px 30px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:var(--bg)}
+.rail div{height:118px;border-radius:16px;background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:flex-end;padding:12px 10px;font:600 16px -apple-system,system-ui,sans-serif}
+.rail small{font:400 10px ui-monospace,Menlo,monospace;color:var(--dim);margin-top:4px;letter-spacing:.04em}
+.rail .run{background:var(--acc);color:var(--accInk);border-color:var(--acc)}
+.rail .run small{color:var(--accInk);opacity:.75}
+.toast{position:absolute;left:16px;right:16px;bottom:166px;border:1px solid var(--ink);border-radius:12px;padding:11px 14px;display:flex;justify-content:space-between;font-size:14px;background:var(--bg)}
+.toast b{font-weight:600}
+.tabs{display:flex;margin:14px 16px 0;border-radius:14px;background:var(--panel);border:1px solid var(--line);overflow:hidden}
+.tabs div{flex:1;height:56px;display:flex;align-items:center;justify-content:center;font:600 16px -apple-system,system-ui,sans-serif}
+.tabs div+div{border-left:1px solid var(--line)}
+.tabs .on{background:var(--ink);color:var(--bg)}
+.well{margin:12px 16px 0;border-radius:16px;padding:12px;background:var(--panel);border:1px solid var(--line)}
+.night .well.true{background:#1A1714;border-color:#1A1714}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.tile{height:62px;border-radius:10px;position:relative;padding:6px 8px;font:500 11px -apple-system,system-ui,sans-serif;display:flex;align-items:flex-end;color:rgba(0,0,0,.65)}
+.tile.dk{color:rgba(255,255,255,.8)}
+.tile.on{box-shadow:inset 0 0 0 3px var(--bg),0 0 0 2px var(--ink)}
+.night .tile.on{box-shadow:inset 0 0 0 3px #1A1714,0 0 0 2px #8A7A6A}
+.tile.fl::after{content:"!";position:absolute;top:5px;right:8px;font:700 12px ui-monospace,Menlo,monospace}
+.flagnote{margin:10px 0 6px;color:var(--flag)}
+.night .well.true .lab{color:#8A7A6A}
+.night .well.true .flagnote{color:#D9826A}
+.opts{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 16px 0}
+.opts div{height:46px;border-radius:12px;border:1px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:14px}
+.opts .on{border:2px solid var(--ink);font-weight:600}
+.go{position:absolute;left:16px;right:16px;bottom:30px;height:66px;border-radius:18px;background:var(--acc);color:var(--accInk);display:flex;align-items:center;justify-content:center;font:600 18px -apple-system,system-ui,sans-serif}
+.bottle{position:relative;height:420px;margin:16px 16px 0;display:grid;grid-template-columns:1fr 130px 1fr;gap:10px}
+.scale{position:relative}
+.scale div{position:absolute;font:500 13px ui-monospace,Menlo,monospace;color:var(--dim);transform:translateY(-50%)}
+.scale.l div{right:0}.scale.r div{left:0}
+.scale .hi{color:var(--ink);font-weight:700;font-size:16px}
+.vessel{position:relative;border:2px solid var(--ink);border-radius:26px 26px 30px 30px;overflow:hidden;background:var(--panel)}
+.fill{position:absolute;left:0;right:0;bottom:0;background:var(--band)}
+.fill::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--acc)}
+.grip{position:absolute;left:50%;width:62px;height:22px;margin-left:-31px;border-radius:11px;background:var(--acc);transform:translateY(-50%)}
+.readout{text-align:center;margin-top:12px}
+.readout .v{font:300 44px -apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.readout .v span{color:var(--dim);font-size:22px}
+.gauge{margin:8px 16px 0;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.gauge .r{display:flex;justify-content:space-between;align-items:baseline}
+.gauge .k{font:600 15px -apple-system,system-ui,sans-serif}
+.gauge .v{font:500 15px ui-monospace,Menlo,monospace}
+.track{position:relative;height:26px;margin-top:10px}
+.track .base{position:absolute;left:0;right:0;top:12px;height:2px;background:var(--line)}
+.track .band{position:absolute;top:6px;height:14px;background:var(--band);border-radius:3px}
+.track .pt{position:absolute;top:3px;width:4px;height:20px;background:var(--ink);border-radius:2px;margin-left:-2px}
+.gauge .n{font-size:12.5px;color:var(--dim);margin-top:4px}
+.alert{margin:12px 16px 0;border:2px solid var(--flag);border-radius:16px;padding:14px 16px;background:var(--flagSoft)}
+.alert .lab{color:var(--flag)}
+.alert h3{font:600 18px/1.25 -apple-system,system-ui,sans-serif;margin:6px 0}
+.alert p{font-size:14px;line-height:1.45}
+.alert .why{margin-top:10px;padding-top:10px;border-top:1px dashed var(--flag);font-size:12.5px;line-height:1.45;color:var(--dim)}
+.night .alert .why{color:#8E2A1B}
+.alert .why b{color:var(--ink)}
+</style></head><body>
+<div class="board-h">C · Darkroom</div>
+<div class="board-s">An instrument, not a diary. The home screen is a 24-hour dial: every feed and diaper is a tick around the clock, so gaps and clusters show at a glance. Insights are gauges with the expected range drawn in. Night is darkroom red on true black: red light keeps your night vision and doesn't wake anyone. Stool colors can't be judged in red, so the swatch well alone stays true-color.</div>
+<div id="root"></div>
+<script>
+const D=BHT;
+const sb=`<div class="sb"><span class="m">2:59</span><span>●●● ▮</span></div>`;
+function dialSvg(){
+  // hours as angle: 0 at top = midnight. events spread over the last 24h
+  const feeds=[2.63,23.83,20.5,17.3,14.6,11.9,8.7,5.6,2.9,0.2];
+  const wets=[2.08,22.6,19.1,15.8,12.4,9.2,6.1];
+  const dirty=[23.33,18.1,13.2,7.4];
+  const pt=(h,r)=>{const a=(h/24)*2*Math.PI-Math.PI/2;return[150+r*Math.cos(a),150+r*Math.sin(a)]};
+  const tick=(h,r1,r2,c,w)=>{const[a,b]=pt(h,r1),[x,y]=pt(h,r2);return`<line x1="${a}" y1="${b}" x2="${x}" y2="${y}" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>`};
+  let s=`<circle cx="150" cy="150" r="138" fill="none" stroke="var(--line)" stroke-width="1"/><circle cx="150" cy="150" r="100" fill="none" stroke="var(--line)" stroke-width="1"/>`;
+  for(let h=0;h<24;h++)s+=tick(h,140,h%6==0?128:134,'var(--dim)',1);
+  [['0',0],['6',6],['12',12],['18',18]].forEach(([l,h])=>{const[x,y]=pt(h,116);s+=`<text x="${x}" y="${y+4}" text-anchor="middle" font-family="ui-monospace,Menlo" font-size="10" fill="var(--dim)">${l}</text>`});
+  feeds.forEach(h=>s+=tick(h,104,124,'var(--acc)',5));
+  // running feed arc
+  const[a1,b1]=pt(2.85,114),[a2,b2]=pt(2.98,114);
+  s+=`<path d="M${a1} ${b1} A114 114 0 0 1 ${a2} ${b2}" stroke="var(--ink)" stroke-width="12" fill="none" stroke-linecap="round"/>`;
+  wets.forEach(h=>{const[x,y]=pt(h,92);s+=`<circle cx="${x}" cy="${y}" r="3.5" fill="var(--ink)"/>`});
+  dirty.forEach(h=>{const[x,y]=pt(h,92);s+=`<rect x="${x-4}" y="${y-4}" width="8" height="8" fill="none" stroke="var(--ink)" stroke-width="2"/>`});
+  const[nx,ny]=pt(2.98,146);s+=`<line x1="150" y1="150" x2="${nx}" y2="${ny}" stroke="var(--ink)" stroke-width="1" opacity=".35"/>`;
+  return `<svg viewBox="0 0 300 300">${s}</svg>`;
+}
+function home(){return `${sb}
+<div class="top"><b>${D.baby.name}</b><span class="lab">Day 12 · last 24 h</span></div>
+<div class="dial">${dialSvg()}<div class="center"><span class="lab">Breast · right</span><span class="v">${D.feed.elapsed}</span><span class="lab s">since ${D.feed.started}</span></div></div>
+<div class="legend lab"><span><i style="background:var(--acc)"></i>Feed 10</span><span><i style="background:var(--ink)"></i>Wet 7</span><span><i style="border:2px solid var(--ink);border-radius:0;width:6px;height:6px"></i>Dirty 4</span></div>
+<div class="next"><div><span class="lab">Last diaper</span><b>54 m</b></div><div><span class="lab">Avg gap</span><b>2 h 41</b></div><div><span class="lab">Bottle 24 h</span><b>410 mL</b></div></div>
+<div class="toast"><span>Wet · 2:59 AM</span><b>Undo</b></div>
+<div class="rail"><div class="run">Stop<small>R · 08:42</small></div><div>Wet<small>1 TAP</small></div><div>Dirty<small>+ COLOR</small></div><div>Bottle<small>60 ML</small></div></div>`}
+function diaper(){
+  const all=[...D.swatches.normal.map(s=>({...s})),...D.swatches.flag.map(s=>({...s,fl:1}))];
+  return `${sb}
+<div class="top"><b>Diaper</b><span class="lab">Now · 2:59 AM ›</span></div>
+<div class="tabs"><div>Wet</div><div>Dirty</div><div class="on">Mixed</div></div>
+<div class="well true"><div class="lab">Color · shown true in every mode</div><div class="grid" style="margin-top:8px">${D.swatches.normal.map((s,i)=>`<div class="tile ${i>=2?'dk':''} ${i==1?'on':''}" style="background:${s.c}">${s.name}</div>`).join('')}<div style="grid-column:span 1"></div></div>
+<div class="lab flagnote">! Call your pediatrician</div><div class="grid">${D.swatches.flag.map(s=>`<div class="tile fl ${s.name=='Red'?'dk':''}" style="background:${s.c}">${s.name}</div>`).join('')}</div></div>
+<div class="opts"><div>Seedy</div><div class="on">Soft</div><div>Watery</div><div>Hard</div></div>
+<div class="opts" style="grid-template-columns:repeat(3,1fr)"><div>S</div><div class="on">M</div><div>L</div></div>
+<div class="opts" style="grid-template-columns:repeat(3,1fr)"><div>Blood</div><div>Mucus</div><div>Other</div></div>
+<div class="go">Log mixed · mustard</div>`}
+function bottle(){
+  const H=420, mlAt=v=>H-(v/240)*H;
+  const ml=[0,30,60,90,120,150,180,210,240].map(v=>`<div style="top:${mlAt(v)}px" class="${v==60?'hi':''}">${v}</div>`).join('');
+  const oz=[0,1,2,3,4,5,6,7,8].map(v=>`<div style="top:${mlAt(v*29.57)}px" class="${v==2?'hi':''}">${v}</div>`).join('');
+  return `${sb}
+<div class="top"><b>Bottle</b><span class="lab">Now · 2:59 AM ›</span></div>
+<div class="tabs"><div class="on">Breast milk</div><div>Formula</div></div>
+<div style="display:flex;justify-content:space-between;margin:14px 28px -6px"><span class="lab">mL</span><span class="lab">oz</span></div>
+<div class="bottle" style="height:${H}px"><div class="scale l">${ml}</div><div class="vessel"><div class="fill" style="height:${(60/240)*H}px"></div><div class="grip" style="top:${mlAt(60)}px"></div></div><div class="scale r">${oz}</div></div>
+<div class="readout"><div class="v">60 <span>mL</span> · 2.0 <span>oz</span></div><div class="lab">Drag the level. Both scales, always.</div></div>
+<div class="go">Log 60 mL</div>`}
+function insights(){return `${sb}
+<div class="top"><b>Readings</b><span class="lab">Last 24 h · day 12</span></div>
+<div class="alert"><div class="lab">! Call your pediatrician today</div><h3>Clay-colored stool, 4:10 PM</h3><p>Pale, clay or white stool can be an early sign of a liver problem that is treatable when caught early.</p>
+<div class="why"><b>Why?</b> Triggered by the color on the 4:10 PM diaper. Source: [citation from #1 clinical reference]. Placeholder wording.</div></div>
+${[["Wet diapers","7","band:6+ from day 5",50,100,72],["Dirty diapers","4","band:3+ for week 2",38,100,55],["Weight vs birth","+3.1%","band:back by day 10–14",40,80,58],["Bottle + breast","410 mL + 9","range drawn from #1",30,70,52]].map(([k,v,n,b1,b2,p])=>`<div class="gauge"><div class="r"><span class="k">${k}</span><span class="v">${v}</span></div><div class="track"><div class="base"></div><div class="band" style="left:${b1}%;right:${100-b2}%"></div><div class="pt" style="left:${p}%"></div></div><div class="n">${n.replace('band:','Expected ')}</div></div>`).join('')}`}
+const screens=[["Home · 24 h dial",home],["Diaper",diaper],["Bottle · dual scale",bottle],["Insights · flag + gauges",insights]];
+document.getElementById('root').innerHTML=['light','night'].map(m=>`<div class="row">${screens.map(([c,f])=>`<div><div class="cap">${m} · ${c}</div><div class="phone ${m}">${f()}</div></div>`).join('')}</div>`).join('');
+</script></body></html>

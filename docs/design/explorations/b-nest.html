@@ -1,0 +1,147 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>B · Nest</title>
+<script src="shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#E2DAD0;font-family:-apple-system,system-ui,sans-serif;padding:48px 56px 56px}
+.serif{font-family:ui-serif,"New York",Georgia,serif}
+.board-h{font:500 30px/1.1 ui-serif,"New York",Georgia,serif;color:#3B312A}
+.board-s{font:400 15px/1.4 -apple-system,system-ui,sans-serif;color:#6D6157;margin:6px 0 28px;max-width:1500px}
+.row{display:flex;gap:28px;margin-bottom:18px}
+.cap{font:500 12px/1 -apple-system,system-ui,sans-serif;color:#6D6157;text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px 4px}
+.phone{width:390px;height:844px;border-radius:46px;overflow:hidden;position:relative;box-shadow:0 0 0 10px #111,0 20px 50px rgba(0,0,0,.25);margin:10px;background:var(--bg);color:var(--ink)}
+.light{--bg:#EEE8DF;--card:#FBF8F3;--ink:#3B312A;--dim:#8A7D71;--line:#E3DBD0;--acc:#6E8B74;--accSoft:#DDE6DC;--accInk:#FBF8F3;--flag:#B5523B;--flagSoft:#F4E1D9;--scrim:rgba(59,49,42,.35)}
+.night{--bg:#17100D;--card:#231915;--ink:#D6B396;--dim:#866A58;--line:#2E211C;--acc:#B9876A;--accSoft:#33241E;--accInk:#17100D;--flag:#D07756;--flagSoft:#33190F;--scrim:rgba(0,0,0,.55)}
+.sb{height:50px;display:flex;justify-content:space-between;align-items:flex-end;padding:0 30px 6px;font:600 15px -apple-system,system-ui,sans-serif}
+.num{font-variant-numeric:tabular-nums}
+.top{display:flex;justify-content:space-between;align-items:center;padding:16px 22px 6px}
+.av{width:40px;height:40px;border-radius:50%;background:var(--accSoft);color:var(--acc);display:flex;align-items:center;justify-content:center;font:500 18px ui-serif,Georgia,serif}
+.who{font-size:13px;color:var(--dim)}
+.name{font:500 26px ui-serif,"New York",Georgia,serif}
+.hero{margin:12px 16px 0;background:var(--card);border-radius:28px;padding:20px 22px}
+.hero .l{font-size:13px;color:var(--dim)}
+.hero .v{font:400 54px/1 ui-serif,"New York",Georgia,serif;margin:6px 0 4px;letter-spacing:-.02em}
+.hero .s{font-size:14px;color:var(--dim)}
+.hero .btns{display:flex;gap:8px;margin-top:16px}
+.hero .btns div{flex:1;height:52px;border-radius:26px;background:var(--accSoft);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;color:var(--ink)}
+.hero .btns .p{background:var(--acc);color:var(--accInk)}
+.mini{display:flex;gap:8px;margin:8px 16px 0}
+.mini div{flex:1;background:var(--card);border-radius:22px;padding:13px 16px}
+.mini b{display:block;font:400 22px ui-serif,Georgia,serif;margin-top:2px}
+.mini span{font-size:12px;color:var(--dim)}
+.list{margin:16px 22px 0}
+.li{display:flex;gap:12px;align-items:center;padding:9px 0}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--acc);flex:none}
+.li .k{font-size:15px;flex:1}
+.li .k small{color:var(--dim);font-size:13px;margin-left:6px}
+.li .t{font-size:13px;color:var(--dim)}
+.dock{position:absolute;left:12px;right:12px;bottom:28px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.dock div{height:84px;border-radius:30px;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-weight:600;font-size:16px;box-shadow:0 1px 0 var(--line)}
+.dock small{font-weight:400;font-size:12px;color:var(--dim)}
+.dock .p{background:var(--ink);color:var(--bg)}
+.dock .p small{color:var(--bg);opacity:.7}
+.toast{position:absolute;left:24px;right:24px;bottom:126px;background:var(--ink);color:var(--bg);border-radius:20px;padding:13px 18px;display:flex;justify-content:space-between;font-size:14px}
+.toast b{font-weight:600}
+.scrim{position:absolute;inset:0;background:var(--scrim)}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg);border-radius:32px 32px 0 0;padding:10px 0 30px}
+.grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 10px}
+.sh{display:flex;justify-content:space-between;align-items:baseline;padding:4px 22px 12px}
+.sh b{font:500 26px ui-serif,"New York",Georgia,serif}
+.sh span{font-size:14px;color:var(--acc);font-weight:600}
+.lbl{font-size:13px;color:var(--dim);padding:12px 22px 8px}
+.seg{display:flex;gap:6px;margin:0 16px;background:var(--card);border-radius:24px;padding:5px}
+.seg div{flex:1;height:50px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:500}
+.seg .on{background:var(--ink);color:var(--bg)}
+.dots{display:flex;gap:10px;padding:0 22px;flex-wrap:wrap}
+.sw{width:58px;text-align:center;font-size:11px;color:var(--dim)}
+.sw i{display:block;width:52px;height:52px;border-radius:50%;margin:0 auto 5px;border:1px solid rgba(0,0,0,.1)}
+.sw.on i{box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--ink)}
+.sw.on{color:var(--ink);font-weight:600}
+.flagbox{margin:10px 16px 0;background:var(--flagSoft);border-radius:24px;padding:12px 6px 10px}
+.flagbox .lbl{color:var(--flag);padding:0 16px 8px;font-weight:600}
+.flagbox .sw{color:var(--flag)}
+.chips{display:flex;gap:6px;padding:0 16px;flex-wrap:wrap}
+.chips div{height:44px;padding:0 18px;border-radius:22px;background:var(--card);display:flex;align-items:center;font-size:15px}
+.chips .on{background:var(--ink);color:var(--bg)}
+.cta{margin:18px 16px 0;height:64px;border-radius:32px;background:var(--acc);color:var(--accInk);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:18px}
+.big{text-align:center;padding:18px 0 0}
+.big .n{font:400 92px/1 ui-serif,"New York",Georgia,serif;letter-spacing:-.03em}
+.big .u{font:400 26px ui-serif,Georgia,serif;color:var(--dim);margin-left:6px}
+.big .alt{font-size:15px;color:var(--dim);margin-top:6px}
+.ruler{margin:22px 0 0;height:64px;position:relative;overflow:hidden}
+.ruler .ticks{position:absolute;left:-20px;right:-20px;top:10px;height:40px;background:repeating-linear-gradient(90deg,var(--dim) 0 1px,transparent 1px 14px);opacity:.5;-webkit-mask:linear-gradient(90deg,transparent,#000 30%,#000 70%,transparent)}
+.ruler .ticks2{position:absolute;left:-20px;right:-20px;top:4px;height:52px;background:repeating-linear-gradient(90deg,var(--ink) 0 2px,transparent 2px 70px);background-position:13px 0;opacity:.6;-webkit-mask:linear-gradient(90deg,transparent,#000 30%,#000 70%,transparent)}
+.ruler .needle{position:absolute;left:50%;top:0;bottom:0;width:3px;margin-left:-1px;background:var(--acc);border-radius:2px}
+.unit{display:flex;justify-content:center;margin-top:10px}
+.unit .seg{width:170px;margin:0}
+.ins{margin:8px 16px 0;background:var(--card);border-radius:24px;padding:16px 18px}
+.ins .r{display:flex;justify-content:space-between;align-items:baseline}
+.ins .k{font-size:14px;color:var(--dim)}
+.ins .v{font:400 28px ui-serif,Georgia,serif}
+.ins .n{font-size:14px;margin-top:2px}
+.ok{color:var(--acc);font-weight:600}
+.flagcard{margin:10px 16px 0;background:var(--flagSoft);border-radius:28px;padding:18px 20px}
+.flagcard .k{color:var(--flag);font-size:13px;font-weight:600}
+.flagcard h3{font:500 22px/1.2 ui-serif,"New York",Georgia,serif;margin:6px 0 8px}
+.flagcard p{font-size:14px;line-height:1.45}
+.flagcard .acts{display:flex;gap:8px;margin-top:14px}
+.flagcard .acts div{flex:1;height:46px;border-radius:23px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;background:var(--bg)}
+.flagcard .acts .p{background:var(--flag);color:var(--bg)}
+.why{margin-top:12px;background:var(--bg);border-radius:18px;padding:12px 14px;font-size:12.5px;line-height:1.45;color:var(--dim)}
+.why b{color:var(--ink)}
+.h1{font:500 30px ui-serif,"New York",Georgia,serif;padding:14px 22px 4px}
+.sub{font-size:14px;color:var(--dim);padding:0 22px 8px}
+</style></head><body>
+<div class="board-h">B · Nest</div>
+<div class="board-s">Soft and warm, like a lamp left on. Oat paper, rounded cards, a quiet serif for numbers that matter. Home answers the 3 AM question first: how long since the last feed? Logging happens in sheets that rise from the thumb. Night is a dim salt-lamp glow.</div>
+<div id="root"></div>
+<script>
+const D=BHT;
+const sb=`<div class="sb"><span class="num">2:59</span><span>●●● ▮</span></div>`;
+const dock=`<div class="dock"><div class="p">Feed<small>breast · bottle</small></div><div>Diaper<small>wet · dirty · mixed</small></div><div>More<small>pump · weigh</small></div></div>`;
+function home(){return `${sb}
+<div class="top"><div><div class="who">Day 12</div><div class="name">${D.baby.name}</div></div><div class="av">J</div></div>
+<div class="hero"><div class="l">Feeding · right side</div><div class="v num">${D.feed.elapsed}</div><div class="s">Started ${D.feed.started}. Last side was left.</div>
+<div class="btns"><div>Switch to left</div><div class="p">Done</div></div></div>
+<div class="mini"><div><span>Last diaper</span><b class="num">54 min</b></div><div><span>Wet today</span><b class="num">7</b></div><div><span>Bottle today</span><b class="num">60 mL</b></div></div>
+<div class="list">${D.events.slice(0,4).map(e=>`<div class="li"><span class="dot" ${e.swatch?`style="background:${e.swatch}"`:''}></span><span class="k">${e.kind}${e.detail?`<small>${e.detail.split(' · ').slice(0,2).join(' · ')}</small>`:''}</span><span class="t num">${e.t} ${e.ap}</span></div>`).join('')}</div>
+<div class="toast"><span>Wet diaper logged</span><b>Undo</b></div>
+${dock}`}
+function diaper(){return `${sb}
+<div class="top"><div><div class="who">Day 12</div><div class="name">${D.baby.name}</div></div><div class="av">J</div></div>
+<div class="scrim"></div>
+<div class="sheet"><div class="grab"></div>
+<div class="sh"><b>Diaper</b><span>Now ›</span></div>
+<div class="seg"><div>Wet</div><div>Dirty</div><div class="on">Mixed</div></div>
+<div class="lbl">Color</div>
+<div class="dots">${D.swatches.normal.map((s,i)=>`<div class="sw ${i==1?'on':''}"><i style="background:${s.c}"></i>${s.name}</div>`).join('')}</div>
+<div class="flagbox"><div class="lbl">Worth a call to your pediatrician</div><div class="dots">${D.swatches.flag.map(s=>`<div class="sw"><i style="background:${s.c}"></i>${s.name}</div>`).join('')}</div></div>
+<div class="lbl">Texture and size</div>
+<div class="chips"><div>Seedy</div><div class="on">Soft</div><div>Watery</div><div>Hard</div></div>
+<div class="chips" style="margin-top:6px"><div>Small</div><div class="on">Medium</div><div>Large</div><div>+ Blood, mucus…</div></div>
+<div class="cta">Log diaper</div></div>`}
+function bottle(){return `${sb}
+<div class="top"><div><div class="who">Day 12</div><div class="name">${D.baby.name}</div></div><div class="av">J</div></div>
+<div class="scrim"></div>
+<div class="sheet"><div class="grab"></div>
+<div class="sh"><b>Bottle</b><span>Now ›</span></div>
+<div class="seg"><div class="on">Breast milk</div><div>Formula</div></div>
+<div class="big"><span class="n num">2.0</span><span class="u">oz</span><div class="alt num">about 60 mL</div></div>
+<div class="ruler"><div class="ticks"></div><div class="ticks2"></div><div class="needle"></div></div>
+<div class="unit"><div class="seg"><div>mL</div><div class="on">oz</div></div></div>
+<div class="lbl" style="text-align:center">Drag the scale, or pick one you've used</div>
+<div class="chips" style="justify-content:center"><div>1.0</div><div class="on">2.0</div><div>2.5</div><div>3.0</div></div>
+<div class="cta">Log 2.0 oz bottle</div></div>`}
+function insights(){return `${sb}
+<div class="h1">How Juniper's doing</div><div class="sub">Last 24 hours · day 12</div>
+<div class="flagcard"><div class="k">Call your pediatrician today</div>
+<h3>You logged a clay-colored diaper at 4:10 PM</h3>
+<p>Pale, clay or white stool can be an early sign of a liver problem. It's treatable, and timing matters, so it's worth a call today.</p>
+<div class="why"><b>Why?</b> Based on the color you picked. Source: [citation from #1 clinical reference]. Placeholder wording.</div>
+<div class="acts"><div>It was a mistake</div><div class="p">Show the color</div></div></div>
+<div class="ins"><div class="r"><span class="k">Wet diapers</span><span class="v num">7</span></div><div class="n"><span class="ok">On track.</span> Six or more a day is expected after day 5.</div></div>
+<div class="ins"><div class="r"><span class="k">Weight</span><span class="v num">3.62 kg</span></div><div class="n"><span class="ok">Back above birth weight</span> on day 10.</div></div>
+${dock}`}
+const screens=[["Home · feed running",home],["Diaper sheet",diaper],["Bottle sheet",bottle],["Insights · flag + normal",insights]];
+document.getElementById('root').innerHTML=['light','night'].map(m=>`<div class="row">${screens.map(([c,f])=>`<div><div class="cap">${m} · ${c}</div><div class="phone ${m}">${f()}</div></div>`).join('')}</div>`).join('');
+</script></body></html>
