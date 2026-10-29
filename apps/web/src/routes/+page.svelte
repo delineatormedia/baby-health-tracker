@@ -2,29 +2,27 @@
   import { resolve } from '$app/paths';
   import { goto } from '$app/navigation';
   import { app, time } from '../lib/ui/app.svelte.ts';
+  import { shortTime } from '../lib/ui/time.ts';
   import Dial from '../lib/ui/Dial.svelte';
+  import FeedKey from '../lib/ui/FeedKey.svelte';
+  import LogKey from '../lib/ui/LogKey.svelte';
+  import PumpKey from '../lib/ui/PumpKey.svelte';
+  import { keyLines } from '../lib/ui/keys.ts';
   import Toast from '../lib/ui/Toast.svelte';
   import {
     ageDays,
-    ago,
     clock,
     countMarks,
     currentSide,
     dayMarks,
     feedElapsed,
-    isPaused,
     finishFeedData,
     hm,
-    DEFAULT_BOTTLE_ML,
-    lastBottle,
-    lastDiaperAt,
-    lastPump,
+    isPaused,
     minutes,
-    pumpSide,
     runningFeed,
     runningPump,
     stoppedPump,
-    suggestSide,
   } from '../lib/ui/logic.ts';
 
   const baby = $derived(app.baby!);
@@ -32,13 +30,12 @@
   const counts = $derived(countMarks(marks));
   const running = $derived(runningFeed(app.events));
   const lastFeed = $derived(app.events.find((e) => e.type === 'breastfeed' || e.type === 'bottle'));
-  const diaperAt = $derived(lastDiaperAt(app.events));
   const pumping = $derived(runningPump(app.events));
-  const pumped = $derived(lastPump(app.events));
   const pumpStopped = $derived(pumping ? undefined : stoppedPump(app.events));
-  const bottleMl = $derived(lastBottle(app.events)?.data.volumeMl ?? DEFAULT_BOTTLE_ML);
+  const lines = $derived(keyLines(app.events, app.now, app.volume));
 
   let busy = $state(false);
+  let dockHeight = $state(300);
 
   /** Serialises taps so a double tap cannot log twice. */
   async function once(fn: () => Promise<unknown>) {
@@ -66,10 +63,25 @@
   const wet = () => once(() => app.log('diaper', { kind: 'wet' }, 'Wet logged'));
 </script>
 
-<main class="screen fade">
+<!-- "since 10:58 AM", then "since 10:58", then "10:58": the Dial shows the fullest that fits. -->
+{#snippet at(iso: string, verb = '')}
+  <span class="lab num"
+    >{#if verb}<span class="alt">{verb} {time(iso)}</span><span class="alt"
+        >{verb} {shortTime(iso)}</span
+      >{:else}<span class="alt">{time(iso)}</span>{/if}<span class="alt">{shortTime(iso)}</span
+    ></span
+  >
+{/snippet}
+
+<!-- The page scrolls clear of the dock, however tall wrapped key lines make it. -->
+<main class="screen fade" style:--dock-h="{dockHeight}px">
   <header class="top">
-    <h1>{baby.name}</h1>
-    <span class="lab num">{ageDays(baby.birthAt, app.now)} days · last 24 h</span>
+    <span class="title-row">
+      <h1>{baby.name}</h1>
+      <span class="lab num age">{ageDays(baby.birthAt, app.now)} days · last 24 h</span>
+    </span>
+    <!-- The #20 board has no place for Settings; it left the chip row for Weight and History. -->
+    <a class="act" href={resolve('/settings')}>Settings</a>
   </header>
 
   <!-- The dial is the last 24 hours, so tapping it opens Reports (#21). While a feed runs it
@@ -79,94 +91,102 @@
     class="dial-link"
     aria-label={running ? 'Open the breastfeed timer' : 'Open Reports'}
   >
+    <!-- Every caption row stays inside the inner ring of marks (Dial fits them, #34): one fact
+         per row, the clock time on its own row, shorter forms where the ring is narrow. -->
     <Dial {marks} running={running?.occurredAt ?? null} now={app.now}>
       {#if running}
-        <span class="lab"
-          >{isPaused(running) ? 'Paused' : 'Feeding'} · {currentSide(running) ??
-            running.data.side}</span
-        >
-        <span class="v num" class:held={isPaused(running)}
+        <span class="lab">{isPaused(running) ? 'Paused' : 'Feeding'}</span>
+        <span class="v num" class:held={isPaused(running)} data-fit="shrink"
           >{clock(feedElapsed(running, app.now))}</span
         >
+        {#if isPaused(running) && running.data.pausedAt}
+          {@render at(running.data.pausedAt, 'paused at')}
+        {:else}
+          {@render at(running.occurredAt, 'since')}
+        {/if}
         <span class="lab"
-          >{isPaused(running) && running.data.pausedAt
-            ? `paused at ${time(running.data.pausedAt)}`
-            : `since ${time(running.occurredAt)}`}</span
+          ><span class="alt">{currentSide(running) ?? running.data.side} side</span><span
+            class="alt">{currentSide(running) ?? running.data.side}</span
+          ></span
         >
       {:else if lastFeed}
         <span class="lab">Last feed</span>
-        <span class="v num">{hm(app.now - Date.parse(lastFeed.occurredAt))}</span>
-        <span class="lab">h:mm ago · {time(lastFeed.occurredAt)}</span>
+        <span class="v num" data-fit="shrink">{hm(app.now - Date.parse(lastFeed.occurredAt))}</span>
+        <span class="lab">h:mm ago</span>
+        {@render at(lastFeed.occurredAt)}
       {:else}
         <span class="lab">No feeds yet</span>
       {/if}
     </Dial>
   </a>
 
-  <div class="legend lab num">
-    <span><i class="feed"></i>Feed {counts.feed}</span>
-    <span><i class="wet"></i>Wet {counts.wet}</span>
-    <span><i class="dirty"></i>Dirty {counts.dirty}</span>
+  <div class="legend">
+    <span><i class="g g-feed"></i>Feed <b class="num">{counts.feed}</b></span>
+    <span><i class="g g-bottle"></i>Bottle <b class="num">{counts.bottle}</b></span>
+    <span><i class="g g-wet"></i>Wet <b class="num">{counts.wet}</b></span>
+    <span><i class="g g-dirty"></i>Dirty <b class="num">{counts.dirty}</b></span>
   </div>
-  <p class="quiet">
-    {#if diaperAt}
-      Last diaper <b class="num">{ago(app.now - Date.parse(diaperAt))}</b>{app.now -
-        Date.parse(diaperAt) >=
-      60_000
-        ? ' ago'
-        : ''}
-    {:else}
-      No diapers logged yet
-    {/if}
-  </p>
   <p class="quiet lab">Saved on this phone · not synced</p>
 
-  <div class="dock">
+  <div class="dock" bind:clientHeight={dockHeight}>
     <Toast />
     <nav class="chips">
-      <!-- Placement waits on the Home glanceability design (#20). -->
-      <a href={resolve('/pump')} class:run={pumping || pumpStopped}>
-        {#if pumping}
-          Pump · <span class="num">{clock(app.now - Date.parse(pumping.occurredAt))}</span>
-        {:else if pumpStopped}
-          Pump · add amount
-        {:else if pumped}
-          Pump · <span class="num">{hm(app.now - Date.parse(pumped.occurredAt))}</span> ago · {pumpSide(
-            pumped,
-          )[0]?.toUpperCase()}
-        {:else}
-          Pump
-        {/if}
-      </a>
+      <a href={resolve('/weight')}>Weight</a>
+      <a href={resolve('/history')}>History</a>
       <a href={resolve('/readings')}>Readings</a>
-      <a href={resolve('/settings')}>Settings</a>
     </nav>
     <div class="rail">
-      {#if running}
-        <button class="run" class:paused={isPaused(running)} onclick={stopFeed}>
-          Stop<small class="num"
-            >{isPaused(running) ? 'Paused · ' : ''}{(currentSide(running) ??
-              running.data.side)[0]?.toUpperCase()} · {clock(feedElapsed(running, app.now))}</small
-          >
-        </button>
-      {:else}
-        <!-- Opens Left / Right: starting on either side is two taps (#19). -->
-        <button onclick={() => goto(resolve('/feed'))}
-          >Feed<small>Next {suggestSide(app.events)}</small></button
-        >
-      {/if}
-      <button onclick={wet}>Wet<small>1 tap</small></button>
-      <button onclick={() => goto(resolve('/diaper'))}>Dirty<small>Color</small></button>
-      <button onclick={() => goto(resolve('/bottle'))}
-        >Bottle<small>{app.volume(bottleMl)}</small></button
-      >
+      <!-- Feed opens Left / Right: starting on either side is two taps (#19). -->
+      <FeedKey
+        {running}
+        lines={lines.feed}
+        now={app.now}
+        onstart={() => goto(resolve('/feed'))}
+        onstop={stopFeed}
+      />
+      <LogKey kind="wet" label="Wet" lines={lines.wet} onclick={wet} />
+      <LogKey
+        kind="dirty"
+        label="Dirty"
+        lines={lines.dirty}
+        onclick={() => goto(resolve('/diaper'))}
+      />
+      <LogKey
+        kind="bottle"
+        label="Bottle"
+        lines={lines.bottle}
+        onclick={() => goto(resolve('/bottle'))}
+      />
+      <PumpKey
+        running={pumping}
+        stopped={pumpStopped}
+        lines={lines.pump}
+        now={app.now}
+        onclick={() => goto(resolve('/pump'))}
+      />
     </div>
   </div>
 </main>
 
 <style>
   .screen {
-    padding-bottom: calc(240px + var(--safe-b));
+    padding-bottom: calc(var(--dock-h) + 16px);
+  }
+  .title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 12px;
+    min-width: 0;
+  }
+  .act {
+    flex: none;
+    /* A 44 px tap height without moving the header. */
+    padding: 10px 0;
+    margin: -10px 0;
+    font: 500 20px var(--sans);
+    color: var(--ink);
+    text-decoration: none;
   }
   .dial-link {
     display: block;
@@ -176,49 +196,46 @@
   .v {
     font: 300 clamp(44px, 15vw, 60px) / 1 var(--sans);
     letter-spacing: -0.02em;
-    margin: 8px 0;
+    margin: 4px 0;
+  }
+  .held {
+    color: var(--text-dim);
+  }
+  /* Home captions at the README floor: 15 px and --text-dim, which reaches 4.5:1 where the
+     shared 11 px --dim .lab does not. Shared tokens move in #38. */
+  .lab {
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+  }
+  /* Caption rows packed close, so the rows near the ring keep more of its chord. */
+  .dial-link .lab {
+    line-height: 1.2;
   }
   .legend {
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
-    gap: 18px;
+    gap: 6px 18px;
     margin-top: 14px;
+    font: 400 15px var(--sans);
+    color: var(--text-dim);
   }
   .legend span {
     display: flex;
     align-items: center;
     gap: 6px;
+    white-space: nowrap;
   }
-  .legend i {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
+  .legend b {
+    color: var(--ink);
+    font-weight: 600;
   }
-  .legend .feed {
-    background: var(--acc);
-    border-radius: 50%;
-  }
-  .legend .wet {
-    background: var(--ink);
-    border-radius: 50%;
-  }
-  .legend .dirty {
-    border: 1.6px solid var(--ink);
-    width: 7px;
-    height: 7px;
+  .age {
+    white-space: nowrap;
   }
   .quiet {
     text-align: center;
-    margin-top: 14px;
-    font-size: 14px;
-    color: var(--dim);
-  }
-  .quiet b {
-    color: var(--ink);
-    font-weight: 500;
-  }
-  p.lab.quiet {
-    font-size: 10px;
     margin-top: 8px;
   }
   .dock {
@@ -238,72 +255,21 @@
   }
   .chips a {
     flex: 1;
-    height: 44px;
+    height: 52px;
     border-radius: 12px;
     border: 1px solid var(--line);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 14px;
-    color: var(--dim);
-    text-decoration: none;
-  }
-  .chips a:first-child {
-    flex: 2;
+    font: 500 20px var(--sans);
     color: var(--ink);
-  }
-  .chips a.run {
-    background: var(--acc);
-    color: var(--acc-ink);
-    border-color: var(--acc);
+    text-decoration: none;
   }
   .rail {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
-  }
-  .rail button {
-    height: 112px;
-    border-radius: 16px;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    align-items: flex-start;
-    padding: 12px 10px;
-    font: 600 16px var(--sans);
-    text-align: left;
-  }
-  .rail button:active {
-    transform: scale(0.97);
-  }
-  .rail small {
-    font: 400 10px var(--mono);
-    color: var(--dim);
-    margin-top: 4px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-  .rail .run {
-    background: var(--acc);
-    color: var(--acc-ink);
-    border-color: var(--acc);
-  }
-  .held {
-    color: var(--dim);
-  }
-  .rail .run.paused {
-    background: var(--panel);
-    color: var(--ink);
-    border: 2px dashed var(--acc);
-  }
-  .rail .run.paused small {
-    color: var(--ink);
-  }
-  .rail .run small {
-    color: var(--acc-ink);
-    opacity: 0.7;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    /* Rows grow when a line wraps at narrow widths (#20: wrap, never truncate). */
+    grid-template-rows: minmax(88px, auto) minmax(88px, auto);
+    gap: 8px;
   }
 </style>

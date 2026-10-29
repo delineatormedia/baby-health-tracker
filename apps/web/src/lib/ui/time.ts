@@ -21,6 +21,16 @@ export function time(iso: string | number): string {
   return timeFormat.format(new Date(iso));
 }
 
+/** "2:59" without the day period, for a caption too narrow for "2:59 AM". */
+export function shortTime(iso: string | number): string {
+  return timeFormat
+    .formatToParts(new Date(iso))
+    .filter((p) => p.type !== 'dayPeriod')
+    .map((p) => p.value)
+    .join('')
+    .trim();
+}
+
 const MINUTE = 60_000;
 const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 

@@ -2,11 +2,15 @@ import { newId, parseEvent, toMl, type BabyEvent } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
 import {
   ageDays,
+  CAPTION_RADIUS,
+  chordWidth,
   cappedStart,
   clock,
   countMarks,
   currentSide,
   dayMarks,
+  INNER_STEP,
+  innerMarks,
   describe as describeEvent,
   editLink,
   feedElapsed,
@@ -384,7 +388,7 @@ describe('pause (#29)', () => {
 });
 
 describe('dial', () => {
-  test('counts the last 24 hours only; a mixed diaper is wet and dirty', () => {
+  test('counts the last 24 hours only; a mixed diaper is wet and dirty; bottles are their own mark', () => {
     const events = [
       ev('diaper', { kind: 'wet' }, 10),
       ev('diaper', { kind: 'mixed', stool: null }, 20),
@@ -394,7 +398,7 @@ describe('dial', () => {
       ev('diaper', { kind: 'wet' }, 24 * 60), // exactly 24 h ago: outside
       ev('diaper', { kind: 'wet' }, -5), // future: outside
     ];
-    expect(countMarks(dayMarks(events, NOW))).toEqual({ feed: 2, wet: 2, dirty: 2 });
+    expect(countMarks(dayMarks(events, NOW))).toEqual({ feed: 1, bottle: 1, wet: 2, dirty: 2 });
   });
 
   test('marks sit at the local hour of day', () => {
@@ -403,10 +407,86 @@ describe('dial', () => {
     expect(m?.hour).toBeCloseTo(at.getHours() + at.getMinutes() / 60);
   });
 
+  test('a mixed diaper draws a wet and a dirty mark side by side', () => {
+    const marks = dayMarks([ev('diaper', { kind: 'mixed', stool: null }, 30)], NOW);
+    const inner = innerMarks(marks);
+    expect(inner.map((m) => m.kind)).toEqual(['wet', 'dirty']);
+    expect(inner[1]!.at - inner[0]!.at).toBeCloseTo(INNER_STEP);
+    // Centred on the logged hour, which each mark keeps.
+    expect((inner[0]!.at + inner[1]!.at) / 2).toBeCloseTo(marks[0]!.hour);
+    expect(inner.every((m) => m.hour === marks[0]!.hour)).toBe(true);
+  });
+
+  test('separate wet and dirty entries minutes apart do not overlap; the count matches the legend', () => {
+    const events = [
+      ev('diaper', { kind: 'wet' }, 30),
+      ev('diaper', { kind: 'dirty', stool: null }, 30),
+      ev('diaper', { kind: 'mixed', stool: null }, 32),
+      ev('diaper', { kind: 'wet' }, 300),
+      ev('bottle', { contents: 'formula', volumeMl: 60 }, 30),
+    ];
+    const marks = dayMarks(events, NOW);
+    const inner = innerMarks(marks);
+    const n = countMarks(marks);
+    expect(inner.filter((m) => m.kind === 'wet')).toHaveLength(n.wet);
+    expect(inner.filter((m) => m.kind === 'dirty')).toHaveLength(n.dirty);
+    const at = inner.map((m) => m.at).toSorted((a, b) => a - b);
+    for (let i = 1; i < at.length; i++) {
+      expect(at[i]! - at[i - 1]!).toBeGreaterThanOrEqual(INNER_STEP - 1e-9);
+    }
+    // The lone wet four and a half hours earlier stays where it was logged.
+    const lone = inner.find((m) => Math.abs(m.hour - m.at) < 1e-9 && m.kind === 'wet');
+    expect(lone).toBeDefined();
+  });
+
+  test('marks either side of midnight are spread across it', () => {
+    const inner = innerMarks([
+      { hour: 23.99, kind: 'wet' },
+      { hour: 0.01, kind: 'dirty' },
+    ]);
+    expect(inner).toHaveLength(2);
+    const [a, b] = inner.map((m) => m.at);
+    const gap = Math.min(Math.abs(a! - b!), 24 - Math.abs(a! - b!));
+    expect(gap).toBeCloseTo(INNER_STEP);
+    expect(inner.every((m) => m.at >= 0 && m.at < 24)).toBe(true);
+  });
+
   test('polar puts 0 h at the top and 6 h on the right', () => {
     expect(polar(0, 100)).toEqual([150, 50]);
     expect(polar(6, 100)).toEqual([250, 150]);
     expect(polar(12, 100)).toEqual([150, 250]);
+  });
+});
+
+describe('caption fit (#34)', () => {
+  test('the caption radius stays clear of every inner mark, square corners included', () => {
+    // Inner marks sit on r=99: wet dots of r 5.5, dirty squares 11 wide (corner at 5.5√2).
+    const nearestMark = 99 - 5.5 * Math.SQRT2;
+    expect(CAPTION_RADIUS).toBeLessThan(nearestMark);
+    expect(nearestMark - CAPTION_RADIUS).toBeCloseTo(4);
+  });
+
+  test('a row is bounded by its corner farthest from the centre', () => {
+    // A 3-4-5 triangle: an edge 3 from the centre of a radius-5 circle leaves a chord of 8.
+    expect(chordWidth(5, -3, -1)).toBeCloseTo(8);
+    expect(chordWidth(5, 1, 3)).toBeCloseTo(8);
+    // A row straddling the centre gets the full diameter.
+    expect(chordWidth(5, -1, 1)).toBeCloseTo(2 * Math.sqrt(24));
+    // Every corner of a row exactly as wide as its chord lies on or inside the circle.
+    const rows: [number, number][] = [
+      [-60, -40],
+      [-10, 12],
+      [30, 70],
+    ];
+    for (const [top, bottom] of rows) {
+      const half = chordWidth(80, top, bottom) / 2;
+      for (const y of [top, bottom]) expect(Math.hypot(half, y)).toBeLessThanOrEqual(80 + 1e-9);
+    }
+  });
+
+  test('a row touching or past the circle gets no width', () => {
+    expect(chordWidth(5, 2, 5)).toBe(0);
+    expect(chordWidth(5, -7, -6)).toBe(0);
   });
 });
 

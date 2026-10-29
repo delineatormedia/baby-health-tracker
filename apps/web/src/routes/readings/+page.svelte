@@ -140,7 +140,7 @@
   <div class="list num">
     <div class="r2"><span>Wet diapers</span><b>{counts.wet}</b></div>
     <div class="r2"><span>Dirty diapers</span><b>{counts.dirty}</b></div>
-    <div class="r2"><span>Feeds</span><b>{counts.feed}</b></div>
+    <div class="r2"><span>Feeds</span><b>{counts.feed + counts.bottle}</b></div>
   </div>
 
   <section class="row">
