@@ -62,9 +62,3 @@ export function saveBaby(kv: KV, baby: Baby): void {
   if (!parsed) throw new Error('Invalid baby');
   kv.setItem(KEYS.baby, JSON.stringify(parsed));
 }
-
-/** Stand-in when localStorage is unavailable at module load. */
-export function memoryStorage(): KV {
-  const m = new Map<string, string>();
-  return { getItem: (k) => m.get(k) ?? null, setItem: (k, val) => void m.set(k, val) };
-}

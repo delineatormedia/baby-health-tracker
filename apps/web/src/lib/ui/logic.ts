@@ -25,10 +25,20 @@ export function runningFeed(events: readonly BabyEvent[]): Breastfeed | undefine
   );
 }
 
-/** Seconds to store when a timer stops: at least 1, at most the schema's 4-hour bound. */
-export function stopSeconds(startedAt: string, now: number): number {
-  const s = Math.round((now - Date.parse(startedAt)) / 1000);
-  return Math.min(MAX_FEED_SECONDS, Math.max(1, s));
+/**
+ * Seconds to store when a timer stops, at least 1. Null past the schema's 4-hour bound: the
+ * timer was probably left running, and the parent has to say how long the feed really was.
+ */
+export function stopSeconds(startedAt: string, now: number): number | null {
+  const s = Math.max(1, Math.round((now - Date.parse(startedAt)) / 1000));
+  return s > MAX_FEED_SECONDS ? null : s;
+}
+
+/** What to tell the parent when a local write fails. Their input stays on screen. */
+export function saveFailure(e: unknown): string {
+  const name = e instanceof Error || e instanceof DOMException ? e.name : '';
+  if (name === 'QuotaExceededError') return 'Not saved: this phone is out of storage space.';
+  return 'Not saved: this phone could not write to its storage.';
 }
 
 /** The last finished breastfeed's side, which the next feed usually alternates from. */

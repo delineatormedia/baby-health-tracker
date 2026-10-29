@@ -12,6 +12,7 @@ import {
   MAX_FEED_SECONDS,
   polar,
   runningFeed,
+  saveFailure,
   snapBottle,
   stepBottle,
   stopSeconds,
@@ -45,12 +46,16 @@ describe('breastfeed timer', () => {
     expect(runningFeed([done])).toBeUndefined();
   });
 
-  test('stop clamps to the schema bounds', () => {
+  test('stop keeps the real duration and refuses one past the schema bound', () => {
     const start = new Date(NOW - 8 * 60_000 - 42_000).toISOString();
     expect(stopSeconds(start, NOW)).toBe(522);
     expect(stopSeconds(new Date(NOW).toISOString(), NOW)).toBe(1);
     expect(stopSeconds(new Date(NOW + 5000).toISOString(), NOW)).toBe(1);
-    expect(stopSeconds(new Date(NOW - 9 * 3_600_000).toISOString(), NOW)).toBe(MAX_FEED_SECONDS);
+    const limit = new Date(NOW - MAX_FEED_SECONDS * 1000).toISOString();
+    expect(stopSeconds(limit, NOW)).toBe(MAX_FEED_SECONDS);
+    // Never clamped: an overlong timer has no duration until the parent supplies one.
+    expect(stopSeconds(limit, NOW + 1000)).toBeNull();
+    expect(stopSeconds(new Date(NOW - 5 * 3_600_000).toISOString(), NOW)).toBeNull();
   });
 
   test('the next side alternates from the last finished feed, ignoring the running one', () => {
@@ -150,5 +155,13 @@ describe('readouts', () => {
     expect(describeEvent(ev('bottle', { contents: 'formula', volumeMl: 60 }, 1), vol)).toBe(
       'Bottle · formula · 60 mL',
     );
+  });
+});
+
+describe('saveFailure', () => {
+  test('names a full phone, and says nothing was saved otherwise', () => {
+    expect(saveFailure(new DOMException('full', 'QuotaExceededError'))).toMatch(/out of storage/);
+    expect(saveFailure(new Error('boom'))).toMatch(/^Not saved/);
+    expect(saveFailure('weird')).toMatch(/^Not saved/);
   });
 });

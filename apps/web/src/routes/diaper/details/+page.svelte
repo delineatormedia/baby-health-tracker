@@ -64,6 +64,8 @@
         undo: () => app.store.remove(event.id),
       });
       await goto(resolve('/'), { replaceState: true });
+    } catch (e) {
+      app.fail(e);
     } finally {
       busy = false;
     }
@@ -75,6 +77,8 @@
     try {
       await app.store.remove(event.id);
       await goto(resolve('/'), { replaceState: true });
+    } catch (e) {
+      app.fail(e);
     } finally {
       busy = false;
     }

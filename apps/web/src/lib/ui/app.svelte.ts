@@ -9,13 +9,14 @@ import { openDatabase } from '../data/db.ts';
 import { EventStore, type Change } from '../data/store.ts';
 import {
   authorId,
+  DEFAULT_PREFS,
   loadBaby,
   loadPrefs,
-  memoryStorage,
   saveBaby,
   savePrefs,
   type Prefs,
 } from './prefs.ts';
+import { saveFailure } from './logic.ts';
 import { time } from './time.ts';
 
 export { time };
@@ -37,12 +38,16 @@ class AppState {
   error = $state<string | null>(null);
   baby = $state<Baby | null>(null);
   events = $state.raw<BabyEvent[]>([]);
-  prefs = $state<Prefs>(loadPrefs(globalThis.localStorage ?? memoryStorage()));
+  // Read in init(): touching localStorage can throw (SecurityError) and must reach the error screen.
+  prefs = $state<Prefs>(DEFAULT_PREFS);
   toast = $state.raw<Toast | null>(null);
+  /** A write that failed. Shown until dismissed or the next write succeeds. */
+  saveError = $state<string | null>(null);
   /** Wall clock for elapsed-time displays, ticking once a second. */
   now = $state(Date.now());
 
   #store: EventStore | null = null;
+  #kv: Storage | null = null;
   #toastTimer: ReturnType<typeof setTimeout> | undefined;
   #loading: Promise<void> | null = null;
   #reloadAgain = false;
@@ -50,8 +55,13 @@ class AppState {
   async init(): Promise<void> {
     if (this.#store) return;
     try {
-      this.#store = new EventStore(await openDatabase(), authorId(localStorage));
-      this.baby = loadBaby(localStorage);
+      // Prefs load before the first await so the theme applies on first paint.
+      const kv = globalThis.localStorage;
+      if (!kv) throw new Error('Local storage is unavailable.');
+      this.prefs = loadPrefs(kv);
+      this.#kv = kv;
+      this.#store = new EventStore(await openDatabase(), authorId(kv));
+      this.baby = loadBaby(kv);
       this.#store.subscribe(() => void this.#reload());
       await this.#reload();
     } catch (e) {
@@ -67,15 +77,40 @@ class AppState {
     return this.#store;
   }
 
+  get #storage(): Storage {
+    if (!this.#kv) throw new Error('App not initialised');
+    return this.#kv;
+  }
+
   setBaby(baby: Baby): void {
-    saveBaby(localStorage, baby);
+    try {
+      saveBaby(this.#storage, baby);
+    } catch (e) {
+      this.fail(e);
+      return;
+    }
     this.baby = baby;
     void this.#reload();
   }
 
+  /** Applies for this session even if the phone cannot store it. */
   setPrefs(patch: Partial<Prefs>): void {
     this.prefs = { ...this.prefs, ...patch };
-    savePrefs(localStorage, this.prefs);
+    try {
+      savePrefs(this.#storage, this.prefs);
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /**
+   * Reports a failed write. Screens call this from their catch and stay where they are, so
+   * whatever the parent entered is still there to retry. The stale success toast goes away.
+   */
+  fail(e: unknown): void {
+    console.error(e);
+    this.dismissToast();
+    this.saveError = saveFailure(e);
   }
 
   volume = (ml: number): string => formatVolume(ml, this.prefs.volume);
@@ -98,7 +133,12 @@ class AppState {
     this.#showToast({
       text,
       undo: async () => {
-        await change.undo();
+        try {
+          await change.undo();
+        } catch (e) {
+          this.fail(e);
+          return;
+        }
         this.#showToast({ text: 'Undone' });
       },
     });
@@ -110,6 +150,7 @@ class AppState {
   }
 
   #showToast(t: Toast) {
+    this.saveError = null;
     clearTimeout(this.#toastTimer);
     this.toast = t;
     this.#toastTimer = setTimeout(() => (this.toast = null), TOAST_MS);

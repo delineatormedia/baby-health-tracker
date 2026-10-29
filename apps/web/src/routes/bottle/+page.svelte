@@ -51,6 +51,8 @@
         },
       );
       await goto(resolve('/'), { replaceState: true });
+    } catch (e) {
+      app.fail(e);
     } finally {
       busy = false;
     }

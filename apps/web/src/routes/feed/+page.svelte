@@ -1,9 +1,11 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { goto } from '$app/navigation';
+  import { page } from '$app/state';
   import type { Side } from '@bht/schema';
   import { app, time } from '../../lib/ui/app.svelte.ts';
   import {
+    ago,
     clock,
     lastSide,
     MAX_FEED_SECONDS,
@@ -17,7 +19,14 @@
   const previous = $derived(lastSide(app.events));
   const elapsed = $derived(running ? app.now - Date.parse(running.occurredAt) : 0);
 
-  let typing = $state(false);
+  /**
+   * A timer past the schema's 4-hour bound was almost certainly left running. Nothing is saved
+   * until the parent types the real duration; the timer keeps running until then.
+   */
+  const overrun = $derived(elapsed > MAX_FEED_SECONDS * 1000);
+
+  // Home sends ?fix when Stop found an overrun timer.
+  let typing = $state(page.url.searchParams.has('fix'));
   let minutes = $state<number | null>(null);
   let manualSide = $state<Side>(suggestSide(app.events));
   let busy = false;
@@ -27,6 +36,8 @@
     busy = true;
     try {
       await fn();
+    } catch (e) {
+      app.fail(e);
     } finally {
       busy = false;
     }
@@ -54,6 +65,7 @@
     once(async () => {
       if (!running) return;
       const seconds = stopSeconds(running.occurredAt, Date.now());
+      if (seconds === null) return startTyping();
       const change = await app.store.edit(running.id, {
         data: { ...running.data, durationSeconds: seconds },
       });
@@ -68,7 +80,17 @@
       minutes * 60 <= MAX_FEED_SECONDS,
   );
 
-  /** A typed duration ends now: it replaces a running timer, or logs a feed that just finished. */
+  function startTyping() {
+    manualSide = running?.data.side ?? suggestSide(app.events);
+    // An overrun timer's elapsed time is not a duration, so there is nothing to prefill.
+    minutes = running && !overrun ? Math.max(1, Math.round(elapsed / 60_000)) : null;
+    typing = true;
+  }
+
+  /**
+   * A typed duration ends now: it replaces a running timer, or logs a feed that just finished.
+   * For an overrun timer the start time is what the parent knows, so the feed keeps it.
+   */
   const logTyped = () =>
     once(async () => {
       if (!validMinutes || minutes === null) return;
@@ -76,7 +98,9 @@
       if (running) {
         const change = await app.store.edit(running.id, {
           data: { side: manualSide, durationSeconds: seconds },
-          occurredAt: new Date(Date.now() - seconds * 1000).toISOString(),
+          occurredAt: overrun
+            ? running.occurredAt
+            : new Date(Date.now() - seconds * 1000).toISOString(),
         });
         app.showUndo(`Breastfeed · ${Math.round(minutes)} min logged`, change);
       } else {
@@ -96,7 +120,11 @@
     const iso = fromLocalInput(value);
     if (!running || !iso || Date.parse(iso) > Date.now()) return;
     if (Date.now() - Date.parse(iso) > MAX_FEED_SECONDS * 1000) return;
-    await app.store.edit(running.id, { occurredAt: iso });
+    try {
+      await app.store.edit(running.id, { occurredAt: iso });
+    } catch (e) {
+      app.fail(e);
+    }
   }
 
   const current = $derived(typing ? manualSide : running?.data.side);
@@ -119,12 +147,20 @@
     {/if}
   </header>
 
+  {#if typing && running && overrun}
+    <p class="overrun" role="status">
+      Timer ran {ago(elapsed)}. How long was the feed?
+    </p>
+  {/if}
+
   {#if typing}
     <label class="typed">
       <span class="lab">Minutes</span>
       <!-- svelte-ignore a11y_autofocus -->
       <input type="number" inputmode="numeric" min="1" max="240" bind:value={minutes} autofocus />
-      <span class="lab">ending now</span>
+      <span class="lab"
+        >{running && overrun ? `from ${time(running.occurredAt)}` : 'ending now'}</span
+      >
     </label>
   {:else}
     <div class="big">
@@ -148,17 +184,12 @@
       {validMinutes ? `Log ${Math.round(minutes ?? 0)} min` : 'Type the minutes'}
     </button>
   {:else}
-    <button
-      class="go2"
-      onclick={() => {
-        manualSide = running?.data.side ?? suggestSide(app.events);
-        minutes = running ? Math.max(1, Math.round(elapsed / 60_000)) : null;
-        typing = true;
-      }}>Type a duration instead</button
-    >
+    <button class="go2" onclick={startTyping}>Type a duration instead</button>
     {#if running}
       <button class="go" onclick={stop}
-        >Stop · log {Math.max(1, Math.round(elapsed / 60_000))} min</button
+        >{overrun
+          ? 'Stop · set the duration'
+          : `Stop · log ${Math.max(1, Math.round(elapsed / 60_000))} min`}</button
       >
     {:else}
       <a class="go link" href={resolve('/')}>Home</a>
@@ -188,6 +219,11 @@
     font: 200 clamp(72px, 24vw, 96px) / 1 var(--sans);
     letter-spacing: -0.03em;
     margin: 12px 0;
+  }
+  .overrun {
+    margin: 6vh 24px 0;
+    text-align: center;
+    font: 600 18px var(--sans);
   }
   .typed {
     display: block;

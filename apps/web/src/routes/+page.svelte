@@ -35,6 +35,8 @@
     busy = true;
     try {
       await fn();
+    } catch (e) {
+      app.fail(e);
     } finally {
       busy = false;
     }
@@ -53,6 +55,8 @@
     once(async () => {
       if (!running) return;
       const seconds = stopSeconds(running.occurredAt, Date.now());
+      // Past the 4-hour bound: save nothing, ask how long the feed really was.
+      if (seconds === null) return goto(resolve('/feed?fix'));
       const change = await app.store.edit(running.id, {
         data: { ...running.data, durationSeconds: seconds },
       });

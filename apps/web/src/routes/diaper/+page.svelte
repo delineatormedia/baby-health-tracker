@@ -26,6 +26,8 @@
         { occurredAt: at ?? undefined },
       );
       await goto(resolve(`/diaper/details?id=${change.event.id}`), { replaceState: true });
+    } catch (e) {
+      app.fail(e);
     } finally {
       busy = false;
     }
