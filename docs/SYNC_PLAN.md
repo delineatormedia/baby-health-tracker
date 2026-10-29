@@ -73,7 +73,7 @@ The real risk is **version skew**: a client newer than the server.
   while the deployed server's `strictObject` still rejects unknown keys.
 - The server answers `rejected`, and `applyPushResults` deletes the version
   from the phone. That loses data silently. It is why "server first" matters.
-- **Proposed rule (step 1):**
+- **Rule (step 1):**
   - The push body carries `schemaVersion`.
   - A server older than the client answers `409 {upgrade: true}` for the whole
     batch, which the client keeps pending and retries later.
@@ -81,18 +81,33 @@ The real risk is **version skew**: a client newer than the server.
     schema version.
   - Schema changes stay additive (new fields optional), so a newer server
     always accepts older clients.
+- **The phone never deletes a rejected version (PM, 2026-10-29).** Even with
+  the 409 rule, a server bug alone could trigger the delete. Step 1 keeps the
+  version, marks it rejected, leaves it out of uploads, and shows the count in
+  Settings.
 
-## Stale spec to fix
+## Stale spec (fixed)
 
-Issue #5 says "Last-writer-wins per event id by client timestamp". The
-`events.ts` envelope comment also says "recordedAt decides last-writer-wins".
-Both contradict the PRD and `sync.ts`, where version wins, then seq, and clocks
-never decide. The server should use `resolveCurrent`. Step 1 corrects the
-comment, and the issue text should be edited.
+Issue #5 said "Last-writer-wins per event id by client timestamp". The PM has
+posted the correction on #5. The `events.ts` envelope comment still says
+"recordedAt decides last-writer-wins", and step 1 rewrites it. The rule is the
+PRD's and `sync.ts`'s: version wins, then seq, and clocks never decide. The
+server uses `resolveCurrent`.
+
+## Decisions (PM, 2026-10-29)
+
+1. Rejected versions are never deleted on the phone (step 1).
+2. `SCHEMA_VERSION` goes up on every schema change, starting in step 1 to cover
+   the additions so far. A test fails if the schema's shape changes but the
+   version does not.
+3. A second phone that has its own baby is never refused, and its data is
+   never dropped silently (step 2, below).
+4. #17 is needed for v1 and lands with step 3, not after it (see "Step 3b").
+5. Step 1 fixes the `events.ts` comment.
 
 ## Steps, in dependency order
 
-### Step 1: event log and sync API (#5, part 1). Ready to start.
+### Step 1: event log and sync API (#5, part 1). In progress.
 
 - Migrations: a `schema_migrations` table and a migration runner in `db.ts`.
 - Tables:
@@ -112,6 +127,15 @@ comment, and the issue text should be edited.
 - `GET /api/sync?after=&limit=` returns the household's versions in seq order,
   with `next` and `more`.
 - Move `protocol.ts` types into `@bht/schema`, and point web at them.
+- Web store: `applyPushResults` keeps a rejected version as a row marked
+  `rejected` with its error, and `pending()` skips it. `EventStore` exposes a
+  count, which Settings shows ("N entries the server refused"). The
+  IndexedDB version goes up to add the index.
+- `SCHEMA_VERSION` goes to 2. A test pins a fingerprint of the `BabyEvent`
+  shape (types, keys, picklists and bounds, from valibot's introspection)
+  next to the version, so changing the shape without bumping the version, or
+  the other way round, fails the test.
+- Fix the `events.ts` envelope comment.
 - Household scoping goes through one middleware that sets `c.var.householdId`.
   Until step 2 it only runs in tests (an injected session). No public route is
   unauthenticated in production: without auth configured, sync answers 401.
@@ -123,6 +147,8 @@ comment, and the issue text should be edited.
   - A tombstone syncs.
   - A duplicate push is idempotent.
   - A newer `schemaVersion` gets 409 and nothing is deleted.
+  - A rejected version stays on the phone, is not uploaded again, and is
+    counted. A later local edit of the same event is still uploaded.
   - Household A cannot pull B's versions or push into B's ids.
   - Ids are global ULIDs, so the server checks that an event id is not already
     owned by another household.
@@ -139,9 +165,17 @@ comment, and the issue text should be edited.
   sign-in keep their `babyId`.
 - Join by invite: the second phone gets the household's baby from
   `GET /api/household`.
-  - A baby set up locally on that phone with events already logged needs a
-    decision: re-key the local events to the household baby, or refuse to join.
-    **PM call.**
+  - If that phone already has its own baby with entries, the join screen says
+    "This phone has N entries for <name>" and offers two choices. The join is
+    never refused.
+    - **Move them into <household baby>** (the default). Each local event is
+      re-keyed to the household baby: a new version of the same event id with
+      the new `babyId`, so the history stays append-only. Duplicates are
+      cleaned up by a parent in History.
+    - **Keep them off this household.** The local baby and its events are
+      archived on the phone. Nothing is deleted, and nothing is uploaded.
+  - Test both paths, plus the count shown and that nothing is lost after a
+    reload.
 - `authorId` stays the per-phone id and is recorded as a `devices` row for the
   member. Who logged an event is decided by the server stamping `member_id`
   from the session, not by trusting `authorId`.
@@ -159,6 +193,42 @@ comment, and the issue text should be edited.
 - A Vite dev proxy for `/api`.
 - Browser test: two Chrome profiles against one dev server, each logging and
   seeing the other's events.
+
+### Step 3b: minimal #17, lands with step 3
+
+Readings passes `syncedThrough: now` today
+(`routes/readings/+page.svelte:35`). Once sync is on, that is false: the other
+phone may hold writes the server has not seen. A null value would make the
+count checks go silent. This step makes `syncedThrough` true, and it merges
+before or together with step 3, never after.
+
+- **Server watermark per device.** A push request carries `drained: true` when
+  the batch is the device's last pending one (or an empty batch with nothing
+  pending). The server then sets `devices.synced_at` to its own clock at that
+  request. This means every write the device made before `synced_at` is on the
+  server.
+- **Pull returns** `serverNow` and the household's devices as
+  `{deviceId, memberName, syncedAt, lastSeenAt}`.
+- **Client:** `syncedThrough` is the minimum of:
+  - its own pull time, when it has nothing pending;
+  - every *counted* device's `syncedAt`.
+  Server times are shifted by `serverNow` minus the local time, so a skewed
+  phone clock does not move the line.
+- **Proposed rule for idle and lost devices** (for the owner):
+  - A device counts while it was last seen within **24 hours**. A phone left
+    in a drawer overnight still holds Readings back, which is correct, because
+    it may hold entries from the night.
+  - After 24 hours of silence it stops counting, and Readings says so in one
+    line: "Not waiting for Sam's phone (last synced Tue 9:14 PM)". The
+    parent's fully-logged mark remains the vouch for that phone, as in v1
+    today.
+  - Signing out removes the device. Settings lists the household's devices
+    with "Remove", for a lost phone.
+  - A removed phone that comes back is a new device on its next sign-in. Its
+    pending writes still upload, because nothing on the phone is deleted.
+- Tests: two devices where one holds a pending write, so `syncedThrough` stops
+  at its watermark; the 24 h cutoff and its Readings line; clock-skew
+  correction; removal.
 
 ### Step 4: NixOS module (#8, part 1). Can start in parallel after step 1.
 
@@ -179,19 +249,12 @@ comment, and the issue text should be edited.
 - The owner deploys, and both parents register from their phones.
 - This is #8's acceptance and needs steps 2–4.
 
-### Step 6: per-device push watermark (#17, not v1)
+#17 is now step 3b, and it is needed for v1.
 
-- `devices.last_push_at`, updated on each successful push. Pull returns the
-  household's watermarks.
-- The client sets `syncedThrough` to the minimum over active devices.
-- Open: the idle or lost device policy. One proposal is to ignore devices
-  silent for more than N days, and to let a member remove a device.
-- Depends on step 2 (devices) and step 3.
-
-## Rule for tonight's schema changes
+## Rule for schema changes
 
 1. The schema change and the server change land in the same PR, or the server
    ships first.
 2. New fields are optional.
-3. Bump `SCHEMA_VERSION` when a new field or event type is added.
-4. Until step 1 lands there is no server to break. The rule starts with step 1.
+3. Every schema change bumps `SCHEMA_VERSION`. The shape-fingerprint test from
+   step 1 enforces it.
