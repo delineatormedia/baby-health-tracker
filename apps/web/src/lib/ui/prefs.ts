@@ -28,6 +28,7 @@ export const KEYS = {
   author: 'bht.author',
   baby: 'bht.baby',
   setupAt: 'bht.setupAt',
+  homeNoteDismissed: 'bht.homeNoteDismissed',
 } as const;
 
 type KV = Pick<Storage, 'getItem' | 'setItem'>;
@@ -93,4 +94,12 @@ export function markSetup(kv: KV, now: number): number {
   if (existing !== null) return existing;
   kv.setItem(KEYS.setupAt, String(now));
   return now;
+}
+
+/** The Add to Home Screen note (#42) stays dismissed on this phone. */
+export const loadHomeNoteDismissed = (kv: KV): boolean =>
+  kv.getItem(KEYS.homeNoteDismissed) === '1';
+
+export function saveHomeNoteDismissed(kv: KV): void {
+  kv.setItem(KEYS.homeNoteDismissed, '1');
 }

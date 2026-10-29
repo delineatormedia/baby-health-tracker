@@ -4,6 +4,7 @@
   import { app } from '../../lib/ui/app.svelte.ts';
   import type { Theme } from '../../lib/ui/prefs.ts';
   import { dayStartText } from '../../lib/ui/reports.ts';
+  import HomeScreenNote from '../../lib/ui/HomeScreenNote.svelte';
 
   const VOLUMES: [VolumeDisplay, string][] = [
     ['ml', 'mL'],
@@ -77,6 +78,20 @@
       : ''}. Readings don't change: they always count from {app.baby?.name ?? 'the baby'}'s birth
     time. This phone only, until sync.
   </p>
+
+  <div class="sec lab">Storage</div>
+  <p class="note day" role="status">
+    {#if app.persistence === 'persisted'}
+      <b>Kept.</b> This browser has promised not to clear the logs on this phone.
+    {:else if app.persistence === 'not-persisted'}
+      <b>Not protected.</b> This browser may clear the logs on this phone{app.standalone
+        ? ' if it runs low on space'
+        : ''}.
+    {:else}
+      <b>Unknown.</b> This browser doesn't say whether it keeps the logs on this phone.
+    {/if}
+  </p>
+  <HomeScreenNote />
 
   <div class="sec lab">Sync</div>
   <p class="note">
