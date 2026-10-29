@@ -105,6 +105,12 @@ class AppState {
    * stopped client's late prepare cannot add to the set the next client reads.
    */
   #knownBabies = new Set<string>();
+  /**
+   * Bumped by every account transition (sign-in, sign-out). Async account work captures it
+   * with #fence() and, after each await, drops itself if it moved: no state written, no sync
+   * started, no error shown. A late answer for the old account cannot bring it back.
+   */
+  #epoch = 0;
 
   async init(): Promise<void> {
     if (this.#store) return;
@@ -172,14 +178,16 @@ class AppState {
    * keeps its own pull cursor, so signing in to another one pulls it from the start.
    */
   async signIn(ceremony: (account: Account) => Promise<SignedIn>): Promise<void> {
+    const current = this.#transition();
     await this.#dropSync();
     let signedIn: SignedIn;
     try {
       signedIn = await ceremony(this.#api);
     } catch (e) {
-      this.#restartSync();
+      if (current()) this.#resumeAccount();
       throw e;
     }
+    if (!current()) return;
     this.#setAccount({
       householdId: signedIn.householdId,
       memberId: signedIn.memberId,
@@ -193,15 +201,17 @@ class AppState {
    * no rows at all for its own baby just takes the household's. Any row counts, an undone
    * entry's tombstone included: otherwise those versions would upload under a household
    * without the baby. Throws, with syncError set, if the household cannot be loaded; Settings
-   * offers a retry.
+   * offers a retry. Superseded by a sign-in or sign-out, it returns without touching anything.
    */
   async place(): Promise<void> {
+    const current = this.#fence();
     const account = this.account;
     if (!account) return;
     let household;
     try {
       household = await this.#api.household();
     } catch (e) {
+      if (!current()) return;
       if (e instanceof AccountError && e.status === 401) {
         this.syncStatus = 'signed_out';
         this.syncError = null;
@@ -211,9 +221,12 @@ class AppState {
       }
       throw e;
     }
-    this.#knownBabies = new Set(household.babies.map((b) => b.id));
+    if (!current()) return;
     const placement = placeBaby(this.baby, household);
-    if (placement.kind === 'choose' && (await this.store.hasRows(this.baby!.id))) {
+    const choose = placement.kind === 'choose' && (await this.store.hasRows(this.baby!.id));
+    if (!current()) return;
+    this.#knownBabies = new Set(household.babies.map((b) => b.id));
+    if (choose) {
       saveJoining(this.#storage, placement.baby);
       this.joining = placement.baby;
     } else if (placement.kind !== 'keep' && placement.kind !== 'none') {
@@ -232,8 +245,10 @@ class AppState {
     const from = this.baby;
     const to = this.joining;
     if (!from || !to) return;
+    const current = this.#fence();
     if (move) await this.store.moveBaby(from.id, to.id);
     else await this.store.archiveBaby(from.id);
+    if (!current()) return;
     this.#adopt(to);
     saveJoining(this.#storage, null);
     this.joining = null;
@@ -245,6 +260,7 @@ class AppState {
    * is stopped and drained first, so no late response lands after the cursor is reset.
    */
   async signOut(): Promise<void> {
+    const current = this.#transition();
     const household = this.account?.householdId;
     await this.#dropSync();
     try {
@@ -252,11 +268,12 @@ class AppState {
     } catch (e) {
       // An expired session is signed out already.
       if (!(e instanceof AccountError && e.status === 401)) {
-        this.#restartSync();
+        if (current()) this.#resumeAccount();
         throw e;
       }
     }
     if (household) await this.store.resetCursor(household);
+    if (!current()) return;
     this.#knownBabies = new Set();
     saveJoining(this.#storage, null);
     this.joining = null;
@@ -270,6 +287,27 @@ class AppState {
     return this.#api.invite();
   }
 
+  /** Captures the account epoch; the returned check is false once a transition has begun. */
+  #fence(): () => boolean {
+    const epoch = this.#epoch;
+    return () => epoch === this.#epoch;
+  }
+
+  /** Begins an account transition: work fenced under the previous account drops itself. */
+  #transition(): () => boolean {
+    this.#epoch++;
+    return this.#fence();
+  }
+
+  /**
+   * After a failed sign-in or sign-out: the account is unchanged, but the transition dropped
+   * its sync and any placement in flight, so put back whichever one it was running.
+   */
+  #resumeAccount() {
+    if (this.account?.placed === false) this.place().catch(() => {});
+    else if (this.account && !this.joining) this.#startSync();
+  }
+
   #setAccount(account: StoredAccount | null) {
     saveAccount(this.#storage, account);
     this.account = account;
@@ -280,11 +318,6 @@ class AppState {
     this.setupAt = markSetup(this.#storage, Date.now());
     this.baby = baby;
     void this.#reload();
-  }
-
-  /** Puts back sync that #dropSync stopped, when a sign-in or sign-out fails part way. */
-  #restartSync() {
-    if (this.account && this.account.placed !== false && !this.joining) this.#startSync();
   }
 
   /** Stops the sync client, if any, and waits for a store write its run had started. */

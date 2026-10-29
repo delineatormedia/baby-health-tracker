@@ -207,6 +207,119 @@ describe('the pull cursor belongs to its household', () => {
   });
 });
 
+describe('an account transition fences placement in flight', () => {
+  /** A phone that signed in to A before reloading, with A's household load held open. */
+  function unplacedA() {
+    const a = baby();
+    kv.set('bht.baby', JSON.stringify(a));
+    kv.set(
+      'bht.account',
+      JSON.stringify({ householdId: a.householdId, memberId: newId(), placed: false }),
+    );
+    return a;
+  }
+
+  test('placement answered after sign-out stays signed out, with sync stopped', async () => {
+    const a = unplacedA();
+    const household = held();
+    serve(async (url) => (url === '/api/household' ? household.response : json(emptyPull())));
+    const app = await loadApp();
+    await vi.waitFor(() => expect(requests).toContain('GET /api/household'));
+
+    await app.signOut();
+    household.release(json({ id: a.householdId, members: [], babies: [a] }));
+    await settle();
+
+    expect(app.account).toBeNull();
+    expect(kv.has('bht.account')).toBe(false);
+    expect(app.syncStatus).toBe('idle');
+    expect(pulls()).toHaveLength(0);
+  });
+
+  test("A's placement answered after signing in to B leaves B's account and baby", async () => {
+    const a = unplacedA();
+    const b = baby();
+    const householdA = held();
+    let loads = 0;
+    serve(async (url) => {
+      if (url === '/api/household') {
+        return ++loads === 1
+          ? householdA.response
+          : json({ id: b.householdId, members: [], babies: [b] });
+      }
+      return json(emptyPull());
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(loads).toBe(1));
+
+    await app.signOut();
+    await app.signIn(signedIn(b.householdId));
+    const signedInB = { ...app.account };
+    householdA.release(json({ id: a.householdId, members: [], babies: [a] }));
+    await settle();
+
+    expect(app.account).toEqual(signedInB);
+    expect(app.account?.householdId).toBe(b.householdId);
+    expect(JSON.parse(kv.get('bht.account')!).householdId).toBe(b.householdId);
+    expect(app.baby?.id).toBe(b.id);
+    expect(JSON.parse(kv.get('bht.baby')!).id).toBe(b.id);
+  });
+
+  test("A's failed placement after signing in to B shows B no error", async () => {
+    unplacedA();
+    const b = baby();
+    const householdA = held();
+    let loads = 0;
+    serve(async (url) => {
+      if (url === '/api/household') {
+        return ++loads === 1
+          ? householdA.response
+          : json({ id: b.householdId, members: [], babies: [b] });
+      }
+      return json(emptyPull());
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(loads).toBe(1));
+
+    await app.signIn(signedIn(b.householdId));
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+    householdA.release(json({ error: 'boom' }, 500));
+    await settle();
+
+    expect(app.account?.householdId).toBe(b.householdId);
+    expect(app.account?.placed).toBeUndefined();
+    expect(app.baby?.id).toBe(b.id);
+    expect(app.syncError).toBeNull();
+    expect(app.syncStatus).not.toBe('offline');
+    expect(app.toast).toBeNull();
+  });
+
+  test('a failed sign-out during placement puts the placement back', async () => {
+    const a = unplacedA();
+    const first = held();
+    let loads = 0;
+    serve(async (url) => {
+      if (url === '/api/household') {
+        return ++loads === 1
+          ? first.response
+          : json({ id: a.householdId, members: [], babies: [a] });
+      }
+      if (url === '/api/auth/logout') return json({ error: 'down' }, 503);
+      return json(emptyPull());
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(loads).toBe(1));
+
+    await expect(app.signOut()).rejects.toThrow();
+    first.release(json({ id: a.householdId, members: [], babies: [a] }));
+    await vi.waitFor(() => expect(app.account?.placed).toBeUndefined());
+
+    expect(loads).toBe(2);
+    expect(app.account?.householdId).toBe(a.householdId);
+    await vi.waitFor(() => expect(pulls().length).toBeGreaterThan(0));
+  });
+});
+
 describe('placement goes by stored rows', () => {
   test('an undone entry still asks before joining, and keeping it off uploads nothing', async () => {
     const old = baby();
