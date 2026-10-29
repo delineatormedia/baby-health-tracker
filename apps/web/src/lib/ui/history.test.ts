@@ -1,6 +1,7 @@
 import { GRAMS_PER_LB, GRAMS_PER_OZ, newId, type BabyEvent } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
 import { entryPath, glyph, grams, historyDays, rowText } from './history.ts';
+import { dayWindow, localZone } from './reports.ts';
 import { backspace, gramsFromDigits, gramsFromLbOz, typeDigit, weights } from './weight.ts';
 
 const baby = newId();
@@ -32,6 +33,7 @@ function ev<T extends BabyEvent['type']>(
 const ml = (v: number) => `${v} mL`;
 
 describe('historyDays', () => {
+  const tz = localZone();
   const now = Date.parse(local(2026, 10, 28, 14));
   const wet = ev('diaper', { kind: 'wet' }, local(2026, 10, 28, 2, 59));
   const late = ev('diaper', { kind: 'wet' }, local(2026, 10, 28, 9));
@@ -45,7 +47,7 @@ describe('historyDays', () => {
   const gone = ev('diaper', { kind: 'wet' }, local(2026, 10, 28, 3), { deleted: true });
 
   test('groups by local day, newest day and newest event first; skips marks and deletes', () => {
-    const days = historyDays([old, wet, mark, late, yest, gone], 0, now);
+    const days = historyDays([old, wet, mark, late, yest, gone], 0, now, tz);
     expect(days.map((d) => d.label.slice(0, 9))).toEqual([
       'Today',
       'Yesterday',
@@ -59,17 +61,56 @@ describe('historyDays', () => {
     expect(days[0]!.end).toBe(Date.parse(local(2026, 10, 29, 0)));
   });
 
+  test('a 3 AM entry moves between days with the setting', () => {
+    const three = ev('diaper', { kind: 'wet' }, local(2026, 10, 28, 3));
+    const day = (dayStart: number) =>
+      historyDays([three, late], dayStart, now, tz).find((d) =>
+        d.events.some((e) => e.id === three.id),
+      )!;
+    expect(day(0).label).toBe('Today');
+    expect(day(0).events).toEqual([late, three]);
+    expect(day(8 * 60).label).toBe('Yesterday');
+    expect(day(8 * 60).events).toEqual([three]);
+    expect(day(3 * 60).label).toBe('Today');
+    expect(day(3 * 60 + 1).label).toBe('Yesterday');
+  });
+
   test('a later day start moves a 3 AM event into the night before', () => {
-    const days = historyDays([wet, late], 8 * 60, now);
+    const days = historyDays([wet, late], 8 * 60, now, tz);
     expect(days.map((d) => d.events)).toEqual([[late], [wet]]);
     expect(days[1]!.label).toBe('Yesterday');
     expect(days[1]!.start).toBe(Date.parse(local(2026, 10, 27, 8)));
     expect(days[1]!.end).toBe(Date.parse(local(2026, 10, 28, 8)));
   });
 
+  test('days are the same windows Reports uses, 25 h across the clock change', () => {
+    const NY = 'America/New_York';
+    // Clocks go back at 2 AM on Sunday Nov 1, 2026 in New York; 3 AM EST is 08:00Z.
+    const three = ev('diaper', { kind: 'wet' }, '2026-11-01T08:00:00.000Z');
+    const at = Date.parse('2026-11-01T17:00:00.000Z');
+    const [mid] = historyDays([three], 0, at, NY);
+    expect(mid!.label).toBe('Today');
+    expect({ start: mid!.start, end: mid!.end }).toEqual(
+      (({ start, end }) => ({ start, end }))(dayWindow({ y: 2026, m: 11, d: 1 }, 0, NY)),
+    );
+    expect(mid!.end - mid!.start).toBe(25 * 3_600_000);
+    const [eight] = historyDays([three], 8 * 60, at, NY);
+    expect(eight!.label).toBe('Yesterday');
+    expect(eight!.start).toBe(dayWindow({ y: 2026, m: 10, d: 31 }, 8 * 60, NY).start);
+    expect(eight!.end).toBe(Date.parse('2026-11-01T13:00:00.000Z'));
+  });
+
+  test('an older day is labelled with its own date in any zone', () => {
+    const old = ev('diaper', { kind: 'wet' }, '2026-10-20T03:30:00.000Z');
+    const at = Date.parse('2026-10-28T12:00:00.000Z');
+    // 03:30Z is still Oct 19 in Los Angeles and already Oct 20 in Tokyo.
+    expect(historyDays([old], 0, at, 'America/Los_Angeles')[0]!.label).toMatch(/19/);
+    expect(historyDays([old], 0, at, 'Asia/Tokyo')[0]!.label).toMatch(/20/);
+  });
+
   test('an event exactly at the day start opens the new day', () => {
     const edge = ev('diaper', { kind: 'wet' }, local(2026, 10, 28, 0));
-    expect(historyDays([edge], 0, now)[0]!.label).toBe('Today');
+    expect(historyDays([edge], 0, now, tz)[0]!.label).toBe('Today');
   });
 });
 

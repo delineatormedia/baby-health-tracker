@@ -4,14 +4,14 @@
   import { app, time } from '../../lib/ui/app.svelte.ts';
   import { entryPath, glyph, historyDays, rowText, type HistoryDay } from '../../lib/ui/history.ts';
   import { marksIn } from '../../lib/ui/readings.ts';
+  import { localZone } from '../../lib/ui/reports.ts';
   import Toast from '../../lib/ui/Toast.svelte';
 
-  // "Day starts at" (#21) arrives with Reports (#31); until then days run midnight to midnight.
-  const DAY_START = 0;
+  const tz = localZone();
 
   // Day headings change at the day start, not every second, so the minute is enough.
   const minute = $derived(Math.floor(app.now / 60_000));
-  const days = $derived(historyDays(app.events, DAY_START, minute * 60_000));
+  const days = $derived(historyDays(app.events, app.prefs.dayStart, minute * 60_000, tz));
 
   const iso = (ms: number) => new Date(ms).toISOString();
   const window = (d: HistoryDay) => ({ start: iso(d.start), end: iso(d.end) });
@@ -57,9 +57,12 @@
 
 <main class="screen fade">
   <header class="top">
-    <a class="back" href={resolve('/')}>‹ History</a>
-    <!-- Sync (#5) has not landed, so this is one phone's log, not both parents'. -->
-    <span class="lab who">This phone only</span>
+    <span class="title-row">
+      <a class="back" href={resolve('/')}>‹ History</a>
+      <!-- Sync (#5) has not landed, so this is one phone's log, not both parents'. -->
+      <span class="lab who">This phone only</span>
+    </span>
+    <a class="act" href={resolve('/reports')}>Reports ›</a>
   </header>
 
   <div class="toast"><Toast /></div>
@@ -101,6 +104,22 @@
 </main>
 
 <style>
+  .title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 10px;
+    min-width: 0;
+  }
+  .act {
+    flex: none;
+    /* A 44 px tap height without moving the header. */
+    padding: 10px 0;
+    margin: -10px 0;
+    font: 500 20px var(--sans);
+    color: var(--ink);
+    text-decoration: none;
+  }
   .who {
     font-size: 15px;
     color: var(--text-dim);

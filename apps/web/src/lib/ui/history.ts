@@ -1,5 +1,6 @@
 import { gramsToLbOz, type BabyEvent } from '@bht/schema';
 import { awaitingAmount, currentSide, minutes, pumpSide, sideTimes, swatch } from './logic.ts';
+import { addDays, dayWindow, reportDay } from './reports.ts';
 
 // History (#35): the log by day, newest first. History is where a parent edits; Reports only look.
 
@@ -15,47 +16,42 @@ export interface HistoryDay {
   events: HistoryEvent[];
 }
 
-/** The day start on or before `t`, in the phone's zone. `dayStart` is minutes after midnight. */
-export function dayStartBefore(t: number, dayStart: number): number {
-  const d = new Date(t);
-  const today = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, dayStart).getTime();
-  if (today <= t) return today;
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1, 0, dayStart).getTime();
-}
-
-/** The next day start after the one at `start`; 23 or 25 hours across a clock change. */
-export function nextDayStart(start: number, dayStart: number): number {
-  const d = new Date(start);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, dayStart).getTime();
-}
-
+// The day's own date, formatted in UTC so the phone's zone cannot shift it.
 const dayFormat = new Intl.DateTimeFormat(undefined, {
   weekday: 'short',
   month: 'short',
   day: 'numeric',
+  timeZone: 'UTC',
 });
 
 /**
- * Logged events grouped into days from "Day starts at" (#21), newest day first. "We missed
- * some" marks are not logs, so they never show as rows; each day carries its own mark instead.
+ * Logged events grouped into days from "Day starts at" (#21), newest day first. Days are cut by
+ * the same `dayWindow` as Reports, so an entry sits under the same day on both screens. "We
+ * missed some" marks are not logs, so they never show as rows; each day carries its own mark.
  */
 export function historyDays(
   events: readonly BabyEvent[],
   dayStart: number,
   now: number,
+  tz: string,
 ): HistoryDay[] {
-  const today = dayStartBefore(now, dayStart);
-  const yesterday = dayStartBefore(today - 1, dayStart);
+  const todayDate = reportDay(now, dayStart, tz);
+  const today = dayWindow(todayDate, dayStart, tz).start;
+  const yesterday = dayWindow(addDays(todayDate, -1), dayStart, tz).start;
   const days = new Map<number, HistoryDay>();
   for (const e of events) {
     if (e.deleted || e.type === 'missed_logs') continue;
-    const start = dayStartBefore(Date.parse(e.occurredAt), dayStart);
-    let day = days.get(start);
+    const w = dayWindow(reportDay(Date.parse(e.occurredAt), dayStart, tz), dayStart, tz);
+    let day = days.get(w.start);
     if (!day) {
       const label =
-        start === today ? 'Today' : start === yesterday ? 'Yesterday' : dayFormat.format(start);
-      day = { start, end: nextDayStart(start, dayStart), label, events: [] };
-      days.set(start, day);
+        w.start === today
+          ? 'Today'
+          : w.start === yesterday
+            ? 'Yesterday'
+            : dayFormat.format(Date.UTC(w.date.y, w.date.m - 1, w.date.d, 12));
+      day = { start: w.start, end: w.end, label, events: [] };
+      days.set(w.start, day);
     }
     day.events.push(e);
   }

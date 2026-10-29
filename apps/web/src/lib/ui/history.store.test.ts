@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest';
 import { openDatabase } from '../data/db.ts';
 import { EventStore } from '../data/store.ts';
 import { historyDays } from './history.ts';
+import { localZone } from './reports.ts';
 import { gramsFromDigits, gramsFromLbOz } from './weight.ts';
 
 const babyId = newId();
@@ -51,9 +52,9 @@ describe('History edits through the store (#35)', () => {
       },
     );
     const removed = await store.remove(event.id);
-    expect(historyDays(await (await reload(name)).events(babyId), 0, now)).toEqual([]);
+    expect(historyDays(await (await reload(name)).events(babyId), 0, now, localZone())).toEqual([]);
     await removed.undo();
-    const days = historyDays(await (await reload(name)).events(babyId), 0, now);
+    const days = historyDays(await (await reload(name)).events(babyId), 0, now, localZone());
     expect(days.flatMap((d) => d.events.map((e) => e.id))).toEqual([event.id]);
   });
 });
