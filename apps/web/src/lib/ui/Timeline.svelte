@@ -133,6 +133,7 @@
       <span
         class:first={i === 0}
         class:last={i === axis.length - 1}
+        class:alt={i % 2 === 1}
         style:left="{(x(t) / W) * 100}%">{hourText(t, tz)}</span
       >
     {/each}
@@ -148,6 +149,7 @@
   }
   .axis {
     position: relative;
+    container-type: inline-size;
     height: 21px;
     margin-top: 2px;
     font: 400 15px/1.35 var(--sans);
@@ -167,5 +169,11 @@
     transform: none;
     left: auto !important;
     right: 0;
+  }
+  /* On a 320 px phone, "7:30 AM" runs into "2 PM": keep every other label, same size. */
+  @container (max-width: 300px) {
+    .axis .alt {
+      display: none;
+    }
   }
 </style>

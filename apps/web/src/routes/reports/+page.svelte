@@ -219,10 +219,10 @@
     <!-- A transparent native picker over the period, like TimeRow: one tap opens the wheel. -->
     <label class="period">
       <b>{step.title}</b>
-      <!-- "7:30 AM to 7:30 AM Sun · 25 h" wraps before the hours, never inside a time. -->
+      <!-- "7:30 AM / to 7:30 AM Sun / · 25 h": wraps between whole phrases, never inside a time. -->
       {#if step.sub}<span class="rl"
-          >{#each step.sub.split(' · ') as part, i (i)}{i ? ' ' : ''}<span class="nw"
-              >{i ? '· ' : ''}{part}</span
+          >{#each step.sub.split(/ (?=to |· )/) as part, i (i)}{i ? ' ' : ''}<span class="nw"
+              >{part}</span
             >{/each}</span
         >{/if}
       <input
@@ -352,11 +352,16 @@
                 >{dayShort(d.date)}{#if d.missing}<i class="g g-miss mk"></i>{/if}{#if tag}<span
                     class="tag">{tag}</span
                   >{/if}</b
-              ><span class="sub"
-                ><b>{d.tally.diapers}</b>
-                {plural(d.tally.diapers, 'diaper')} · <b>{d.tally.breast + d.tally.bottle}</b>
-                {plural(d.tally.breast + d.tally.bottle, 'feed')} ·
-                <b>{app.volume(d.tally.bottleMl)}</b></span
+              ><!-- At 320 px the line wraps between counts, never between a number and its unit. -->
+              <span class="sub"
+                ><span class="nw"><b>{d.tally.diapers}</b> {plural(d.tally.diapers, 'diaper')}</span
+                >
+                ·
+                <span class="nw"
+                  ><b>{d.tally.breast + d.tally.bottle}</b>
+                  {plural(d.tally.breast + d.tally.bottle, 'feed')}</span
+                >
+                · <span class="nw"><b>{app.volume(d.tally.bottleMl)}</b></span></span
               ></span
             >
             <Timeline events={d.events} win={d.win} {dayStart} {tz} now={app.now} mini />
@@ -432,7 +437,7 @@
   .stepper {
     position: relative;
     display: grid;
-    grid-template-columns: 52px 1fr 52px;
+    grid-template-columns: 52px minmax(0, 1fr) 52px;
     gap: 8px;
     align-items: center;
     margin: 14px 16px 0;
