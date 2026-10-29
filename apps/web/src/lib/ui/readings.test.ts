@@ -320,6 +320,7 @@ describe('waiting on other phones (#5 step 3b)', () => {
     watermark: Date.parse('2026-10-28T01:14:00.000Z'),
     lastSeenAt: 0,
     removedAt: null,
+    signedOutAt: null,
   };
   const time = (ms: number) => new Date(ms).toISOString().slice(11, 16);
 

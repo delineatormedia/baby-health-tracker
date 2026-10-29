@@ -65,7 +65,9 @@ export type PushResponse = v.InferOutput<typeof PushResponse>;
 /**
  * One phone of the household, as a pull's first page reports it (step 3b). watermark is the
  * server time W(D) before which every entry the phone recorded is on the server, null until
- * its first barrier. lastSeenAt is its last sign-in or barrier. Server clock, epoch ms.
+ * its first barrier. lastSeenAt is its last sign-in or barrier. removedAt is when a parent
+ * removed it; signedOutAt when it signed out after a barrier covering every write it made, and
+ * null again once it signs back in. Server clock, epoch ms.
  */
 export const HouseholdDevice = v.strictObject({
   deviceId: Id,
@@ -73,6 +75,7 @@ export const HouseholdDevice = v.strictObject({
   watermark: v.nullable(ServerMs),
   lastSeenAt: ServerMs,
   removedAt: v.nullable(ServerMs),
+  signedOutAt: v.nullable(ServerMs),
 });
 export type HouseholdDevice = v.InferOutput<typeof HouseholdDevice>;
 
@@ -109,6 +112,24 @@ export type BarrierRequest = v.InferOutput<typeof BarrierRequest>;
 export const BarrierResponse = v.strictObject({ watermark: ServerMs, serverNow: ServerMs });
 export type BarrierResponse = v.InferOutput<typeof BarrierResponse>;
 
+/**
+ * POST /api/auth/logout body (step 3b). `gen` is the write generation of the barrier the phone
+ * sent after it stopped writing. If the server holds a barrier for this device at that
+ * generation or later, the device is marked signed out and other phones stop waiting for it.
+ * Without it (an offline barrier, a refused entry) the session still ends, but the phone keeps
+ * holding windows back from its watermark.
+ */
+export const LogoutRequest = v.strictObject({ gen: v.optional(Cursor) });
+export type LogoutRequest = v.InferOutput<typeof LogoutRequest>;
+
+/**
+ * POST /api/devices/remove (step 3b): a parent removes a lost phone of the household. Its
+ * sessions end, it can no longer sign in under that id, and windows after removedAt stop
+ * waiting for it. A phone cannot remove itself; it signs out.
+ */
+export const RemoveDeviceRequest = v.strictObject({ deviceId: Id });
+export type RemoveDeviceRequest = v.InferOutput<typeof RemoveDeviceRequest>;
+
 /** Every wire schema SCHEMA_VERSION covers. */
 export const WIRE_SCHEMAS = {
   BabyEvent,
@@ -117,5 +138,8 @@ export const WIRE_SCHEMAS = {
   PullResponse,
   BarrierRequest,
   BarrierResponse,
+  LogoutRequest,
+  RemoveDeviceRequest,
+  HouseholdDevice,
   ...ACCOUNT_SCHEMAS,
 };

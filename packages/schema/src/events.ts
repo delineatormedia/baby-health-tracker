@@ -205,6 +205,21 @@ export const MissedLogsData = v.pipe(
 );
 
 /**
+ * "Count without Sam's phone" (#5 step 3b): a parent vouches that windows may be assessed
+ * without the phone `deviceId`'s unsynced entries. It covers `start` to `end` on the tapping
+ * phone's clock, like every other entry time: `end` is the tap, `start` that phone's converted
+ * watermark for the device, or null (everything before `end`) when it had none. Reversible
+ * like "We missed some"; entries that arrive later inside the span still count.
+ */
+export const CountWithoutData = v.pipe(
+  v.strictObject({ deviceId: Id, start: v.nullable(Timestamp), end: Timestamp }),
+  v.check(
+    (d) => d.start === null || Date.parse(d.start) < Date.parse(d.end),
+    'Count-without period must end after it starts',
+  ),
+);
+
+/**
  * Intake estimate from a weighted feed, using the clinical convention 1 g ≈ 1 mL of milk.
  * Can be negative (the baby voided between weighings); callers decide how to treat that.
  */
@@ -248,6 +263,7 @@ export const BabyEvent = v.variant('type', [
   v.strictObject({ ...envelope, type: v.literal('weight'), data: WeightData }),
   v.strictObject({ ...envelope, type: v.literal('weighted_feed'), data: WeightedFeedData }),
   v.strictObject({ ...envelope, type: v.literal('missed_logs'), data: MissedLogsData }),
+  v.strictObject({ ...envelope, type: v.literal('count_without'), data: CountWithoutData }),
 ]);
 export type BabyEvent = v.InferOutput<typeof BabyEvent>;
 export type EventType = BabyEvent['type'];
@@ -261,6 +277,7 @@ export const EVENT_TYPES = [
   'weight',
   'weighted_feed',
   'missed_logs',
+  'count_without',
 ] as const satisfies readonly EventType[];
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; errors: string[] };

@@ -1,8 +1,10 @@
 import {
   BarrierRequest,
+  LogoutRequest,
   MAX_PULL_LIMIT,
   MAX_PUSH_BATCH,
   MAX_PUSH_BYTES,
+  RemoveDeviceRequest,
   isPushRequestBody,
   SCHEMA_VERSION,
 } from '@bht/schema';
@@ -77,6 +79,7 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   app.use('/api/household', signedIn);
   app.use('/api/invites', signedIn);
   app.use('/api/babies', signedIn);
+  app.use('/api/devices/*', signedIn);
 
   // Passkey ceremonies. Each */options call starts a single-use flow and gives this browser
   // its flow cookie; */verify finishes it only with that cookie and sets an HttpOnly,
@@ -126,8 +129,11 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   ceremony('/api/auth/login/options', (a, b) => a.loginOptions(b));
   ceremony('/api/auth/login/verify', (a, b, browser) => a.loginVerify(b, browser));
 
-  app.post('/api/auth/logout', (c) => {
-    accounts?.signOut(getCookie(c, SESSION_COOKIE));
+  app.post('/api/auth/logout', authBody, async (c) => {
+    // A body that does not parse still signs out; it just does not mark the phone signed out.
+    const body = await json(c);
+    const gen = v.is(LogoutRequest, body) ? body.gen : undefined;
+    accounts?.signOut(getCookie(c, SESSION_COOKIE), gen);
     deleteCookie(c, SESSION_COOKIE, { path: '/', secure });
     return c.json({ ok: true });
   });
@@ -140,6 +146,16 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   app.post('/api/babies', authBody, async (c) => {
     if (!accounts) return c.json({ error: 'Sign-in is not configured' }, 503);
     const result = accounts.addBaby(c.var.session.householdId, await json(c));
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(result.value);
+  });
+
+  // Removing a lost phone (step 3b). Removal is the household's vouch from removedAt on.
+  app.post('/api/devices/remove', authBody, async (c) => {
+    if (!accounts) return c.json({ error: 'Sign-in is not configured' }, 503);
+    const body = await json(c);
+    if (!v.is(RemoveDeviceRequest, body)) return c.json({ error: 'Expected { deviceId }' }, 400);
+    const result = accounts.removeDevice(c.var.session, body.deviceId);
     if (!result.ok) return c.json({ error: result.error }, result.status);
     return c.json(result.value);
   });

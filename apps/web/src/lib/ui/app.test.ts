@@ -582,12 +582,16 @@ describe('a seeded dev browser stays off real servers', () => {
 
 describe('Readings waits on the other phones (#5 step 3b)', () => {
   const W = Date.parse('2026-10-29T12:00:00.000Z');
+  /** The end of the span from the distant past, or null. */
+  const through = (spans: [number, number][]) =>
+    spans[0]?.[0] === -Infinity ? spans[0][1] : null;
   const sam = (watermark: number | null) => ({
     deviceId: newId(),
     memberName: 'Sam',
     watermark,
     lastSeenAt: W,
     removedAt: null,
+    signedOutAt: null,
   });
 
   test('after a reload the kept list names the phone, and windows wait until a pull', async () => {
@@ -601,8 +605,8 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     const app = await loadApp();
     await vi.waitFor(() => expect(app.devices).toEqual([kept]));
     const now = W + 60_000;
-    expect(app.syncedThrough(now, 0)).toBeNull();
-    expect(app.waitingOn(W - 3_600_000, now, 0)).toEqual([kept]);
+    expect(through(app.syncedSpans(now, 0))).toBeNull();
+    expect(app.waitingOn(-Infinity, W - 3_600_000, now, 0)).toEqual([kept]);
 
     // The pull reaches through: the new list and its clock sample are adopted together.
     const fresh = { ...kept, watermark: W };
@@ -610,10 +614,10 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     await vi.waitFor(() => expect(app.devices).toEqual([fresh]));
     const sample = app.clockSample!;
     expect(sample.serverNow).toBe(W);
-    const through = app.syncedThrough(sample.tSend, sample.pSend)!;
-    expect(through).toBe(W - (W - sample.tSend) - 2_000);
-    expect(app.waitingOn(through + 1, sample.tSend, sample.pSend)).toEqual([fresh]);
-    expect(app.waitingOn(through, sample.tSend, sample.pSend)).toEqual([]);
+    const line = through(app.syncedSpans(sample.tSend, sample.pSend))!;
+    expect(line).toBe(W - (W - sample.tSend) - 2_000);
+    expect(app.waitingOn(-Infinity, line + 1, sample.tSend, sample.pSend)).toEqual([fresh]);
+    expect(app.waitingOn(-Infinity, line, sample.tSend, sample.pSend)).toEqual([]);
   });
 
   test('signed out, the phone’s own log is the whole log', async () => {
@@ -627,11 +631,11 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     );
     const app = await loadApp();
     await vi.waitFor(() => expect(app.devices).toHaveLength(1));
-    expect(app.syncedThrough(W, 0)).toBeNull();
+    expect(through(app.syncedSpans(W, 0))).toBeNull();
     await app.signOut();
     expect(app.devices).toBeNull();
     expect(app.clockSample).toBeNull();
-    expect(app.syncedThrough(W, 0)).toBe(W);
-    expect(app.waitingOn(W, W, 0)).toEqual([]);
+    expect(app.syncedSpans(W, 0)).toEqual([[-Infinity, Infinity]]);
+    expect(app.waitingOn(-Infinity, W, W, 0)).toEqual([]);
   });
 });

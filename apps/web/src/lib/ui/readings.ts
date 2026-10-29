@@ -9,6 +9,8 @@ import {
   type NotEnoughDataReason,
   type Observed,
 } from '@bht/insights';
+import type { Vouch } from '../data/watermarks.ts';
+import { isLogMark } from './logic.ts';
 
 /** "In the expected range: wet diapers and weight trend", or null when no check qualifies. */
 export function expectedRangeLine(results: readonly CheckResult[]): string | null {
@@ -92,7 +94,7 @@ export function marksIn(events: readonly BabyEvent[], w: Interval): MissedLogs[]
  */
 export function loggingStart(setupAt: number | null, events: readonly BabyEvent[]): number | null {
   const first = events
-    .filter((e) => !e.deleted && e.type !== 'missed_logs')
+    .filter((e) => !e.deleted && !isLogMark(e))
     .reduce((t, e) => Math.min(t, Date.parse(e.occurredAt)), Infinity);
   const start = Math.min(setupAt ?? Infinity, first);
   return Number.isFinite(start) ? start : null;
@@ -136,6 +138,37 @@ export function reasonText(r: CheckResult, start: number | null): string | null 
 }
 
 // --- Waiting on other phones (#5 step 3b) ---
+
+export type CountWithout = Extract<BabyEvent, { type: 'count_without' }>;
+
+/** Live "Count without" marks. */
+export function countWithoutMarks(events: readonly BabyEvent[]): CountWithout[] {
+  return events.filter((e): e is CountWithout => e.type === 'count_without' && !e.deleted);
+}
+
+/** The marks as spans on this phone's clock, for the sync view. */
+export function vouches(events: readonly BabyEvent[]): Vouch[] {
+  return countWithoutMarks(events).map((m) => ({
+    deviceId: m.data.deviceId,
+    start: m.data.start === null ? null : Date.parse(m.data.start),
+    end: Date.parse(m.data.end),
+  }));
+}
+
+/** Marks for one phone that touch the window: the ones "Wait for Sam’s phone" takes back. */
+export function vouchesIn(events: readonly BabyEvent[], w: Interval): CountWithout[] {
+  const [s, e] = [Date.parse(w.start), Date.parse(w.end)];
+  return countWithoutMarks(events).filter(
+    (m) => (m.data.start === null || Date.parse(m.data.start) < e) && s < Date.parse(m.data.end),
+  );
+}
+
+/** "Count without Sam’s phone" for the waiting phones; "phones" when several wait. */
+export function countWithoutLabel(waiting: readonly HouseholdDevice[]): string {
+  return waiting.length === 1
+    ? `Count without ${waiting[0]!.memberName}’s phone`
+    : 'Count without these phones';
+}
 
 /**
  * "Waiting for Sam’s phone (last synced Tue 9:14 PM)". `waiting` is empty when this phone has

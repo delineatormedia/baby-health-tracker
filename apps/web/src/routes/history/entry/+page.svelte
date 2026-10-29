@@ -5,14 +5,14 @@
   import { untrack } from 'svelte';
   import { app } from '../../../lib/ui/app.svelte.ts';
   import { rowText } from '../../../lib/ui/history.ts';
-  import { cappedStart, kindName, latestStart } from '../../../lib/ui/logic.ts';
+  import { cappedStart, isLogMark, kindName, latestStart } from '../../../lib/ui/logic.ts';
   import TimeRow from '../../../lib/ui/TimeRow.svelte';
   import { when } from '../../../lib/ui/time.ts';
 
   // Opened from a History row. Every change is a new version, so Undo and the history hold.
   const id = page.url.searchParams.get('id') ?? '';
-  const event = $derived(app.events.find((e) => e.id === id && e.type !== 'missed_logs'));
-  const text = $derived(event && event.type !== 'missed_logs' ? rowText(event, app.volume) : null);
+  const event = $derived(app.events.find((e) => e.id === id && !isLogMark(e)));
+  const text = $derived(event && !isLogMark(event) ? rowText(event, app.volume) : null);
   const stool = $derived(event?.type === 'diaper' && event.data.kind !== 'wet');
 
   let at = $state<string | null>(untrack(() => event?.occurredAt ?? null));

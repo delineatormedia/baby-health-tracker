@@ -247,7 +247,7 @@ export class SyncClient {
    *
    * The clock sample is read just before the first page is sent: the server reads serverNow
    * after that, so serverNow − tSend bounds the clock offset from above however slow either
-   * leg is (step 3b). The whole pull keeps the first page's sample and device list, and both
+   * leg is (step 3b). tRecv, read when the page arrives, bounds it from below. The whole pull keeps the first page's sample and device list, and both
    * are adopted with the page that reaches through.
    */
   async #pull(epoch: number) {
@@ -265,7 +265,9 @@ export class SyncClient {
       first ??= {
         devices: page.devices,
         sample:
-          sent && page.serverNow !== undefined ? { ...sent, serverNow: page.serverNow } : undefined,
+          sent && page.serverNow !== undefined
+            ? { ...sent, serverNow: page.serverNow, tRecv: clock.wall() }
+            : undefined,
       };
       await this.#write(this.store.applyPull(page, household, first.devices));
       if (page.more) continue;

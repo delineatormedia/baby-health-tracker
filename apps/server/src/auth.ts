@@ -312,11 +312,54 @@ export class Accounts {
     return { householdId: row.household_id, memberId: row.member_id, deviceId: row.device_id };
   }
 
-  signOut(token: string | undefined): void {
+  /**
+   * Ends the session. With `gen`, the phone says it has stopped writing and sent a barrier at
+   * that write generation: if the server holds one at `gen` or later for the session's device,
+   * the device is marked signed out and the household stops waiting for it (step 3b).
+   */
+  signOut(token: string | undefined, gen?: number): void {
     if (!token) return;
-    this.db
-      .prepare('UPDATE sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL')
-      .run(this.now().toISOString(), hashSecret(token));
+    const at = this.now().toISOString();
+    this.#transaction(() => {
+      const row = this.db
+        .prepare(
+          `UPDATE sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL
+           RETURNING device_id`,
+        )
+        .get(at, hashSecret(token)) as { device_id: string } | undefined;
+      if (!row || gen === undefined) return { ok: true, value: null };
+      this.db
+        .prepare(
+          `UPDATE devices SET signed_out_at = ?
+           WHERE id = ? AND removed_at IS NULL AND watermark IS NOT NULL AND gen >= ?`,
+        )
+        .run(at, row.device_id, gen);
+      return { ok: true, value: null };
+    });
+  }
+
+  /**
+   * Removes another phone of the caller's household (step 3b): its sessions end, it cannot sign
+   * in under that id again, and windows after removedAt stop waiting for it. Removing a phone
+   * already removed returns its first removal time.
+   */
+  removeDevice(session: Session, deviceId: string): Result<{ removedAt: number }> {
+    if (deviceId === session.deviceId) return fail(409, 'Sign out to remove this phone');
+    const at = this.now().toISOString();
+    return this.#transaction(() => {
+      const row = this.db
+        .prepare(
+          `UPDATE devices SET removed_at = coalesce(removed_at, ?)
+           WHERE id = ? AND member_id IN (SELECT id FROM members WHERE household_id = ?)
+           RETURNING removed_at`,
+        )
+        .get(at, deviceId, session.householdId) as { removed_at: string } | undefined;
+      if (!row) return fail(404, 'No such phone in this household');
+      this.db
+        .prepare('UPDATE sessions SET revoked_at = ? WHERE device_id = ? AND revoked_at IS NULL')
+        .run(at, deviceId);
+      return { ok: true as const, value: { removedAt: Date.parse(row.removed_at) } };
+    });
   }
 
   /** A single-use invite into the caller's household, valid for INVITE_HOURS. */
@@ -418,7 +461,7 @@ export class Accounts {
       .prepare(
         `INSERT INTO devices (id, member_id, created_at, last_seen_at) VALUES (?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET member_id = excluded.member_id,
-           last_seen_at = excluded.last_seen_at`,
+           last_seen_at = excluded.last_seen_at, signed_out_at = NULL`,
       )
       .run(deviceId, memberId, at, at);
     const token = randomBytes(32).toString('base64url');

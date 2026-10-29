@@ -90,6 +90,9 @@ export const MIGRATIONS: string[] = [
   // the phone's write generation that barrier covered. Both only ever move forward.
   `ALTER TABLE devices ADD COLUMN watermark INTEGER;
    ALTER TABLE devices ADD COLUMN gen INTEGER;`,
+  // 4: signed-out phones (#5 step 3b). Set when a phone signs out after a barrier that covers
+  // every write it made, so other phones stop waiting for it; cleared when it signs back in.
+  `ALTER TABLE devices ADD COLUMN signed_out_at TEXT;`,
 ];
 
 /** Opens the SQLite database, applies pragmas and runs pending migrations. ':memory:' for tests. */

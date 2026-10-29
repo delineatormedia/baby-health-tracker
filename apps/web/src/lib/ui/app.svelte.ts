@@ -12,7 +12,14 @@ import { openDatabase } from '../data/db.ts';
 import { httpTransport } from '../data/protocol.ts';
 import { EventStore, type Change } from '../data/store.ts';
 import { failureReason, SyncClient, type SyncStatus } from '../data/sync.ts';
-import { syncedThrough, waitingOn, type ClockSample, type SyncView } from '../data/watermarks.ts';
+import {
+  coveredThrough,
+  syncedSpans,
+  waitingOn,
+  type ClockSample,
+  type Spans,
+  type SyncView,
+} from '../data/watermarks.ts';
 import {
   authorId,
   DEFAULT_PREFS,
@@ -35,6 +42,7 @@ import {
 } from './prefs.ts';
 import { babyPreparer, placeBaby } from './session.ts';
 import { editLink, saveFailure, type EditPath } from './logic.ts';
+import { vouches } from './readings.ts';
 import { ensurePersisted, isStandalone, showHomeScreenNote, type Persistence } from './storage.ts';
 import { time, when } from './time.ts';
 
@@ -380,8 +388,9 @@ class AppState {
   }
 
   /**
-   * What Readings knows about the other phones, at this wall and monotonic time. Null when
-   * this phone is not signed in: its log is then the whole log.
+   * What Readings knows about the other phones, at this wall and monotonic time, with the
+   * baby's live "Count without" marks. Null when this phone is not signed in: its log is then
+   * the whole log.
    */
   syncView(wall: number, mono: number): SyncView | null {
     if (!this.account) return null;
@@ -391,19 +400,26 @@ class AppState {
       sample: this.clockSample,
       wall,
       mono,
+      vouches: vouches(this.events),
     };
   }
 
-  /** Readings' syncedThrough (ms): now when not signed in, else what the watermarks cover. */
-  syncedThrough(wall: number, mono: number): number | null {
+  /** Readings' synced spans (ms): everything when not signed in, else what the phones cover. */
+  syncedSpans(wall: number, mono: number): Spans {
     const view = this.syncView(wall, mono);
-    return view ? syncedThrough(view) : wall;
+    return view ? syncedSpans(view) : [[-Infinity, Infinity]];
   }
 
-  /** The phones a window ending at `end` waits on. */
-  waitingOn(end: number, wall: number, mono: number): HouseholdDevice[] {
+  /** The phones the window [start, end] waits on. */
+  waitingOn(start: number, end: number, wall: number, mono: number): HouseholdDevice[] {
     const view = this.syncView(wall, mono);
-    return view ? waitingOn(view, end) : [];
+    return view ? waitingOn(view, end, start) : [];
+  }
+
+  /** W_local(D) now, the start of a "Count without D" mark; null when unknown. */
+  coveredThrough(d: HouseholdDevice, wall: number, mono: number): number | null {
+    const view = this.syncView(wall, mono);
+    return view ? coveredThrough(view, d) : null;
   }
 
   /** Starts syncing the signed-in household, or resumes after a retried placement. */

@@ -1,10 +1,19 @@
 import { gramsToLbOz, type BabyEvent } from '@bht/schema';
-import { awaitingAmount, currentSide, minutes, pumpSide, sideTimes, swatch } from './logic.ts';
+import {
+  awaitingAmount,
+  currentSide,
+  isLogMark,
+  minutes,
+  pumpSide,
+  sideTimes,
+  swatch,
+  type LogEvent,
+} from './logic.ts';
 import { addDays, dayWindow, reportDay } from './reports.ts';
 
 // History (#35): the log by day, newest first. History is where a parent edits; Reports only look.
 
-export type HistoryEvent = Exclude<BabyEvent, { type: 'missed_logs' }>;
+export type HistoryEvent = LogEvent;
 
 export interface HistoryDay {
   /** Day start and the next day start, ms. */
@@ -40,7 +49,7 @@ export function historyDays(
   const yesterday = dayWindow(addDays(todayDate, -1), dayStart, tz).start;
   const days = new Map<number, HistoryDay>();
   for (const e of events) {
-    if (e.deleted || e.type === 'missed_logs') continue;
+    if (e.deleted || isLogMark(e)) continue;
     const w = dayWindow(reportDay(Date.parse(e.occurredAt), dayStart, tz), dayStart, tz);
     let day = days.get(w.start);
     if (!day) {
