@@ -1,9 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_PORT as PORT } from './e2e/port';
 
 // Browser checks (#43) against the production build, in Chromium and WebKit. Every test fixes
 // the clock and the timezone and seeds IndexedDB itself; nothing here imports app source.
-const PORT = 4317;
-
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
@@ -22,9 +21,12 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
+  // Every run builds and serves this worktree. Never reuse a server already on the port: it
+  // may be another worktree's build, and the run would pass or fail against the wrong code.
   webServer: {
-    command: `vite preview --port ${PORT} --strictPort --host 127.0.0.1`,
+    command: `npm run build && npm run preview -- --port ${PORT} --strictPort --host 127.0.0.1`,
     url: `http://127.0.0.1:${PORT}`,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
+    timeout: 180_000,
   },
 });
