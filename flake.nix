@@ -129,6 +129,28 @@
             inherit self;
             pkgs = nixpkgs.legacyPackages.${system};
           };
+          rp-id = import ./nix/rp-id-check.nix {
+            inherit lib self system;
+            pkgs = nixpkgs.legacyPackages.${system};
+          };
+          # A whole NixOS system with the documented host config (docs/DEPLOY.md).
+          example-host =
+            (lib.nixosSystem {
+              inherit system;
+              modules = [
+                self.nixosModules.default
+                ./nix/example-host.nix
+                {
+                  # Only what any bootable system needs; a real host has its own.
+                  boot.loader.grub.devices = [ "nodev" ];
+                  fileSystems."/" = {
+                    device = "/dev/disk/by-label/nixos";
+                    fsType = "ext4";
+                  };
+                  system.stateVersion = lib.trivial.release;
+                }
+              ];
+            }).config.system.build.toplevel;
         }
       );
 

@@ -7,7 +7,7 @@ import {
 } from '@bht/schema';
 import type { PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/server';
 import { describe, expect, test } from 'vitest';
-import { DEVICE_ELSEWHERE, FLOW_COOKIE, hashSecret } from './auth.ts';
+import { DEVICE_ELSEWHERE, FLOW_COOKIE, hashSecret, REGISTRATION_CLOSED } from './auth.ts';
 import { createApp } from './app.ts';
 import { openDatabase } from './db.ts';
 import { newHousehold, Phone, register } from './testing/phone.ts';
@@ -16,11 +16,11 @@ const ORIGIN = 'https://bht.example.ts.net';
 const RP_ID = 'bht.example.ts.net';
 const T0 = Date.parse('2026-10-29T03:00:00.000Z');
 
-function server() {
+function server(registration: 'open' | 'first' = 'open') {
   const db = openDatabase(':memory:');
   const clock = { t: T0 };
   const app = createApp(db, {
-    auth: { rpId: RP_ID, origin: ORIGIN },
+    auth: { rpId: RP_ID, origin: ORIGIN, registration },
     now: () => new Date(clock.t),
   });
   return { db, app, clock };
@@ -148,6 +148,55 @@ describe('registration', () => {
     );
     expect((await phone.request('/api/auth/register/verify', { flowId: 1 })).status).toBe(400);
     expect((await phone.request('/api/auth/join/options', { code: 'nope' })).status).toBe(400);
+  });
+});
+
+describe('registration: first household only (BHT_REGISTRATION=first)', () => {
+  const households = (db: ReturnType<typeof server>['db']) =>
+    db.prepare('SELECT COUNT(*) AS n FROM households').get() as { n: number };
+
+  test('the first registers; a second is refused at options, and joins by invite', async () => {
+    const { app, db } = server('first');
+    const { phone: mom, home } = await register(app, ORIGIN);
+    const other = new Phone(app, ORIGIN);
+    const res = await other.request('/api/auth/register/options', {
+      ...newHousehold(),
+      deviceId: other.deviceId,
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: REGISTRATION_CLOSED });
+    expect(households(db)).toEqual({ n: 1 });
+    // An invite still brings a second parent in.
+    const { code } = await mom.json<Invite>('/api/invites', {});
+    const join = await other.ceremony('join', {
+      code,
+      displayName: 'Sam',
+      deviceId: other.deviceId,
+    });
+    expect((await join.verify()).status).toBe(200);
+    const view = await other.json<HouseholdView>('/api/household');
+    expect(view.id).toBe(home.householdId);
+  });
+
+  test('two phones racing to be first: only one household is created', async () => {
+    const { app, db } = server('first');
+    const a = new Phone(app, ORIGIN);
+    const b = new Phone(app, ORIGIN);
+    // Both get options while the server is still empty.
+    const one = await a.ceremony('register', { ...newHousehold(), deviceId: a.deviceId });
+    const two = await b.ceremony('register', { ...newHousehold(), deviceId: b.deviceId });
+    expect((await one.verify()).status).toBe(200);
+    const late = await two.verify();
+    expect(late.status).toBe(403);
+    expect(await late.json()).toEqual({ error: REGISTRATION_CLOSED });
+    expect(households(db)).toEqual({ n: 1 });
+  });
+
+  test('open, the default, still lets a second household register', async () => {
+    const { app, db } = server();
+    await register(app, ORIGIN);
+    await register(app, ORIGIN);
+    expect(households(db)).toEqual({ n: 2 });
   });
 });
 
