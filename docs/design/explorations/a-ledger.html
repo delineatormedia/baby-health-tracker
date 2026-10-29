@@ -1,0 +1,129 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>A · Ledger</title>
+<script src="shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#DCD8CF;font-family:-apple-system,system-ui,sans-serif;padding:48px 56px 56px}
+.board-h{font:600 28px/1.1 -apple-system,system-ui;color:#1C1B19;letter-spacing:-.01em}
+.board-s{font:400 15px/1.4 -apple-system,system-ui,sans-serif;color:#5B574F;margin:6px 0 28px;max-width:1500px}
+.row{display:flex;gap:28px;margin-bottom:18px}
+.cap{font:500 12px/1 ui-monospace,Menlo,monospace;color:#5B574F;text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px 4px}
+.phone{width:390px;height:844px;border-radius:46px;overflow:hidden;position:relative;box-shadow:0 0 0 10px #111,0 20px 50px rgba(0,0,0,.25);margin:10px}
+/* themes */
+.light{--bg:#F6F4EF;--ink:#1C1B19;--dim:#77736A;--rule:#DAD5CB;--key:#FFFFFF;--acc:#2F5D50;--accInk:#F6F4EF;--flag:#A8442A;--flagBg:#F3E4DC}
+.night{--bg:#120F0C;--ink:#C8A06C;--dim:#76604A;--rule:#2A221B;--key:#1A1511;--acc:#9C7440;--accInk:#120F0C;--flag:#C0623F;--flagBg:#24150F}
+.phone{background:var(--bg);color:var(--ink)}
+.sb{height:50px;display:flex;justify-content:space-between;align-items:flex-end;padding:0 30px 6px;font:600 15px -apple-system,system-ui,sans-serif;color:var(--ink)}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
+.hd{padding:18px 24px 14px;border-bottom:1px solid var(--ink);display:flex;justify-content:space-between;align-items:baseline}
+.hd b{font:600 22px -apple-system,system-ui,sans-serif;letter-spacing:-.01em}
+.hd span{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.sec{font:500 11px ui-monospace,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);padding:16px 24px 8px}
+.ev{display:grid;grid-template-columns:76px 1fr 18px;gap:10px;padding:11px 24px;border-bottom:1px solid var(--rule);align-items:baseline}
+.ev .t{font-size:13px;color:var(--dim)}
+.ev .k{font-size:15px;font-weight:500}
+.ev .d{font-size:13px;color:var(--dim);margin-top:2px}
+.ev .w{font-size:11px;color:var(--dim);text-align:right}
+.sw{display:inline-block;width:9px;height:9px;margin-right:6px;vertical-align:0}
+.timer{position:absolute;left:0;right:0;bottom:268px;border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);padding:12px 24px;display:flex;justify-content:space-between;align-items:center;background:var(--bg)}
+.timer .l{font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+.timer .v{font-size:30px;font-weight:500}
+.timer .s{font:600 13px -apple-system,system-ui,sans-serif;padding:9px 14px;border:1px solid var(--ink)}
+.keys{position:absolute;left:0;right:0;bottom:0;padding:14px 16px 34px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:var(--bg)}
+.key{height:96px;background:var(--key);border:1px solid var(--rule);display:flex;flex-direction:column;justify-content:space-between;padding:12px 12px 10px;font:600 17px -apple-system,system-ui,sans-serif}
+.key small{font:400 11px ui-monospace,Menlo,monospace;color:var(--dim)}
+.toast{position:absolute;left:16px;right:16px;bottom:300px;background:var(--ink);color:var(--bg);padding:13px 16px;display:flex;justify-content:space-between;font-size:14px}
+.toast b{text-decoration:underline;text-underline-offset:3px}
+.field{padding:0 24px}
+.seg{display:flex;border:1px solid var(--ink)}
+.seg div{flex:1;text-align:center;padding:12px 0;font-size:15px;font-weight:500}
+.seg div+div{border-left:1px solid var(--ink)}
+.seg .on{background:var(--ink);color:var(--bg)}
+.chips{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:0 24px}
+.chip{border:1px solid var(--rule);padding:6px 0 7px;text-align:center;font-size:10.5px;color:var(--dim);background:var(--key)}
+.chip i{display:block;height:34px;margin:0 6px 6px;border:1px solid rgba(0,0,0,.12)}
+.chip.on{border:2px solid var(--ink);color:var(--ink)}
+.flagrow .chip{border-color:var(--flag);color:var(--flag)}
+.flaglbl{color:var(--flag)!important}
+.pill{display:flex;gap:6px;padding:0 24px}
+.pill div{flex:1;border:1px solid var(--rule);text-align:center;padding:11px 0;font-size:14px;background:var(--key)}
+.pill .on{border:2px solid var(--ink);font-weight:600}
+.cta{position:absolute;left:16px;right:16px;bottom:34px;height:64px;background:var(--acc);color:var(--accInk);display:flex;justify-content:space-between;align-items:center;padding:0 20px;font:600 18px -apple-system,system-ui,sans-serif}
+.cta small{font:400 13px ui-monospace,Menlo,monospace;opacity:.8}
+.big{display:flex;align-items:baseline;justify-content:center;gap:10px;padding:26px 0 4px}
+.big .n{font-size:96px;font-weight:300;letter-spacing:-.04em}
+.big .u{font-size:22px;color:var(--dim)}
+.alt{text-align:center;font-size:14px;color:var(--dim)}
+.step{display:flex;gap:8px;padding:18px 24px 0}
+.step div{flex:1;height:64px;border:1px solid var(--ink);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:300}
+.ins{padding:14px 24px;border-bottom:1px solid var(--rule)}
+.ins .r{display:flex;justify-content:space-between;align-items:baseline}
+.ins .k{font-size:15px;font-weight:500}
+.ins .v{font-size:15px}
+.ins .n{font-size:13px;color:var(--dim);margin-top:4px}
+.bar{height:4px;background:var(--rule);margin-top:9px;position:relative}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--ink)}
+.bar u{position:absolute;top:-4px;bottom:-4px;width:1px;background:var(--dim)}
+.flagcard{margin:14px 16px;border:1px solid var(--flag);background:var(--flagBg);padding:16px}
+.flagcard .k{color:var(--flag);font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-family:ui-monospace,Menlo,monospace}
+.flagcard h3{font:600 19px/1.25 -apple-system,system-ui,sans-serif;margin:8px 0 6px}
+.flagcard p{font-size:14px;line-height:1.45}
+.why{margin-top:12px;border-top:1px solid var(--flag);padding-top:10px;font-size:12.5px;line-height:1.45;color:var(--dim)}
+.why b{color:var(--ink);font-weight:600}
+.tab{position:absolute;left:0;right:0;bottom:0;height:82px;border-top:1px solid var(--ink);display:flex;padding-top:12px;background:var(--bg)}
+.tab div{flex:1;text-align:center;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.tab .on{color:var(--ink);font-weight:600}
+</style></head><body>
+<div class="board-h">A · Ledger</div>
+<div class="board-s">A logbook, not an app. Paper and ink, hairline rules, tabular numerals, one deep-green accent and no icons. Every entry reads like a line in a well-kept register. Night swaps paper for warm black and the ink for low amber.</div>
+<div id="root"></div>
+<script>
+const D=BHT;
+const sb=`<div class="sb"><span class="mono">2:59</span><span>●●● ▮</span></div>`;
+function home(){return `${sb}
+<div class="hd"><b>${D.baby.name}</b><span>Day 12 · Tue 29 Oct</span></div>
+<div class="sec">Today</div>
+${D.events.map(e=>`<div class="ev"><div class="t mono">${e.t} ${e.ap}</div><div><div class="k">${e.swatch?`<span class="sw" style="background:${e.swatch}"></span>`:''}${e.kind}</div>${e.detail?`<div class="d">${e.detail}</div>`:''}</div><div class="w mono">${e.who}</div></div>`).join('')}
+<div class="toast"><span>Wet diaper logged · 2:59 AM</span><b>Undo</b></div>
+<div class="timer"><div><div class="l">Breastfeed · ${D.feed.side}</div><div class="v mono">${D.feed.elapsed}</div></div><div style="display:flex;gap:8px"><div class="s">Switch</div><div class="s" style="background:var(--ink);color:var(--bg)">Stop</div></div></div>
+<div class="keys">${[["Wet","1 tap"],["Dirty","details"],["Mixed","details"],["Bottle","60 mL last"],["Breast","timing"],["Pump","45 / 38"]].map(([k,s],i)=>`<div class="key" ${i==4?'style="border:2px solid var(--ink)"':''}><span>${k}</span><small>${s}</small></div>`).join('')}</div>`}
+function diaper(){return `${sb}
+<div class="hd"><b>Diaper</b><span class="mono">Now · 2:59 AM ›</span></div>
+<div class="sec">Type</div>
+<div class="field"><div class="seg"><div>Wet</div><div>Dirty</div><div class="on">Mixed</div></div></div>
+<div class="sec">Stool color</div>
+<div class="chips">${D.swatches.normal.map((s,i)=>`<div class="chip ${i==1?'on':''}"><i style="background:${s.c}"></i>${s.name}</div>`).join('')}</div>
+<div class="sec flaglbl">Tell your pediatrician</div>
+<div class="chips flagrow" style="grid-template-columns:repeat(4,1fr)">${D.swatches.flag.map(s=>`<div class="chip"><i style="background:${s.c}"></i>${s.name}</div>`).join('')}</div>
+<div class="sec">Consistency</div>
+<div class="pill"><div>Seedy</div><div class="on">Soft</div><div>Watery</div><div>Hard</div></div>
+<div class="sec">Size</div>
+<div class="pill"><div>S</div><div class="on">M</div><div>L</div></div>
+<div class="sec">Also</div>
+<div class="pill"><div>Blood</div><div>Mucus</div><div>Other</div></div>
+<div class="cta"><span>Log mixed diaper</span><small>mustard · soft · M</small></div>`}
+function bottle(){return `${sb}
+<div class="hd"><b>Bottle</b><span class="mono">Now · 2:59 AM ›</span></div>
+<div class="sec">Contents</div>
+<div class="field"><div class="seg"><div class="on">Breast milk</div><div>Formula</div></div></div>
+<div class="big"><span class="n mono">60</span><span class="u">mL</span></div>
+<div class="alt mono">= 2.0 oz</div>
+<div class="field" style="margin:20px auto 0;width:180px"><div class="seg"><div class="on">mL</div><div>oz</div></div></div>
+<div class="step"><div>−5</div><div>+5</div></div>
+<div class="sec">Recent amounts</div>
+<div class="pill"><div>30</div><div class="on">60</div><div>75</div><div>90</div></div>
+<div class="cta"><span>Log bottle</span><small>60 mL · 2.0 oz</small></div>`}
+function insights(){return `${sb}
+<div class="hd"><b>Last 24 hours</b><span>Day 12</span></div>
+<div class="flagcard"><div class="k">Talk to your pediatrician today</div>
+<h3>Clay-colored stool logged at 4:10 PM</h3>
+<p>Pale, clay or white stool can be an early sign of a liver problem that is treatable when found early. Call your pediatrician today and describe or show the diaper.</p>
+<div class="why"><b>Why am I seeing this?</b> You chose Clay on the 4:10 PM diaper. Source: [citation from #1 clinical reference], e.g. infant stool color card guidance. Placeholder wording.</div></div>
+<div class="ins"><div class="r"><span class="k">Wet diapers</span><span class="v mono">7</span></div><div class="n">On track. Expect 6 or more a day after day 5.</div><div class="bar"><i style="width:78%"></i><u style="left:66%"></u></div></div>
+<div class="ins"><div class="r"><span class="k">Dirty diapers</span><span class="v mono">4</span></div><div class="n">On track for day 12.</div><div class="bar"><i style="width:60%"></i><u style="left:45%"></u></div></div>
+<div class="ins"><div class="r"><span class="k">Weight</span><span class="v mono">3.62 kg</span></div><div class="n">Back above birth weight on day 10.</div></div>
+<div class="ins"><div class="r"><span class="k">Bottle intake</span><span class="v mono">410 mL · 13.9 oz</span></div><div class="n">Plus 9 breastfeeds. Why? ›</div></div>
+<div class="tab"><div>Log</div><div class="on">Insights</div><div>Baby</div></div>`}
+const screens=[["Home · feed running",home],["Diaper",diaper],["Bottle",bottle],["Insights · flag + normal",insights]];
+document.getElementById('root').innerHTML=['light','night'].map(m=>`<div class="row">${screens.map(([c,f])=>`<div><div class="cap">${m} · ${c}</div><div class="phone ${m}">${f()}</div></div>`).join('')}</div>`).join('');
+</script></body></html>

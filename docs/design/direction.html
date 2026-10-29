@@ -1,0 +1,278 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Baby Health Tracker · Instrument direction</title>
+<!-- Static mockup. Fake data only. Open with ?board=core or ?board=rest. -->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:48px 56px 56px;color:#1F2A33}
+.board-h{font:600 28px/1.1 -apple-system,system-ui,sans-serif}
+.board-s{font:400 15px/1.45 -apple-system,system-ui,sans-serif;color:#4F5B64;margin:6px 0 18px;max-width:1700px}
+.palette{display:flex;gap:28px;margin:0 0 26px;font:500 11px ui-monospace,Menlo,monospace;color:#4F5B64;letter-spacing:.06em;text-transform:uppercase}
+.palette div{display:flex;align-items:center;gap:6px}
+.palette i{width:22px;height:22px;border-radius:6px;display:inline-block;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+.row{display:flex;gap:26px;margin-bottom:18px}
+.cap{font:500 12px/1 ui-monospace,Menlo,monospace;color:#4F5B64;text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px 4px;white-space:nowrap}
+.phone{width:390px;height:844px;border-radius:46px;overflow:hidden;position:relative;box-shadow:0 0 0 10px #111,0 20px 50px rgba(0,0,0,.25);margin:10px;background:var(--bg);color:var(--ink)}
+
+/* Tokens. Light is unchanged from C. Night is "graphite": warm near-black, dim stone ink, muted sage accent. No red. */
+.light{--bg:#ECEFF1;--panel:#FFFFFF;--ink:#1F2A33;--dim:#77848E;--line:#D9DEE2;--acc:#2E6A8E;--accInk:#FFFFFF;--band:#D6E4EC;--flag:#A8552F;--flagSoft:#F7EBE3;--well:#FFFFFF}
+.night{--bg:#0D0C0B;--panel:#161513;--ink:#ADA59A;--dim:#68625A;--line:#252320;--acc:#6F8F84;--accInk:#0D0C0B;--band:#1E2925;--flag:#C29A62;--flagSoft:#1B1712;--well:#1C1A17}
+
+.sb{height:50px;display:flex;justify-content:space-between;align-items:flex-end;padding:0 30px 6px;font:600 15px -apple-system,system-ui,sans-serif}
+.lab{font:500 11px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.top{display:flex;justify-content:space-between;align-items:baseline;padding:16px 24px 0}
+.top b{font:600 17px -apple-system,system-ui,sans-serif}
+.num{font-variant-numeric:tabular-nums}
+
+/* home */
+.dial{position:relative;width:300px;height:300px;margin:26px auto 0}
+.dial svg{position:absolute;inset:0}
+.center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.center .v{font:300 60px/1 -apple-system,system-ui,sans-serif;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin:8px 0}
+.legend{display:flex;justify-content:center;gap:18px;margin-top:16px}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.quiet{text-align:center;margin-top:18px;font-size:14px;color:var(--dim)}
+.quiet b{color:var(--ink);font-weight:500}
+.chips{position:absolute;left:12px;right:12px;bottom:166px;display:flex;gap:6px}
+.chips div{flex:1;height:40px;border-radius:12px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--dim)}
+.rail{position:absolute;left:0;right:0;bottom:0;padding:10px 12px 30px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:var(--bg)}
+.rail div{height:112px;border-radius:16px;background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:flex-end;padding:12px 10px;font:600 16px -apple-system,system-ui,sans-serif}
+.rail small{font:400 10px ui-monospace,Menlo,monospace;color:var(--dim);margin-top:4px;letter-spacing:.04em}
+.rail .run{background:var(--acc);color:var(--accInk);border-color:var(--acc)}
+.rail .run small{color:var(--accInk);opacity:.7}
+.toast{position:absolute;left:16px;right:16px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;font-size:14px;background:var(--panel)}
+.toast b{font-weight:600}
+.toast .acts{display:flex;gap:18px}
+
+/* shared controls */
+.seg{display:flex;margin:18px 16px 0;border-radius:14px;background:var(--panel);border:1px solid var(--line);overflow:hidden}
+.seg div{flex:1;height:54px;display:flex;align-items:center;justify-content:center;font:600 16px -apple-system,system-ui,sans-serif}
+.seg div+div{border-left:1px solid var(--line)}
+.seg .on{background:var(--ink);color:var(--bg)}
+.go{position:absolute;left:16px;right:16px;bottom:30px;height:66px;border-radius:18px;background:var(--acc);color:var(--accInk);display:flex;align-items:center;justify-content:center;font:600 18px -apple-system,system-ui,sans-serif}
+.go2{position:absolute;left:16px;right:16px;bottom:106px;height:54px;border-radius:16px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 16px -apple-system,system-ui,sans-serif}
+.sec{margin:26px 24px 10px}
+.opts{display:grid;gap:8px;margin:0 16px}
+.opts div{height:52px;border-radius:12px;border:1px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:15px}
+.opts .on{border:2px solid var(--ink);font-weight:600}
+.steps{display:flex;gap:6px;margin:14px 24px 0}
+.steps i{flex:1;height:3px;border-radius:2px;background:var(--line)}
+.steps i.on{background:var(--ink)}
+
+/* diaper */
+.well{margin:14px 16px 0;border-radius:18px;padding:14px;background:var(--well);border:1px solid var(--line)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tile{height:84px;border-radius:12px;position:relative;padding:8px 10px;font:500 12px -apple-system,system-ui,sans-serif;display:flex;align-items:flex-end;color:rgba(0,0,0,.66)}
+.tile.dk{color:rgba(255,255,255,.82)}
+.tile.sm{height:58px}
+.tile.fl::after{content:"!";position:absolute;top:6px;right:9px;font:700 12px ui-monospace,Menlo,monospace}
+.flagnote{margin:16px 2px 8px;color:var(--flag)}
+.toggle{display:flex;justify-content:space-between;align-items:center;margin:16px 16px 0;padding:0 16px;height:56px;border-radius:14px;background:var(--panel);border:1px solid var(--line);font-size:16px}
+.sw{width:50px;height:30px;border-radius:15px;background:var(--line);position:relative}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--bg)}
+.sw.on{background:var(--acc)}.sw.on::after{left:23px;background:var(--accInk)}
+.hint{position:absolute;left:0;right:0;bottom:40px;text-align:center}
+.done{display:flex;align-items:center;gap:12px;margin:18px 16px 0;padding:14px 16px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
+.done .chip{width:34px;height:34px;border-radius:8px}
+.done div{flex:1;font-size:15px}
+.done small{display:block;color:var(--dim);font-size:13px;margin-top:2px}
+
+/* bottle + pump */
+.bottle{position:relative;margin:22px 16px 0;display:grid;grid-template-columns:1fr 130px 1fr;gap:12px}
+.scale{position:relative}
+.scale div{position:absolute;font:500 13px ui-monospace,Menlo,monospace;color:var(--dim);transform:translateY(-50%)}
+.scale.l div{right:0}.scale.r div{left:0}
+.scale .hi{color:var(--ink);font-weight:700;font-size:16px}
+.vessel{position:relative;border:2px solid var(--ink);border-radius:26px 26px 30px 30px;overflow:hidden;background:var(--panel)}
+.fill{position:absolute;left:0;right:0;bottom:0;background:var(--band)}
+.fill::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--acc)}
+.grip{position:absolute;left:50%;width:62px;height:22px;margin-left:-31px;border-radius:11px;background:var(--acc);transform:translateY(-50%)}
+.readout{text-align:center;margin-top:16px}
+.readout .v{font:300 44px -apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.readout .v span{color:var(--dim);font-size:22px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin:22px 40px 0}
+.pair .vessel{height:300px}
+.pair .cap2{text-align:center;margin-top:10px}
+.pair .cap2 b{display:block;font:300 30px -apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums;margin-top:2px}
+
+/* feed */
+.big{text-align:center;margin-top:70px}
+.big .v{font:200 96px/1 -apple-system,system-ui,sans-serif;letter-spacing:-.03em;font-variant-numeric:tabular-nums;margin:12px 0}
+.sides{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:56px 16px 0}
+.sides div{height:120px;border-radius:18px;border:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font:600 20px -apple-system,system-ui,sans-serif}
+.sides .on{border:2px solid var(--acc)}
+.sides small{font:400 13px ui-monospace,Menlo,monospace;color:var(--dim)}
+
+/* readings */
+.verdict{margin:18px 16px 0;border-radius:18px;padding:18px;background:var(--panel);border:1px solid var(--line)}
+.verdict h3{font:600 20px/1.25 -apple-system,system-ui,sans-serif;margin:8px 0 4px}
+.verdict p{font-size:14px;color:var(--dim)}
+.verdict.flag{background:var(--flagSoft);border:1.5px solid var(--flag)}
+.verdict.flag .lab{color:var(--flag)}
+.verdict .more{display:flex;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:15px;font-weight:600}
+.verdict.flag .more{border-top-color:color-mix(in srgb,var(--flag) 35%,transparent)}
+.gauge{margin:10px 16px 0;padding:16px 18px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+.gauge .r{display:flex;justify-content:space-between;align-items:baseline}
+.gauge .k{font:600 15px -apple-system,system-ui,sans-serif}
+.gauge .v{font:500 15px ui-monospace,Menlo,monospace}
+.track{position:relative;height:26px;margin-top:12px}
+.track .base{position:absolute;left:0;right:0;top:12px;height:2px;background:var(--line)}
+.track .band{position:absolute;top:6px;height:14px;background:var(--band);border-radius:3px}
+.track .pt{position:absolute;top:3px;width:4px;height:20px;background:var(--ink);border-radius:2px;margin-left:-2px}
+
+/* why */
+.prose{margin:22px 24px 0;font-size:16px;line-height:1.5}
+.prose h2{font:600 24px/1.2 -apple-system,system-ui,sans-serif;margin:8px 0 12px}
+.prose p{margin-bottom:12px}
+.src{margin:16px 16px 0;padding:14px 16px;border-radius:14px;border:1px dashed var(--line);font-size:13px;line-height:1.45;color:var(--dim)}
+
+/* history + settings + forms */
+.day{margin:20px 24px 6px}
+.ev{display:grid;grid-template-columns:58px 1fr 26px;align-items:center;gap:10px;padding:13px 24px;border-bottom:1px solid var(--line)}
+.ev .t{font:500 14px ui-monospace,Menlo,monospace;color:var(--dim)}
+.ev .k{font-size:16px}
+.ev .k small{display:block;color:var(--dim);font-size:13px;margin-top:2px}
+.ev .who{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 11px ui-monospace,Menlo,monospace;color:var(--dim)}
+.ev .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:0}
+.list{margin:0 16px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+.list div{display:flex;justify-content:space-between;align-items:center;padding:0 16px;height:56px;font-size:16px}
+.list div+div{border-top:1px solid var(--line)}
+.list span{color:var(--dim);font-size:14px}
+.field{margin:0 16px 0;padding:10px 16px 12px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
+.field b{display:block;font:400 19px -apple-system,system-ui,sans-serif;margin-top:4px}
+.field+.field{margin-top:8px}
+.keys{position:absolute;left:12px;right:12px;bottom:110px;display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.keys div{height:58px;border-radius:12px;background:var(--panel);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:400 24px -apple-system,system-ui,sans-serif}
+.keys .ghost{background:none;border:none;color:var(--dim);font-size:18px}
+.mark{display:flex;justify-content:center;margin-top:150px}
+</style></head><body>
+<div id="root"></div>
+<script>
+const SW={normal:[["Yellow","#E6C24A"],["Mustard","#C9A227"],["Green","#6F7F2E"],["Brown","#7A5230",1],["Black","#2A2420",1]],
+          flag:[["Pale yellow","#EFE6B8"],["Clay","#BDB3A1"],["White","#F4F1EA"],["Red","#9E2A22",1]]};
+const sb=`<div class="sb"><span class="num">2:59</span><span>●●● ▮</span></div>`;
+const hdr=(t,r)=>`<div class="top"><b>${t}</b><span class="lab">${r}</span></div>`;
+
+function pt(h,r,c=150){const a=(h/24)*2*Math.PI-Math.PI/2;return[c+r*Math.cos(a),c+r*Math.sin(a)]}
+function dialSvg(){
+  const feeds=[2.85,23.83,20.5,17.3,14.6,11.9,8.7,5.6,0.2], wets=[2.08,22.6,19.1,15.8,12.4,9.2,6.1], dirty=[23.33,18.1,13.2,7.4];
+  const tick=(h,r1,r2,c,w)=>{const[a,b]=pt(h,r1),[x,y]=pt(h,r2);return`<line x1="${a}" y1="${b}" x2="${x}" y2="${y}" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>`};
+  let s=`<circle cx="150" cy="150" r="140" fill="none" stroke="var(--line)" stroke-width="1.5"/>`;
+  [0,6,12,18].forEach(h=>{s+=tick(h,140,131,'var(--dim)',1.5);const[x,y]=pt(h,121);s+=`<text x="${x}" y="${y+4}" text-anchor="middle" font-family="ui-monospace,Menlo" font-size="10" fill="var(--dim)">${h}</text>`});
+  feeds.forEach(h=>s+=tick(h,140,128,'var(--acc)',4));
+  const[a1,b1]=pt(2.85,134),[a2,b2]=pt(2.98,134);
+  s+=`<path d="M${a1} ${b1} A134 134 0 0 1 ${a2} ${b2}" stroke="var(--acc)" stroke-width="12" fill="none" stroke-linecap="round"/>`;
+  wets.forEach(h=>{const[x,y]=pt(h,104);s+=`<circle cx="${x}" cy="${y}" r="3" fill="var(--ink)"/>`});
+  dirty.forEach(h=>{const[x,y]=pt(h,104);s+=`<rect x="${x-3.5}" y="${y-3.5}" width="7" height="7" fill="none" stroke="var(--ink)" stroke-width="1.6"/>`});
+  return `<svg viewBox="0 0 300 300">${s}</svg>`;
+}
+const S={
+home:()=>`${sb}${hdr('Juniper','Day 12 · last 24 h')}
+<div class="dial">${dialSvg()}<div class="center"><span class="lab">Feeding · right</span><span class="v">08:42</span><span class="lab">since 2:51 AM</span></div></div>
+<div class="legend lab"><span><i style="background:var(--acc)"></i>Feed 9</span><span><i style="background:var(--ink)"></i>Wet 7</span><span><i style="border:1.6px solid var(--ink);border-radius:0;width:6px;height:6px"></i>Dirty 4</span></div>
+<div class="quiet">Last diaper <b class="num">54 min</b> ago</div>
+<div class="toast" style="bottom:220px"><span>Wet logged · 2:59 AM</span><b>Undo</b></div>
+<div class="chips"><div>Pump</div><div>Weight</div><div>History</div><div>Readings</div></div>
+<div class="rail"><div class="run">Stop<small>R · 08:42</small></div><div>Wet<small>1 TAP</small></div><div>Dirty<small>COLOR</small></div><div>Bottle<small>60 ML</small></div></div>`,
+
+feed:()=>`${sb}${hdr('Breastfeed','Started 2:51 AM ›')}
+<div class="big"><span class="lab">Right side</span><div class="v">08:42</div><span class="lab">Total 08:42 · last feed left</span></div>
+<div class="sides"><div>Left<small>—</small></div><div class="on">Right<small>08:42</small></div></div>
+<div class="go2">Type a duration instead</div>
+<div class="go">Stop · log 8 min</div>`,
+
+diaperColor:()=>`${sb}${hdr('Dirty diaper','Now · 2:59 AM ›')}
+<div class="steps"><i class="on"></i><i></i></div>
+<div class="toggle"><span>Also wet <span style="color:var(--dim)">· mixed</span></span><span class="sw"></span></div>
+<div class="well"><div class="lab">Color · true in every mode</div>
+<div class="grid" style="margin-top:10px">${SW.normal.map(([n,c,d])=>`<div class="tile ${d?'dk':''}" style="background:${c}">${n}</div>`).join('')}</div>
+<div class="lab flagnote">! Consider talking to your pediatrician</div>
+<div class="grid" style="grid-template-columns:repeat(4,1fr)">${SW.flag.map(([n,c,d])=>`<div class="tile sm fl ${d?'dk':''}" style="background:${c}">${n}</div>`).join('')}</div></div>
+<div class="hint lab">Tap a color to log · details are optional</div>`,
+
+diaperDetails:()=>`${sb}${hdr('Details','Optional')}
+<div class="steps"><i class="on"></i><i class="on"></i></div>
+<div class="done"><span class="chip" style="background:#C9A227"></span><div>Logged · dirty, mustard<small>2:59 AM</small></div><b style="font-size:15px">Undo</b></div>
+<div class="sec lab">Texture</div><div class="opts" style="grid-template-columns:repeat(4,1fr)"><div>Seedy</div><div class="on">Soft</div><div>Watery</div><div>Hard</div></div>
+<div class="sec lab">Size</div><div class="opts" style="grid-template-columns:repeat(3,1fr)"><div>Small</div><div class="on">Medium</div><div>Large</div></div>
+<div class="sec lab">Also noticed</div><div class="opts" style="grid-template-columns:repeat(3,1fr)"><div>Blood</div><div>Mucus</div><div>Other</div></div>
+<div class="go">Done</div>`,
+
+bottle:()=>{const H=400,at=v=>H-(v/240)*H;
+ const ml=[0,60,120,180,240].map(v=>`<div style="top:${at(v)}px" class="${v==60?'hi':''}">${v}</div>`).join('');
+ const oz=[0,2,4,6,8].map(v=>`<div style="top:${at(v*29.57)}px" class="${v==2?'hi':''}">${v}</div>`).join('');
+ return `${sb}${hdr('Bottle','Now · 2:59 AM ›')}
+<div class="seg"><div class="on">Breast milk</div><div>Formula</div></div>
+<div style="display:flex;justify-content:space-between;margin:18px 30px -10px"><span class="lab">mL</span><span class="lab">oz</span></div>
+<div class="bottle" style="height:${H}px"><div class="scale l">${ml}</div><div class="vessel"><div class="fill" style="height:${(60/240)*H}px"></div><div class="grip" style="top:${at(60)}px"></div></div><div class="scale r">${oz}</div></div>
+<div class="readout"><div class="v">60 <span>mL</span> · 2.0 <span>oz</span></div></div>
+<div class="go">Log 60 mL</div>`},
+
+readingsFlag:()=>`${sb}${hdr('Readings','Day 12 · 24 h')}
+<div class="verdict flag"><div class="lab">! Call your pediatrician promptly</div><h3>Clay-colored stool</h3><p>Logged 4:10 PM by K</p><div class="more"><span>Why?</span><span>›</span></div></div>
+${gauges()}`,
+readingsOk:()=>`${sb}${hdr('Readings','Day 12 · 24 h')}
+<div class="verdict"><div class="lab">3 checks · fully logged · synced</div><h3>Diapers and weight are in the expected range</h3><p>Total intake is not assessed. See below.</p></div>
+${gauges()}`,
+
+why:()=>`${sb}${hdr('‹ Readings','Why this flag')}
+<div class="prose"><div class="lab" style="color:var(--flag)">! Call your pediatrician promptly</div><h2>Clay-colored stool</h2>
+<p>In young babies, pale, clay or white stool can be a sign of a liver problem. The AAP says to bring it to a doctor's attention as soon as possible, even once.</p>
+<p style="color:var(--dim)">The app can't tell what caused it. Your pediatrician can.</p></div>
+<div class="done" style="margin-top:8px"><span class="chip" style="background:#BDB3A1"></span><div>Dirty diaper · clay<small>Today 4:10 PM · K</small></div><span class="lab">›</span></div>
+<div class="src"><b style="color:var(--ink)">Sources</b><br>AAP, “The Many Colors of Poop” (healthychildren.org)<br>NHS, “Jaundice in newborns” (nhs.uk)<br>From docs/CLINICAL_REFERENCE.md · red-flag colours</div>
+<div class="go2">Edit the diaper</div>
+<div class="go">Talked to the pediatrician</div>`,
+
+pump:()=>`${sb}${hdr('Pump','Now · 2:59 AM ›')}
+<div class="pair">${[["Left",45],["Right",38]].map(([s,v])=>`<div><div class="vessel"><div class="fill" style="height:${v/150*100}%"></div><div class="grip" style="top:${100-v/150*100}%"></div></div><div class="cap2"><span class="lab">${s}</span><b>${v} <span style="font-size:15px;color:var(--dim)">mL</span></b></div></div>`).join('')}</div>
+<div class="toggle" style="margin-top:22px"><span>Right after a feed</span><span class="sw on"></span></div>
+<div class="go">Log 83 mL · 2.8 oz</div>`,
+
+weight:()=>`${sb}${hdr('Weight','Now · 2:59 AM ›')}
+<div class="seg"><div class="on">Home scale</div><div>Clinic</div></div>
+<div class="readout" style="margin-top:44px"><div class="v" style="font-size:64px">3 64<span style="color:var(--ink);font-size:64px;opacity:.35">0</span> <span>g</span></div><div class="lab" style="margin-top:6px">8 lb 0.4 oz · birth 3 530 g</div></div>
+<div class="keys">${[1,2,3,4,5,6,7,8,9].map(n=>`<div>${n}</div>`).join('')}<div class="ghost">lb/oz</div><div>0</div><div class="ghost">⌫</div></div>
+<div class="go">Log 3 640 g</div>`,
+
+history:()=>`${sb}${hdr('History','Both parents')}
+<div class="day lab">Today</div>
+${[["2:59","Wet diaper","","S"],["2:51","Breastfeed","Right · running","K"],["2:05","Wet diaper","","S"],["11:50","Bottle","Breast milk · 60 mL","S"],["11:20","Dirty diaper","Mustard · soft · M","K","#C9A227"],["9:30","Pump","45 L · 38 R · after feed","K"],["8:40","Breastfeed","Left · 14 min","K"]].map(([t,k,d,w,c])=>`<div class="ev"><span class="t">${t}</span><span class="k">${c?`<i class="dot" style="background:${c}"></i>`:''}${k}${d?`<small>${d}</small>`:''}</span><span class="who">${w}</span></div>`).join('')}
+<div class="day lab">Yesterday</div>
+<div class="ev"><span class="t">7:15</span><span class="k">Weight<small>Clinic · 3 610 g</small></span><span class="who">S</span></div>`,
+
+addBaby:()=>`${sb}${hdr('Add a baby','1 of 1')}
+<div style="height:26px"></div>
+<div class="field"><span class="lab">Name</span><b>Juniper</b></div>
+<div class="field"><span class="lab">Born</span><b class="num">Oct 17 · 6:42 AM</b></div>
+<div class="field"><span class="lab">Birth weight</span><b class="num">3 530 g <span style="color:var(--dim);font-size:15px">· 7 lb 12.5 oz</span></b></div>
+<div class="sec lab">Sex</div><div class="opts" style="grid-template-columns:repeat(2,1fr)"><div class="on">Female</div><div>Male</div></div>
+<div class="go">Add Juniper</div>`,
+
+settings:()=>`${sb}${hdr('Household','Settings')}
+<div class="sec lab">Members</div><div class="list"><div>Sam<span>This phone</span></div><div>Kit<span>Joined Oct 17</span></div></div>
+<div class="go2" style="position:static;margin:10px 16px 0">Invite a parent</div>
+<div class="sec lab">Volumes</div><div class="opts" style="grid-template-columns:repeat(3,1fr)"><div>mL</div><div>oz</div><div class="on">Both</div></div>
+<div class="sec lab">Night mode</div><div class="opts" style="grid-template-columns:repeat(3,1fr)"><div class="on">Auto</div><div>On</div><div>Off</div></div>
+<div class="sec lab">Data</div><div class="list"><div>Export everything<span>JSON · CSV</span></div></div>`,
+
+signin:()=>`${sb}
+<div class="mark"><svg width="96" height="96" viewBox="0 0 96 96"><circle cx="48" cy="48" r="42" fill="none" stroke="var(--line)" stroke-width="2"/>${[0,3,6,9,12,15,18,21].map(h=>{const[a,b]=pt(h,42,48),[x,y]=pt(h,32,48);return`<line x1="${a}" y1="${b}" x2="${x}" y2="${y}" stroke="${h==3?'var(--acc)':'var(--dim)'}" stroke-width="${h==3?5:2}" stroke-linecap="round"/>`}).join('')}</svg></div>
+<div style="text-align:center;margin-top:28px"><div style="font:600 22px -apple-system,system-ui,sans-serif">Baby Health Tracker</div><div class="lab" style="margin-top:10px">Working name</div></div>
+<div class="go2">I have an invite</div>
+<div class="go">Sign in with a passkey</div>`,
+};
+function gauges(){return [["Wet diapers","7",[50,100],72,"6+ from day 5"],["Dirty diapers","4",[38,100],55,"3+ in week 2"],["Weight vs birth","+3.1%",[40,80],58,"Back to birth weight by day 7–14"]].map(([k,v,[b1,b2],p,n])=>`<div class="gauge"><div class="r"><span class="k">${k}</span><span class="v">${v}</span></div><div class="track"><div class="base"></div><div class="band" style="left:${b1}%;right:${100-b2}%"></div><div class="pt" style="left:${p}%"></div></div><div class="lab" style="margin-top:6px;letter-spacing:.04em;text-transform:none;font-size:12px">${n}</div></div>`).join('')
++`<div class="gauge"><div class="r"><span class="k">Recorded bottle intake</span><span class="v">≈410 mL</span></div><div style="margin-top:10px;font-size:15px;font-weight:500">Not enough information to assess total intake</div><div class="lab" style="margin-top:4px;letter-spacing:.04em;text-transform:none;font-size:12px">≈410 mL recorded from bottles. 9 breastfeeds not measured.</div></div>`}
+
+const BOARDS={
+ core:{h:"Instrument · core screens",cols:[["Home · 24 h dial","home","home"],["Breastfeed timer","feed","feed"],["Diaper 1 · color","diaperColor","diaperColor"],["Diaper 2 · details","diaperDetails","diaperDetails"],["Bottle","bottle","bottle"],["Readings","readingsFlag","readingsOk"],["Why?","why","why"]]},
+ rest:{h:"Instrument · remaining screens",cols:[["Pump","pump","pump"],["Weight","weight","weight"],["History","history","history"],["Add a baby","addBaby","addBaby"],["Household","settings","settings"],["Sign in","signin","signin"]]},
+};
+const which=new URLSearchParams(location.search).get('board')||'core', B=BOARDS[which];
+const pal=[["Night bg","#0D0C0B"],["Panel","#161513"],["Ink","#ADA59A"],["Dim","#68625A"],["Accent","#6F8F84"],["Flag","#C29A62"]];
+document.getElementById('root').innerHTML=`<div class="board-h">${B.h}</div>
+<div class="board-s">Direction C, revised. Kept: the 24-hour dial and the instrument feel. Night mode is now graphite instead of red: warm near-black, dim stone text, a muted sage accent, and nothing brighter than it needs to be. Every screen does one job. Diapers take two steps: tap a color to log, add details only if you want. Wet still logs in one tap from home. Stool swatches stay true-color in every mode.</div>
+<div class="palette">${pal.map(([n,c])=>`<div><i style="background:${c}"></i>${n} ${c}</div>`).join('')}</div>`+
+['light','night'].map(m=>`<div class="row">${B.cols.map(([c,l,n])=>`<div><div class="cap">${m} · ${c}${l!==n&&m=='night'?' · all clear':l!==n?' · flag':''}</div><div class="phone ${m}">${S[m=='light'?l:n]()}</div></div>`).join('')}</div>`).join('');
+</script></body></html>
