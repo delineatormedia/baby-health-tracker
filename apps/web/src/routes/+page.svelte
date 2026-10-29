@@ -4,6 +4,7 @@
   import { app, time } from '../lib/ui/app.svelte.ts';
   import { shortTime } from '../lib/ui/time.ts';
   import Dial from '../lib/ui/Dial.svelte';
+  import { dialFace } from '../lib/ui/dial.ts';
   import FeedKey from '../lib/ui/FeedKey.svelte';
   import LogKey from '../lib/ui/LogKey.svelte';
   import PumpKey from '../lib/ui/PumpKey.svelte';
@@ -29,6 +30,7 @@
   const baby = $derived(app.baby!);
   const marks = $derived(dayMarks(app.events, app.now));
   const counts = $derived(countMarks(marks));
+  const face = $derived(dialFace(app.events, app.now));
   const running = $derived(runningFeed(app.events));
   const lastFeed = $derived(app.events.find((e) => e.type === 'breastfeed' || e.type === 'bottle'));
   const pumping = $derived(runningPump(app.events));
@@ -96,7 +98,7 @@
   >
     <!-- Every caption row stays inside the inner ring of marks (Dial fits them, #34): one fact
          per row, the clock time on its own row, shorter forms where the ring is narrow. -->
-    <Dial {marks} running={running?.occurredAt ?? null} now={app.now}>
+    <Dial {face}>
       {#if running}
         <span class="lab">{isPaused(running) ? 'Paused' : 'Feeding'}</span>
         <span class="v num" class:held={isPaused(running)} data-fit="shrink"
@@ -128,6 +130,7 @@
     <span><i class="g g-bottle"></i>Bottle <b class="num">{counts.bottle}</b></span>
     <span><i class="g g-wet"></i>Wet <b class="num">{counts.wet}</b></span>
     <span><i class="g g-dirty"></i>Dirty <b class="num">{counts.dirty}</b></span>
+    <span><i class="g g-pump"></i>Pump <b class="num">{counts.pump}</b></span>
   </div>
   <p class="quiet lab">Saved on this phone · not synced</p>
 

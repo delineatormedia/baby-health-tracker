@@ -238,12 +238,13 @@ export function ageDays(birthAt: string, now: number): number {
 export interface Mark {
   /** Hour of the local day, 0–24, for placing the mark on the dial. */
   hour: number;
-  kind: 'feed' | 'bottle' | 'wet' | 'dirty';
+  kind: 'feed' | 'bottle' | 'wet' | 'dirty' | 'pump';
 }
 
 /**
- * Dial marks for events in the 24 hours before `now`. A mixed diaper is both wet and dirty,
- * so it adds one mark of each. These are counts of what was logged, not an assessment.
+ * Legend counts for events that started in the 24 hours before `now`; the dial itself is drawn
+ * from dialFace (dial.ts). A mixed diaper is both wet and dirty, so it adds one mark of each.
+ * These are counts of what was logged, not an assessment.
  */
 export function dayMarks(events: readonly BabyEvent[], now: number): Mark[] {
   const marks: Mark[] = [];
@@ -254,68 +255,13 @@ export function dayMarks(events: readonly BabyEvent[], now: number): Mark[] {
     const hour = d.getHours() + d.getMinutes() / 60;
     if (e.type === 'breastfeed') marks.push({ hour, kind: 'feed' });
     if (e.type === 'bottle') marks.push({ hour, kind: 'bottle' });
+    if (e.type === 'pump') marks.push({ hour, kind: 'pump' });
     if (e.type === 'diaper') {
       if (e.data.kind !== 'dirty') marks.push({ hour, kind: 'wet' });
       if (e.data.kind !== 'wet') marks.push({ hour, kind: 'dirty' });
     }
   }
   return marks;
-}
-
-/**
- * Hours between neighbouring wet/dirty marks on the r=99 ring: 16 units of arc, so even two
- * 11-unit squares turned 45° by the ring (7.8 units corner to centre) never touch.
- */
-export const INNER_STEP = (16 / (2 * Math.PI * 99)) * 24;
-
-/**
- * Where to draw the wet and dirty marks on the inner ring. Marks closer than one step (a mixed
- * diaper, or a wet and a dirty logged minutes apart) are spread side by side along the ring,
- * centred on their mean hour, so every logged mark stays visible. Each returned mark keeps its
- * true `hour`; `at` is the drawing position.
- */
-export function innerMarks(marks: readonly Mark[]): (Mark & { at: number })[] {
-  const inner = marks
-    .filter((m) => m.kind === 'wet' || m.kind === 'dirty')
-    .toSorted((a, b) => a.hour - b.hour || (a.kind === b.kind ? 0 : a.kind === 'wet' ? -1 : 1));
-  if (inner.length === 0) return [];
-  type Group = { items: Mark[]; start: number };
-  const centre = (items: Mark[]) => items.reduce((s, m) => s + m.hour, 0) / items.length;
-  const place = (items: Mark[]): Group => ({
-    items,
-    start: centre(items) - ((items.length - 1) * INNER_STEP) / 2,
-  });
-  const end = (g: Group) => g.start + (g.items.length - 1) * INNER_STEP;
-  let groups = inner.map((m) => place([m]));
-  // Merge neighbours until no two groups crowd each other, including across midnight.
-  for (let merged = true; merged && groups.length > 1;) {
-    merged = false;
-    for (let i = 0; i + 1 < groups.length; i++) {
-      const a = groups[i]!;
-      const b = groups[i + 1]!;
-      if (b.start - end(a) < INNER_STEP - 1e-9) {
-        groups.splice(i, 2, place([...a.items, ...b.items]));
-        merged = true;
-        break;
-      }
-    }
-    if (!merged && groups.length > 1) {
-      const first = groups[0]!;
-      const last = groups[groups.length - 1]!;
-      if (first.start + 24 - end(last) < INNER_STEP - 1e-9) {
-        const wrapped = first.items.map((m) => ({ ...m, hour: m.hour + 24 }));
-        groups = [...groups.slice(1, -1), place([...last.items, ...wrapped])];
-        merged = true;
-      }
-    }
-  }
-  return groups.flatMap((g) =>
-    g.items.map((m, i) => ({
-      kind: m.kind,
-      hour: m.hour % 24,
-      at: (((g.start + i * INNER_STEP) % 24) + 24) % 24,
-    })),
-  );
 }
 
 /**
@@ -335,7 +281,7 @@ export function chordWidth(radius: number, top: number, bottom: number): number 
 }
 
 export function countMarks(marks: readonly Mark[]): Record<Mark['kind'], number> {
-  const n = { feed: 0, bottle: 0, wet: 0, dirty: 0 };
+  const n = { feed: 0, bottle: 0, wet: 0, dirty: 0, pump: 0 };
   for (const m of marks) n[m.kind] += 1;
   return n;
 }

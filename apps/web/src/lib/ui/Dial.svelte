@@ -1,34 +1,12 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { CAPTION_RADIUS, chordWidth, innerMarks, polar, type Mark } from './logic.ts';
+  import { CAPTION_RADIUS, chordWidth, polar } from './logic.ts';
+  import { ARC_WIDTH, CASING, RING, arcParts, arcPath, type Arc, type DialFace } from './dial.ts';
 
-  let {
-    marks,
-    running,
-    now,
-    children,
-  }: { marks: Mark[]; running: string | null; now: number; children: Snippet } = $props();
+  let { face, children }: { face: DialFace; children: Snippet } = $props();
 
-  const hourOf = (ms: number) => {
-    const d = new Date(ms);
-    return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
-  };
-
-  /** The running feed as an arc from its start to now (capped at a full turn). */
-  const arc = $derived.by(() => {
-    if (running === null) return null;
-    const start = Date.parse(running);
-    const h0 = hourOf(Math.max(start, now - 23.9 * 3_600_000));
-    let h1 = hourOf(now);
-    if (h1 < h0) h1 += 24;
-    if (h1 - h0 < 0.12) h1 = h0 + 0.12;
-    const [x0, y0] = polar(h0, 134);
-    const [x1, y1] = polar(h1, 134);
-    return `M${x0} ${y0} A134 134 0 ${h1 - h0 > 12 ? 1 : 0} 1 ${x1} ${y1}`;
-  });
-  // Wet and dirty marks spread side by side where they would overlap (a mixed diaper is both).
-  const inner = $derived(innerMarks(marks));
-  const hand = $derived(polar(hourOf(now), 146));
+  const radius = (a: Arc) => (a.kind === 'feed' ? RING.feed : RING.pump);
+  const colour = (a: Arc) => (a.kind === 'feed' ? 'var(--feed)' : 'var(--pump)');
 
   let dial: HTMLDivElement;
   let center: HTMLDivElement;
@@ -83,7 +61,6 @@
 
 <div class="dial" bind:this={dial}>
   <svg viewBox="0 0 300 300" aria-hidden="true">
-    <circle cx="150" cy="150" r="140" fill="none" stroke="var(--line)" stroke-width="1.5" />
     <circle
       cx="150"
       cy="150"
@@ -94,40 +71,77 @@
       stroke-dasharray="2 5"
     />
     {#each [0, 6, 12, 18] as h (h)}
-      {@const [a, b] = polar(h, 140)}
+      {@const [a, b] = polar(h, RING.outline)}
       {@const [x, y] = polar(h, 131)}
-      {@const [tx, ty] = polar(h, 115)}
       <line x1={a} y1={b} x2={x} y2={y} stroke="var(--dim)" stroke-width="1.5" />
+    {/each}
+    {#each face.numerals as h (h)}
+      {@const [tx, ty] = polar(h, RING.label)}
       <text x={tx} y={ty + 6} text-anchor="middle" class="h">{h}</text>
     {/each}
-    <!-- Each kind has its own colour and shape, as on the keys: feeds and bottles share the
-         outer ring, wet and dirty the inner one, so the dial still reads without colour. -->
-    {#each marks as m, i (i)}
-      {#if m.kind === 'feed'}
-        {@const [a, b] = polar(m.hour, 141)}
-        {@const [x, y] = polar(m.hour, 126)}
-        <line
-          x1={a}
-          y1={b}
-          x2={x}
-          y2={y}
-          stroke="var(--feed)"
-          stroke-width="6"
-          stroke-linecap="round"
+    <!-- Feeds and pumps are arcs from start to end (#52), longest first so a shorter one on top
+         shows both ends. Each has a casing in the page colour; a side switch is a gap. A session
+         cut at the 24-hour edge has a flat end there; every other end is round. -->
+    {#each face.arcs as a, i (i)}
+      {@const r = radius(a)}
+      {@const w = ARC_WIDTH[a.kind]}
+      {@const [sx, sy] = polar(a.from, r)}
+      {@const [ex, ey] = polar(a.to, r)}
+      <g data-arc={a.kind}>
+        <path
+          d={arcPath(a.from, a.to, r)}
+          stroke="var(--bg)"
+          stroke-width={w + 2 * CASING}
+          fill="none"
         />
-      {:else if m.kind === 'bottle'}
-        {@const [x, y] = polar(m.hour, 134)}
-        <circle cx={x} cy={y} r="6" fill="var(--panel)" stroke="var(--bottle)" stroke-width="3" />
-      {/if}
+        {#if !a.cut}<circle cx={sx} cy={sy} r={w / 2 + CASING} fill="var(--bg)" />{/if}
+        <circle cx={ex} cy={ey} r={w / 2 + CASING} fill="var(--bg)" />
+        {#each arcParts(a) as [lo, hi], k (k)}
+          <path d={arcPath(lo, hi, r)} stroke={colour(a)} stroke-width={w} fill="none" />
+        {/each}
+        {#if !a.cut}<circle cx={sx} cy={sy} r={w / 2} fill={colour(a)} />{/if}
+        <circle cx={ex} cy={ey} r={w / 2} fill={colour(a)} />
+      </g>
     {/each}
-    {#if arc}
-      <path d={arc} stroke="var(--feed)" stroke-width="14" fill="none" stroke-linecap="round" />
-    {/if}
-    {#each inner as m, i (i)}
-      {@const [x, y] = polar(m.at, 99)}
-      {#if m.kind === 'wet'}
+    <!-- After the arcs: a feed's casing reaches past the outline. -->
+    <circle
+      cx="150"
+      cy="150"
+      r={RING.outline}
+      fill="none"
+      stroke="var(--line)"
+      stroke-width="1.5"
+    />
+    <!-- Each kind has its own colour and shape, as on the keys. A burst of taps is one mark,
+         with its count on the label ring (#51). -->
+    {#each face.points as p, i (i)}
+      {#if p.kind === 'bottle'}
+        {@const [x, y] = polar(p.at, RING.feed)}
+        <circle
+          cx={x}
+          cy={y}
+          r="6"
+          fill="var(--panel)"
+          stroke="var(--bottle)"
+          stroke-width="3"
+          data-mark="bottle"
+        />
+      {:else if p.kind === 'pump'}
+        {@const [x, y] = polar(p.at, RING.pump)}
+        <rect
+          x={x - 4}
+          y={y - 4}
+          width="8"
+          height="8"
+          fill="var(--pump)"
+          transform="rotate(45 {x} {y})"
+          data-mark="pump"
+        />
+      {:else if p.kind === 'wet'}
+        {@const [x, y] = polar(p.at, RING.inner)}
         <circle cx={x} cy={y} r="5.5" fill="var(--wet)" data-mark="wet" />
       {:else}
+        {@const [x, y] = polar(p.at, RING.inner)}
         <rect
           x={x - 5.5}
           y={y - 5.5}
@@ -139,7 +153,20 @@
         />
       {/if}
     {/each}
-    <circle cx={hand[0]} cy={hand[1]} r="3.5" fill="var(--dim)" />
+    {#each face.labels as l, i (i)}
+      {@const [x, y] = polar(l.at, RING.label)}
+      <text {x} y={y + 6} text-anchor="middle" class="count" data-count>{l.text}</text>
+    {/each}
+    <!-- "Now": a short radial line across the pump ring, where running sessions end. -->
+    <line
+      x1={polar(face.now, RING.outline + 1)[0]}
+      y1={polar(face.now, RING.outline + 1)[1]}
+      x2={polar(face.now, 150)[0]}
+      y2={polar(face.now, 150)[1]}
+      stroke="var(--dim)"
+      stroke-width="2"
+      data-now
+    />
   </svg>
   <div class="center" bind:this={center}>{@render children()}</div>
 </div>
@@ -161,6 +188,10 @@
   .h {
     font: 18.5px var(--mono);
     fill: var(--text-dim);
+  }
+  .count {
+    font: 18.5px var(--mono);
+    fill: var(--ink);
   }
   .center {
     position: absolute;
