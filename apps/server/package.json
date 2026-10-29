@@ -1,0 +1,24 @@
+{
+  "name": "@bht/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "bht-server": "./dist/server.js"
+  },
+  "scripts": {
+    "dev": "node --watch src/main.ts",
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/server.js --banner:js='#!/usr/bin/env node'",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "dependencies": {
+    "@bht/schema": "workspace:*",
+    "@hono/node-server": "^2.1.5",
+    "hono": "^4.13.14"
+  }
+}

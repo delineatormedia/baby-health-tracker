@@ -1,0 +1,6 @@
+{
+  "name": "@bht/site",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Marketing page. Static files in public/, deployed on Vercel."
+}
