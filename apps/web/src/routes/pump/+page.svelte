@@ -18,6 +18,8 @@
     runningPump,
     snapBottle,
     startPumpData,
+    stopPumpData,
+    stoppedPump,
     stopSeconds,
   } from '../../lib/ui/logic.ts';
   import TimeRow from '../../lib/ui/TimeRow.svelte';
@@ -26,38 +28,50 @@
   import { fromLocalInput, toLocalInput } from '../../lib/ui/time.ts';
 
   const running = $derived(runningPump(app.events));
+  // Stop is saved at once (#32): a stopped pump waits here for its amount, across reloads.
+  const stopped = $derived(running ? undefined : stoppedPump(app.events));
   const last = $derived(lastPump(app.events));
   const elapsed = $derived(running ? app.now - Date.parse(running.occurredAt) : 0);
 
   // Before a pump: the sides to start on, following the last pump until the parent picks.
   let picked = $state<Side | null>(null);
-  const side = $derived(running ? pumpSide(running) : (picked ?? (last ? pumpSide(last) : 'both')));
+  const timer = $derived(running ?? stopped);
+  const side = $derived(timer ? pumpSide(timer) : (picked ?? (last ? pumpSide(last) : 'both')));
 
   /**
-   * The volume form: after Stop (`stoppedAt` holds the end, so the duration does not grow while
-   * the parent fills in volumes) or for a past pump. Nothing is saved until Log.
+   * The volume form. 'stop' is a stopped pump, which already holds its duration, so the form
+   * comes back after a reload. 'overrun' is a Stop past the 4-hour bound: there is no duration
+   * to save until the parent types the minutes. 'past' logs a pump without the timer.
    */
-  let form = $state<'stop' | 'past' | null>(null);
-  let stoppedAt = $state(0);
+  let form = $state<'overrun' | 'past' | null>(null);
+  const mode = $derived(
+    stopped
+      ? 'stop'
+      : running
+        ? form === 'overrun'
+          ? 'overrun'
+          : null
+        : form === 'past'
+          ? 'past'
+          : null,
+  );
   let left = $state(snapBottle(lastPumpMl(app.events, 'left'), app.prefs.volume));
   let right = $state(snapBottle(lastPumpMl(app.events, 'right'), app.prefs.volume));
   // A past pump's start; null is now.
   let at = $state<string | null>(null);
   let afterPick = $state<boolean | null>(null);
   const start = $derived(
-    form === 'stop' && running
-      ? Date.parse(running.occurredAt)
+    mode === 'stop' || mode === 'overrun'
+      ? Date.parse(timer!.occurredAt)
       : at === null
         ? app.now
         : Date.parse(at),
   );
   const afterFeed = $derived(afterPick ?? followsFeed(app.events, start));
 
+  const seconds = $derived(mode === 'stop' ? stopped!.data.durationSeconds! : null);
   /** Past the schema's 4-hour bound the timer was left running: the parent types the minutes. */
-  const seconds = $derived(
-    running && form === 'stop' ? stopSeconds(running.occurredAt, stoppedAt) : null,
-  );
-  const overrun = $derived(form === 'stop' && seconds === null);
+  const overrun = $derived(mode === 'overrun');
   let typedMinutes = $state<number | null>(null);
   const validMinutes = $derived(
     typedMinutes !== null &&
@@ -89,13 +103,36 @@
   const startPump = () =>
     once(() => app.log('pump', startPumpData(side), `Pump started · ${side}`));
 
-  // The start's Undo toast would take the pump away under the form, so it goes.
+  /**
+   * Stop saves the duration now, with no volumes, so a reload or the other phone sees it stopped.
+   * Its Undo puts the pump back to running.
+   */
   function stop() {
-    app.dismissToast();
-    stoppedAt = Date.now();
+    const r = running;
+    if (!r) return;
     afterPick = null;
     typedMinutes = null;
-    form = 'stop';
+    const s = stopSeconds(r.occurredAt, Date.now());
+    if (s === null) {
+      // The start's Undo toast would take the pump away under the form, so it goes.
+      app.dismissToast();
+      form = 'overrun';
+      return;
+    }
+    void once(async () => {
+      const change = await app.store.edit(r.id, { data: stopPumpData(pumpSide(r), s) });
+      app.showUndo(`Pump stopped · ${mins(s)}`, change);
+    });
+  }
+
+  /** Back to the timer from a stopped pump: it runs again from its start, like Undo. */
+  function back() {
+    const p = stopped;
+    if (!p) {
+      form = null;
+      return;
+    }
+    void once(() => app.store.edit(p.id, { data: startPumpData(pumpSide(p)) }));
   }
 
   function logPast() {
@@ -116,11 +153,11 @@
 
   const save = () =>
     once(async () => {
-      if (form === 'stop') {
-        if (!running) return;
+      if (mode === 'stop' || mode === 'overrun') {
+        if (!timer) return;
         const s = seconds ?? (validMinutes ? Math.round(typedMinutes! * 60) : null);
         if (s === null) return;
-        const change = await app.store.edit(running.id, {
+        const change = await app.store.edit(timer.id, {
           data: pumpData(side, { left, right }, afterFeed, s),
         });
         app.showUndo(`Pump · ${mins(s)} · ${volumes} logged`, change);
@@ -154,7 +191,7 @@
 <main class="screen fade">
   <header class="top">
     <h1>Pump</h1>
-    {#if running && form === null}
+    {#if running && mode === null}
       <label class="lab when">
         Started {time(running.occurredAt)} ›
         <input
@@ -168,8 +205,8 @@
     {/if}
   </header>
 
-  {#if form}
-    {#if form === 'past'}
+  {#if mode}
+    {#if mode === 'past'}
       <TimeRow bind:at label="Started" />
       <div class="seg">
         {#each SIDES as [s, label] (s)}
@@ -211,9 +248,8 @@
       <button aria-pressed={!afterFeed} onclick={() => (afterPick = false)}>No</button>
     </div>
 
-    <button class="go2" onclick={() => (form = null)}
-      >{form === 'stop' ? 'Back to the timer' : 'Back'}</button
-    >
+    <div class="toast"><Toast /></div>
+    <button class="go2" onclick={back}>{mode === 'past' ? 'Back' : 'Back to the timer'}</button>
     <button class="go" disabled={overrun && !validMinutes} onclick={save}>
       {overrun && !validMinutes ? 'Type the minutes' : `Log ${volumes}`}
     </button>

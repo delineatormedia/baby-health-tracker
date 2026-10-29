@@ -127,7 +127,10 @@ function pumpAgrees(d: {
   // Running (#22): occurredAt is the start, and the volumes wait for Stop.
   if (d.durationSeconds === null)
     return d.side !== undefined && d.leftMl === null && d.rightMl === null;
-  if (d.leftMl === null && d.rightMl === null) return false;
+  // Stopped, amount not entered yet (#32): the timer's side and duration, no volumes. Logging the
+  // amount is a later edit. A pump logged without a timer always has a volume.
+  if (d.leftMl === null && d.rightMl === null)
+    return d.side !== undefined && d.durationSeconds !== undefined;
   // The sides pumped are the sides with a volume.
   if (d.side === undefined) return true;
   return d.side === 'both'
@@ -145,13 +148,17 @@ export const PumpData = v.pipe(
     side: v.optional(Side),
     /**
      * null while the timer is running, with no volumes yet; occurredAt is the start.
+     * Set with no volumes once the timer stopped and the amount is not entered yet.
      * Absent when the pump was logged without a timer.
      */
     durationSeconds: v.optional(
       v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(MAX_FEED_SECONDS))),
     ),
   }),
-  v.check(pumpAgrees, 'Pump needs a volume for each side pumped, and none while its timer runs'),
+  v.check(
+    pumpAgrees,
+    'Pump needs a volume for each side pumped, or none while its timer runs or before its amount is entered',
+  ),
 );
 
 export const WeightData = v.strictObject({

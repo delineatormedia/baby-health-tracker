@@ -264,9 +264,23 @@ export function runningPump(events: readonly BabyEvent[]): Pump | undefined {
   return events.find((e): e is Pump => e.type === 'pump' && e.data.durationSeconds === null);
 }
 
+/**
+ * Stopped, amount not entered (#32): Stop saved the duration at once; the volumes are a later
+ * edit. No volume on either side marks it, since a finished pump always has one.
+ */
+export const awaitingAmount = (p: Pump) =>
+  p.data.durationSeconds != null && p.data.leftMl === null && p.data.rightMl === null;
+
+/** The pump stopped with its amount still to enter, newest first. */
+export function stoppedPump(events: readonly BabyEvent[]): Pump | undefined {
+  return events.find((e): e is Pump => e.type === 'pump' && awaitingAmount(e));
+}
+
 /** The last finished pump, for Home and for the next pump's starting volumes. */
 export function lastPump(events: readonly BabyEvent[]): Pump | undefined {
-  return events.find((e): e is Pump => e.type === 'pump' && e.data.durationSeconds !== null);
+  return events.find(
+    (e): e is Pump => e.type === 'pump' && e.data.durationSeconds !== null && !awaitingAmount(e),
+  );
 }
 
 /** The sides a pump ran on: its timer's side, or the sides with a volume on older pumps. */
@@ -282,6 +296,11 @@ export const pumpsRight = (side: Side) => side !== 'left';
 /** A new timer on these sides. The volumes and "after a feed" are asked at Stop. */
 export function startPumpData(side: Side): Pump['data'] {
   return { leftMl: null, rightMl: null, afterFeed: false, side, durationSeconds: null };
+}
+
+/** Stop: the timer's sides and duration, saved at once. The volumes come with Log. */
+export function stopPumpData(side: Side, durationSeconds: number): Pump['data'] {
+  return { leftMl: null, rightMl: null, afterFeed: false, side, durationSeconds };
 }
 
 /** A finished pump's data: only the sides it ran on get a volume. */
@@ -387,6 +406,8 @@ export function describe(e: BabyEvent, volume: (ml: number) => string): string {
     case 'pump': {
       const side = pumpSide(e);
       if (e.data.durationSeconds === null) return `Pump · ${side} · running`;
+      if (awaitingAmount(e))
+        return `Pump · ${side} · ${minutes(e.data.durationSeconds!)} · add amount`;
       const parts = [
         e.data.leftMl === null ? null : `left ${volume(e.data.leftMl)}`,
         e.data.rightMl === null ? null : `right ${volume(e.data.rightMl)}`,
@@ -417,6 +438,7 @@ export function editLink(e: BabyEvent): { label: string; path: EditPath } | unde
     return { label: 'Change time', path: '/feed' };
   if (e.type === 'pump' && e.data.durationSeconds === null)
     return { label: 'Change time', path: '/pump' };
+  if (e.type === 'pump' && awaitingAmount(e)) return { label: 'Add amount', path: '/pump' };
   return { label: 'Change time', path: `/logged?id=${e.id}` };
 }
 

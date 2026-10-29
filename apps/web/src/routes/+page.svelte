@@ -21,6 +21,7 @@
     pumpSide,
     runningFeed,
     runningPump,
+    stoppedPump,
     suggestSide,
   } from '../lib/ui/logic.ts';
 
@@ -32,6 +33,7 @@
   const diaperAt = $derived(lastDiaperAt(app.events));
   const pumping = $derived(runningPump(app.events));
   const pumped = $derived(lastPump(app.events));
+  const pumpStopped = $derived(pumping ? undefined : stoppedPump(app.events));
   const bottleMl = $derived(lastBottle(app.events)?.data.volumeMl ?? DEFAULT_BOTTLE_ML);
 
   let busy = $state(false);
@@ -110,9 +112,11 @@
     <Toast />
     <nav class="chips">
       <!-- Placement waits on the Home glanceability design (#20). -->
-      <a href={resolve('/pump')} class:run={pumping}>
+      <a href={resolve('/pump')} class:run={pumping || pumpStopped}>
         {#if pumping}
           Pump · <span class="num">{clock(app.now - Date.parse(pumping.occurredAt))}</span>
+        {:else if pumpStopped}
+          Pump · add amount
         {:else if pumped}
           Pump · <span class="num">{hm(app.now - Date.parse(pumped.occurredAt))}</span> ago · {pumpSide(
             pumped,

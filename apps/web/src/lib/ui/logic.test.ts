@@ -17,6 +17,8 @@ import {
   pumpSide,
   runningPump,
   startPumpData,
+  stopPumpData,
+  stoppedPump,
   hm,
   intake24h,
   lastSide,
@@ -460,5 +462,24 @@ describe('pump timer (#22)', () => {
     expect(latestStart(pumpEv({ leftMl: 4, rightMl: null, afterFeed: false }, 5), NOW)).toBe(
       undefined,
     );
+  });
+
+  test('Stop saves "stopped, amount not entered" (#32): valid, not running, not the last pump', () => {
+    const before = pumpEv(pumpData('left', { left: 80, right: 0 }, false, 600), 120);
+    const stopped = pumpEv(stopPumpData('both', 1500), 30);
+    valid(stopped);
+    const events = [stopped, before];
+    expect(runningPump(events)).toBeUndefined();
+    expect(stoppedPump(events)?.id).toBe(stopped.id);
+    // Home and the next pump's defaults follow the last pump with an amount.
+    expect(lastPump(events)?.id).toBe(before.id);
+    expect(lastPumpMl(events, 'left')).toBe(80);
+    expect(describeEvent(stopped, (ml) => `${ml} mL`)).toBe('Pump · both · 25 min · add amount');
+    expect(editLink(stopped)).toEqual({ label: 'Add amount', path: '/pump' });
+    expect(latestStart(stopped, NOW)).toBe(NOW - 1_500_000);
+    // Running and finished pumps are never "stopped"; nor is an old pump with a 0 mL side.
+    expect(stoppedPump([pumpEv(startPumpData('left'), 1)])).toBeUndefined();
+    expect(stoppedPump([before])).toBeUndefined();
+    expect(stoppedPump([pumpEv({ leftMl: 0, rightMl: null, afterFeed: true }, 1)])).toBeUndefined();
   });
 });

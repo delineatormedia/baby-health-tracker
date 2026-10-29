@@ -341,6 +341,24 @@ describe('pump', () => {
     );
   });
 
+  test('timer stopped, amount not entered yet (#32): a side and a duration, no volumes', () => {
+    for (const side of ['left', 'right', 'both'])
+      expectValid(
+        event('pump', {
+          leftMl: null,
+          rightMl: null,
+          afterFeed: false,
+          side,
+          durationSeconds: 1500,
+        }),
+      );
+  });
+
+  test('a pump logged without a timer still needs a volume', () => {
+    expectInvalid(event('pump', { leftMl: null, rightMl: null, afterFeed: false }));
+    expectInvalid(event('pump', { leftMl: null, rightMl: null, afterFeed: false, side: 'left' }));
+  });
+
   test.each([
     [
       'running without a side',
@@ -363,8 +381,16 @@ describe('pump', () => {
       { leftMl: 20, rightMl: 20, afterFeed: false, side: 'left', durationSeconds: 600 },
     ],
     [
-      'finished with no volume',
-      { leftMl: null, rightMl: null, afterFeed: false, side: 'left', durationSeconds: 600 },
+      'stopped with no volume and no side',
+      { leftMl: null, rightMl: null, afterFeed: false, durationSeconds: 600 },
+    ],
+    [
+      'stopped at zero seconds',
+      { leftMl: null, rightMl: null, afterFeed: false, side: 'left', durationSeconds: 0 },
+    ],
+    [
+      'stopped past 4 hours',
+      { leftMl: null, rightMl: null, afterFeed: false, side: 'both', durationSeconds: 14_401 },
     ],
     [
       'zero seconds',
