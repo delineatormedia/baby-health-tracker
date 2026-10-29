@@ -313,7 +313,13 @@ describe('editLink', () => {
     );
     expect(editLink(dirty)).toEqual({ label: 'Details', path: `/diaper/details?id=${dirty.id}` });
     const running = ev('breastfeed', { side: 'left', durationSeconds: null }, 3);
-    expect(editLink(running).path).toBe('/feed');
+    expect(editLink(running)?.path).toBe('/feed');
+    const mark = ev(
+      'missed_logs',
+      { start: new Date(NOW - 60_000).toISOString(), end: new Date(NOW).toISOString() },
+      1,
+    );
+    expect(editLink(mark)).toBeUndefined();
   });
 });
 

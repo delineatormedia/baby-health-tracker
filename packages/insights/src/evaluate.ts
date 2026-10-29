@@ -262,7 +262,9 @@ function feeding(ctx: Ctx, start: number, end: number): Feeding {
   const formula = fed.some(isFormula);
   const gap = coverage(ctx, start, end);
   const breastMilkOnly = !gap && fed.length > 0 && !formula;
-  return { breastMilkOnly, formula, reason: gap ?? 'feeding_not_exclusive' };
+  // With no feed logged, nothing says other feeds happened; the feeding is just unknown.
+  const reason = gap ?? (fed.length === 0 ? 'no_feeds_logged' : 'feeding_not_exclusive');
+  return { breastMilkOnly, formula, reason };
 }
 
 /** Entries whose feeding population the window establishes. */
@@ -345,11 +347,10 @@ function countCheck(
   const [start, end] = dayBounds(ctx, d);
   const gap = coverage(ctx, start, end);
   if (gap) return notEnough(check, start, end, present, gap, observe(n, 'count', present));
-  const active = forFeeding(present, feeding(ctx, start, end));
+  const fed = feeding(ctx, start, end);
+  const active = forFeeding(present, fed);
   const observed = observe(n, 'count', active);
-  if (!active.some(canFlag)) {
-    return notEnough(check, start, end, present, 'feeding_not_exclusive', observed);
-  }
+  if (!active.some(canFlag)) return notEnough(check, start, end, present, fed.reason, observed);
   return decide(
     check,
     start,
@@ -816,19 +817,22 @@ function cite(active: ThresholdEntry[], firing: ThresholdEntry[]): Citation[] {
 
 /**
  * The scale bound from the entry that would flag first: the highest minimum, or the lowest
- * maximum, among entries that can flag.
+ * maximum, among entries that can flag. A bound is strict when any entry on it is lte / gte:
+ * then the bound value itself flags.
  */
 function observe(value: number, unit: ObservedUnit, active: ThresholdEntry[]): Observed {
   const flaggable = active.filter(canFlag);
-  const mins = flaggable
-    .filter((e) => e.op === 'lt' || e.op === 'lte')
-    .map((e) => e.value as number);
-  const maxes = flaggable
-    .filter((e) => e.op === 'gt' || e.op === 'gte')
-    .map((e) => e.value as number);
+  const lows = flaggable.filter((e) => e.op === 'lt' || e.op === 'lte');
+  const highs = flaggable.filter((e) => e.op === 'gt' || e.op === 'gte');
+  const min = lows.length ? Math.max(...lows.map((e) => e.value as number)) : undefined;
+  const max = highs.length ? Math.min(...highs.map((e) => e.value as number)) : undefined;
   return observeExpected(value, unit, {
-    ...(mins.length ? { min: Math.max(...mins) } : {}),
-    ...(maxes.length ? { max: Math.min(...maxes) } : {}),
+    ...(min !== undefined
+      ? { min, minStrict: lows.some((e) => e.value === min && e.op === 'lte') }
+      : {}),
+    ...(max !== undefined
+      ? { max, maxStrict: highs.some((e) => e.value === max && e.op === 'gte') }
+      : {}),
   });
 }
 

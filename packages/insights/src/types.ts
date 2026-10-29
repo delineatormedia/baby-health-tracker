@@ -82,13 +82,13 @@ export type ObservedUnit = 'count' | 'mL' | 'g' | 'g/day' | 'pct' | 'h';
 /**
  * A number to draw on the reading's scale. `expected` is the threshold of the entry that
  * decided the result (the strictest flagging one, or the strictest that could have flagged).
- * It is for drawing only: whether a value exactly on the boundary flags depends on the
- * entry's operator, and the evaluator has already decided that.
+ * `minStrict` / `maxStrict` say the bound itself flags (an lte / gte entry sits on it), so the
+ * expected range is "above min" / "below max" rather than "at least" / "at most" (#26).
  */
 export interface Observed {
   value: number;
   unit: ObservedUnit;
-  expected: { min?: number; max?: number };
+  expected: { min?: number; max?: number; minStrict?: boolean; maxStrict?: boolean };
 }
 
 export type NotEnoughDataReason =
@@ -98,8 +98,10 @@ export type NotEnoughDataReason =
   | 'no_recent_weight'
   | 'no_weight_near_interval_end'
   | 'sex_unknown'
-  /** A breastfed-only rule, and some formula or no feed was logged. */
-  | 'feeding_not_exclusive';
+  /** A breastfed-only rule, and some formula was logged. */
+  | 'feeding_not_exclusive'
+  /** A breastfed-only rule, and no feed was logged in the window, so the feeding is unknown. */
+  | 'no_feeds_logged';
 
 export interface Interval {
   start: Timestamp;

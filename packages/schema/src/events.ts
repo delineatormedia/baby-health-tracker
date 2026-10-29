@@ -143,6 +143,19 @@ export const WeightedFeedData = v.strictObject({
 });
 
 /**
+ * "We missed some" (#24): the parents say not every diaper or feed in this period was logged.
+ * Every other period counts as fully logged, so count checks skip only what is marked.
+ * occurredAt is the start. Deleting the event takes the mark back.
+ */
+export const MissedLogsData = v.pipe(
+  v.strictObject({ start: Timestamp, end: Timestamp }),
+  v.check(
+    (d) => Date.parse(d.start) < Date.parse(d.end),
+    'Missed-logs period must end after it starts',
+  ),
+);
+
+/**
  * Intake estimate from a weighted feed, using the clinical convention 1 g ≈ 1 mL of milk.
  * Can be negative (the baby voided between weighings); callers decide how to treat that.
  */
@@ -184,6 +197,7 @@ export const BabyEvent = v.variant('type', [
   v.strictObject({ ...envelope, type: v.literal('pump'), data: PumpData }),
   v.strictObject({ ...envelope, type: v.literal('weight'), data: WeightData }),
   v.strictObject({ ...envelope, type: v.literal('weighted_feed'), data: WeightedFeedData }),
+  v.strictObject({ ...envelope, type: v.literal('missed_logs'), data: MissedLogsData }),
 ]);
 export type BabyEvent = v.InferOutput<typeof BabyEvent>;
 export type EventType = BabyEvent['type'];
@@ -196,6 +210,7 @@ export const EVENT_TYPES = [
   'pump',
   'weight',
   'weighted_feed',
+  'missed_logs',
 ] as const satisfies readonly EventType[];
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; errors: string[] };

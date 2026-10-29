@@ -315,16 +315,20 @@ export function describe(e: BabyEvent, volume: (ml: number) => string): string {
       return 'Weight';
     case 'weighted_feed':
       return 'Weighted feed';
+    case 'missed_logs':
+      return 'Missed logs';
   }
 }
 
 /**
  * The second action on an event's Logged toast: the screen that changes its time. Dirty and
  * mixed diapers reopen their details; a running feed opens its timer; the rest share /logged.
+ * A "We missed some" mark has no time to change, so none.
  */
 export type EditPath = `/diaper/details?id=${string}` | '/feed' | `/logged?id=${string}`;
 
-export function editLink(e: BabyEvent): { label: string; path: EditPath } {
+export function editLink(e: BabyEvent): { label: string; path: EditPath } | undefined {
+  if (e.type === 'missed_logs') return undefined;
   if (e.type === 'diaper' && e.data.kind !== 'wet')
     return { label: 'Details', path: `/diaper/details?id=${e.id}` };
   if (e.type === 'breastfeed' && e.data.durationSeconds === null)

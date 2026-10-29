@@ -18,8 +18,8 @@ were decided by PM on #7 and #16 (2026-10-29).
   not log, so it is cited and never flags.
 - **Feeding population.** Entries whose population is breastfed apply only when every feed in
   the window is breast milk (at the breast or a breast-milk bottle), and the window is fully
-  logged and synced. Any formula, or no feed at all, gives `not_enough_data` with reason
-  `feeding_not_exclusive` when no other entry can decide. The window is the day for daily
+  logged and synced. Any formula gives `not_enough_data` with reason `feeding_not_exclusive`,
+  and no feed at all gives `no_feeds_logged`, when no other entry can decide. The window is the day for daily
   counts and the 24 h before the evidence time otherwise (the pull for no urine, the weigh-in
   for ABM weight loss, the stool for ABM meconium). Formula-fed entries apply when formula was
   logged. The WHO growth standards apply to every infant whatever the feeding.
@@ -36,11 +36,17 @@ were decided by PM on #7 and #16 (2026-10-29).
   (`NONE_LOGGED_CHECKS`) means no such stool was logged, not that there was none. Show it as
   "None logged". `inExpectedRange()` leaves these checks out of the "in the expected range"
   line.
+- **Strict bounds (#26).** `observed.expected.minStrict` / `maxStrict` are true when an `lte` /
+  `gte` entry sits on the bound, so the bound value itself flags. Word it "above" / "below";
+  otherwise "at least" / "at most". A `gte 8` rule with 9 observed reads "expected below 8".
 
 ## Inputs
 
 - `fullyLogged`: the periods the parents marked as fully logged. Count and absence checks run
   only inside them. The mark is the only thing that vouches for writes still offline on the
-  other phone.
+  other phone. The web app passes from where logging began (the earlier of setup on this
+  phone and the first logged event) to now, minus the days marked "We missed some" (#24,
+  owner decision B: fully logged by default). Windows that start before logging began read
+  "Before you started logging".
 - `syncedThrough`: this device has no pending writes and last pulled at this time, or null. It
   says nothing about the other phone. Absence checks are judged at this time, never later.

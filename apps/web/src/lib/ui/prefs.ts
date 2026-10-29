@@ -18,7 +18,12 @@ export const DEFAULT_PREFS: Prefs = { volume: 'ml', theme: 'auto' };
 const VOLUMES: readonly VolumeDisplay[] = ['ml', 'oz', 'both'];
 const THEMES: readonly Theme[] = ['auto', 'night', 'light'];
 
-export const KEYS = { prefs: 'bht.prefs', author: 'bht.author', baby: 'bht.baby' } as const;
+export const KEYS = {
+  prefs: 'bht.prefs',
+  author: 'bht.author',
+  baby: 'bht.baby',
+  setupAt: 'bht.setupAt',
+} as const;
 
 type KV = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -61,4 +66,21 @@ export function saveBaby(kv: KV, baby: Baby): void {
   const parsed = parseBaby(baby);
   if (!parsed) throw new Error('Invalid baby');
   kv.setItem(KEYS.baby, JSON.stringify(parsed));
+}
+
+/**
+ * When this phone set up its baby, in ms, or null on installs from before it was recorded.
+ * Readings start counting from here or the first logged event, whichever is earlier (#24).
+ */
+export function loadSetupAt(kv: KV): number | null {
+  const v = Number(kv.getItem(KEYS.setupAt));
+  return kv.getItem(KEYS.setupAt) !== null && Number.isFinite(v) && v > 0 ? v : null;
+}
+
+/** Records the setup time once; later calls keep the first. */
+export function markSetup(kv: KV, now: number): number {
+  const existing = loadSetupAt(kv);
+  if (existing !== null) return existing;
+  kv.setItem(KEYS.setupAt, String(now));
+  return now;
 }
