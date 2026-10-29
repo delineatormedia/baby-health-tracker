@@ -172,7 +172,11 @@ in
       services.bht.tailscaleServe needs Tailscale on this machine: set services.tailscale.enable.
     '';
 
-    environment.systemPackages = [ bht-restore ];
+    # sqlite3 for the checks in docs/DEPLOY.md.
+    environment.systemPackages = [
+      bht-restore
+      pkgs.sqlite
+    ];
 
     users.users.bht = {
       isSystemUser = true;
