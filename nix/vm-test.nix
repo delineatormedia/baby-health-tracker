@@ -192,9 +192,17 @@ pkgs.testers.runNixOSTest {
             "done; "
             "systemctl kill --signal=SIGKILL bht-backup.service"
         )
-        server.wait_until_fails("systemctl is-active bht-backup.service")
+        # systemctl kill returns once the signal is sent; the unit is still activating or
+        # deactivating while systemd reaps the cgroup (#59). is-active already fails in
+        # those states, so wait for the state to settle before reading it.
+        server.wait_until_succeeds(
+            "systemctl show -P ActiveState bht-backup.service | grep -Ev '^(activating|deactivating)$'",
+            timeout=60,
+        )
         # The kill must have landed mid-run, or the rest of this subtest proves nothing.
         server.succeed("systemctl is-failed bht-backup.service")
+        result = server.succeed("systemctl show -P Result bht-backup.service").strip()
+        assert result == "signal", result
         stale = server.succeed("ls /var/backup/bht/.bht-*.db.partial").strip()
         out = server.fail(f"bht-restore {stale} 2>&1")
         assert "unfinished backup" in out, out
