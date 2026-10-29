@@ -13,8 +13,10 @@
         {@const edit = t.edit}
         <button
           onclick={() => {
+            // Read the path first: dismissing clears the toast these consts derive from.
+            const path = resolve(edit.path);
             app.dismissToast();
-            void goto(resolve(edit.path));
+            void goto(path);
           }}>{edit.label}</button
         >
       {/if}
