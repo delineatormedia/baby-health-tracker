@@ -75,14 +75,15 @@ function transportTo(
 
 async function phone(transport: SyncTransport & { deviceId: string }) {
   const store = new EventStore(await openDatabase(`test-${newId()}`), transport.deviceId);
-  const seen: { devices: HouseholdDevice[] | null; sample: ClockSample | null } = {
-    devices: null,
-    sample: null,
-  };
+  const seen: {
+    devices: HouseholdDevice[] | null;
+    current: boolean;
+    sample: ClockSample | null;
+  } = { devices: null, current: false, sample: null };
   const sync = new SyncClient(store, transport, {
     baseDelayMs: 3_600_000,
     random: () => 1,
-    onAdopt: (devices, sample) => Object.assign(seen, { devices, sample }),
+    onAdopt: (devices, sample) => Object.assign(seen, { devices, current: true, sample }),
   });
   clients.push(sync);
   const view = (): SyncView => ({

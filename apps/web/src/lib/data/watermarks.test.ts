@@ -28,10 +28,11 @@ function view(
   sample: ClockSample | null,
   elapsed = 0,
   jump = 0,
+  current = devices !== null,
 ): SyncView {
   const tSend = sample?.tSend ?? NOON;
   const pSend = sample?.pSend ?? 0;
-  return { devices, self, sample, wall: tSend + elapsed + jump, mono: pSend + elapsed };
+  return { devices, current, self, sample, wall: tSend + elapsed + jump, mono: pSend + elapsed };
 }
 
 /** Clocks agree: sent at noon, the server read serverNow `delay` later. */
@@ -125,6 +126,13 @@ describe('syncedThrough', () => {
     const me = { ...device('Maya', null), deviceId: self };
     expect(syncedThrough(view([me], null, 0))).toBe(NOON);
     expect(syncedThrough(view([], null, 0))).toBe(NOON);
+  });
+
+  test('a list kept from an earlier session assesses nothing, even with only this phone', () => {
+    // A second phone may have joined since it was stored: windows wait for this session's pull.
+    const me = { ...device('Maya', null), deviceId: self };
+    expect(syncedThrough(view([me], null, 0, 0, false))).toBeNull();
+    expect(syncedThrough(view([me, device('Sam', NOON)], agreed(), MIN, 0, false))).toBeNull();
   });
 
   test('no device list yet: nothing is synced', () => {

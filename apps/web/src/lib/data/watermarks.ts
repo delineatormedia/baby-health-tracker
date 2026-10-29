@@ -41,8 +41,14 @@ export function localWatermark(watermark: number, s: ClockSample): number {
 
 /** What Readings knows about the other phones of the household. */
 export interface SyncView {
-  /** The adopted device list; null until a pull after sign-in has reached through. */
+  /** The household's phones: adopted from a pull, or kept from an earlier session. */
   devices: readonly HouseholdDevice[] | null;
+  /**
+   * Whether a pull in this session has reached through and supplied `devices`. Until then the
+   * list is the one kept from an earlier session, for labels only: a phone may have joined
+   * since, so nothing is assessed.
+   */
+  current: boolean;
   /** This phone's own device id, left out of the list. */
   self: string;
   /** The last pull's sample, or null after a reload or before the first pull. */
@@ -58,13 +64,13 @@ export function otherDevices(view: SyncView): HouseholdDevice[] {
 
 /**
  * How far every other phone's entries are known to be here, in this phone's clock (ms), or
- * null when nothing is: no device list yet, a phone with no watermark yet, or no sample that
- * still holds. The only phone of its household holds the whole log, so it is synced through
+ * null when nothing is: no pull in this session has reached through yet, a phone with no
+ * watermark yet, or no sample that still holds. The only phone of its household holds the whole log, so it is synced through
  * now (a phone that is not signed in does not ask). Removed phones still hold windows back
  * from their watermark until step 3b's second part makes removal a vouch.
  */
 export function syncedThrough(view: SyncView): number | null {
-  if (view.devices === null) return null;
+  if (!view.current || view.devices === null) return null;
   const others = otherDevices(view);
   if (others.length === 0) return view.wall;
   return others.reduce<number | null>((min, d) => {
