@@ -78,14 +78,22 @@
   .tall {
     grid-row: span 2;
   }
-  b :global(.g) {
-    --g: 20px;
-  }
   b {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     font-weight: 600;
+  }
+  /* The icon is 20 px (#53) once the key fits "Bottle" beside it (from 375 px screens). A
+     narrower key keeps the 16 px box with a 4 px gap, the width the old 12 px box and 8 px gap
+     took. */
+  @container (min-width: 83px) {
+    b {
+      gap: 8px;
+    }
+    b :global(.g) {
+      --g: 20px;
+    }
   }
   small,
   .key :global(small) {

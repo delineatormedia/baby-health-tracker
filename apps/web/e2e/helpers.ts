@@ -176,3 +176,20 @@ export function overflow(page: Page) {
       .slice(0, 5),
   }));
 }
+
+/** Home keys whose label or lines reach past the key's outline (#53: the icon grows with the key). */
+export function spill(page: Page) {
+  return page.evaluate(() =>
+    [...document.querySelectorAll('main .key')].flatMap((key) => {
+      const k = key.getBoundingClientRect();
+      const cs = getComputedStyle(key);
+      const right = k.right - parseFloat(cs.borderRightWidth);
+      return [...key.querySelectorAll('*')]
+        .filter((e) => {
+          const r = e.getBoundingClientRect();
+          return r.width > 0 && r.right > right + 0.5;
+        })
+        .map((e) => `${key.getAttribute('aria-label')}: ${e.tagName} ${e.textContent!.trim()}`);
+    }),
+  );
+}

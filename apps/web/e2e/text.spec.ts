@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { audit } from './audit.ts';
-import { MIN, overflow, phone, seed, STOOL, watchErrors, type Seeded } from './helpers.ts';
+import { MIN, overflow, phone, seed, spill, STOOL, watchErrors, type Seeded } from './helpers.ts';
 
 // #38 / #40 type rules on every screen (docs/design/README.md, Type sizes): nothing smaller
 // than 15 px, every enabled text at least 4.5:1 against what is behind it, and every tappable
-// control labelled at 20 px or more. Light and night, 320 and 390 px.
+// control labelled at 20 px or more, and nothing in a Home key past its outline (#53). Light
+// and night, 320 and 390 px.
 
 const NOW = Date.parse('2026-10-29T12:00:00-04:00');
 const ago = (min: number) => NOW - min * MIN;
@@ -48,16 +49,22 @@ for (const width of [320, 390] as const) {
       const errors = watchErrors(page);
       await page.clock.setFixedTime(NOW);
       await seed(page, SEED);
-      const found: Record<string, ReturnType<typeof audit> & { scroll: number }> = {};
+      const found: Record<string, ReturnType<typeof audit> & { scroll: number; spill: string[] }> =
+        {};
       for (const route of ROUTES) {
         await page.goto(route);
         await page.locator('main').first().waitFor();
         await page.waitForTimeout(250);
-        found[route] = { ...(await page.evaluate(audit)), scroll: (await overflow(page)).scroll };
+        found[route] = {
+          ...(await page.evaluate(audit)),
+          scroll: (await overflow(page)).scroll,
+          spill: await spill(page),
+        };
       }
       const bad = Object.fromEntries(
         Object.entries(found).filter(
-          ([, f]) => f.small.length || f.faint.length || f.controls.length || f.scroll,
+          ([, f]) =>
+            f.small.length || f.faint.length || f.controls.length || f.scroll || f.spill.length,
         ),
       );
       expect(bad).toEqual({});
