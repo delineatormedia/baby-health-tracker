@@ -20,6 +20,7 @@
     dayWindow,
     eventsIn,
     localZone,
+    markedMissing,
     midnightIn,
     mondayOf,
     monthTitle,
@@ -73,7 +74,14 @@
     const events = eventsIn(app.events, win.start, win.end).filter(
       (e) => Date.parse(e.occurredAt) <= app.now,
     );
-    return { date: d, win, events, tally: tally(events), state: dayState(win, app.now) };
+    return {
+      date: d,
+      win,
+      events,
+      tally: tally(events),
+      state: dayState(win, app.now),
+      missing: markedMissing(app.events, win.start, win.end),
+    };
   };
 
   // Day ------------------------------------------------------------------------------------
@@ -278,6 +286,12 @@
     {#if dDay.state === 'today'}
       <p class="note">Today so far.</p>
     {/if}
+    {#if dDay.missing}
+      <p class="note miss">
+        <i class="g g-miss"></i>You marked missing logs for this day. The totals count only what was
+        logged.
+      </p>
+    {/if}
     <ol class="list">
       {#each rows as r (r.e.id)}
         {#each r.dividers as d (d)}
@@ -308,7 +322,11 @@
     <div class="wk">
       {#each week as d (ymdKey(d.date))}
         {@const hours = windowHours(d.win)}
-        {@const tag = [d.state === 'today' ? 'so far' : '', hours !== 24 ? `${hours} h` : '']
+        {@const tag = [
+          d.state === 'today' ? 'so far' : '',
+          hours !== 24 ? `${hours} h` : '',
+          d.missing ? 'missing logs' : '',
+        ]
           .filter(Boolean)
           .join(' · ')}
         {#if d.state === 'future' || compareDay(d.date, birthDay) < 0}
@@ -319,7 +337,9 @@
           <button class="row" onclick={() => open('day', d.date, true)}>
             <span class="h"
               ><b
-                >{dayShort(d.date)}{#if tag}<span class="tag">{tag}</span>{/if}</b
+                >{dayShort(d.date)}{#if d.missing}<i class="g g-miss mk"></i>{/if}{#if tag}<span
+                    class="tag">{tag}</span
+                  >{/if}</b
               ><span class="sub"
                 ><b>{d.tally.diapers}</b>
                 {plural(d.tally.diapers, 'diaper')} · <b>{d.tally.breast + d.tally.bottle}</b>
@@ -343,7 +363,7 @@
     <p class="note">
       <i class="g g-feed"></i> feeds ·
       <span class="pair"><i class="wet"></i><i class="dirty"></i></span>
-      diapers · outlined: today so far
+      diapers · outlined: today so far · <i class="g g-miss"></i> missing logs marked
     </p>
     <div class="cal">
       {#each ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as w, i (i)}
@@ -360,10 +380,11 @@
             class="c"
             class:today={sameDay(d.date, today)}
             aria-label="{dayTitle(d.date)}: {d.tally.breast + d.tally.bottle} feeds, {d.tally
-              .diapers} diapers"
+              .diapers} diapers{d.missing ? ', missing logs marked' : ''}"
             onclick={() => open('day', d.date, true)}
           >
             <b>{d.date.d}</b>
+            {#if d.missing}<i class="g g-miss mk"></i>{/if}
             <span><i class="g g-feed"></i>{d.tally.breast + d.tally.bottle}</span>
             <span
               ><span class="pair"><i class="wet"></i><i class="dirty"></i></span>{d.tally
@@ -604,6 +625,16 @@
     font: 400 15px/1.15 var(--sans);
     font-variant-numeric: tabular-nums;
   }
+  .c {
+    position: relative;
+  }
+  .c .mk {
+    position: absolute;
+    top: 5px;
+    right: 4px;
+    width: 10px;
+    height: 10px;
+  }
   .c.x {
     background: none;
     border-color: transparent;
@@ -649,6 +680,20 @@
   .g-pump {
     background: var(--pump);
     transform: rotate(45deg) scale(0.85);
+  }
+  /* "We missed some": hatched, the usual mark for a gap in the record. --text-dim stripes
+     reach 4.5:1 on --panel and --bg in both themes. */
+  .g-miss {
+    border: 1.5px solid var(--text-dim);
+    border-radius: 2px;
+    background: repeating-linear-gradient(135deg, var(--text-dim) 0 1.5px, transparent 1.5px 4px);
+  }
+  .row .mk {
+    margin: 0 0 0 8px;
+    vertical-align: 0;
+  }
+  .note.miss {
+    color: var(--ink);
   }
   .pair {
     display: inline-flex;

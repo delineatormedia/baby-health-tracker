@@ -11,6 +11,7 @@ import {
   dayWindow,
   eventsIn,
   isSecondOccurrence,
+  markedMissing,
   midnightIn,
   mondayOf,
   parseYmd,
@@ -228,6 +229,40 @@ describe('counts', () => {
     });
     const w = dayWindow(MON, EIGHT, NY);
     expect(eventsIn([...MONDAY, mark], w.start, w.end)).toHaveLength(MONDAY.length);
+  });
+
+  test('a day with a "We missed some" mark is noted, and its counts are unchanged', () => {
+    // Marks cover a day-of-life window, which can cross the household's day start.
+    const mark = ev('missed_logs', '2026-10-26T09:00:00-04:00', {
+      start: iso('2026-10-26T10:42:00-04:00'),
+      end: iso('2026-10-27T10:42:00-04:00'),
+    });
+    const at = (d: Ymd, start: number) => {
+      const w = dayWindow(d, start, NY);
+      return markedMissing([...MONDAY, mark], w.start, w.end);
+    };
+    expect([at(addDays(MON, -1), EIGHT), at(MON, EIGHT), at(addDays(MON, 1), EIGHT)]).toEqual([
+      false,
+      true,
+      true,
+    ]);
+    expect(at(addDays(MON, 2), EIGHT)).toBe(false);
+    // Edges are half-open: a mark ending exactly at a day start does not touch that day.
+    const edge = ev('missed_logs', '2026-10-26T09:00:00-04:00', {
+      start: iso('2026-10-26T06:00:00-04:00'),
+      end: iso('2026-10-26T08:00:00-04:00'),
+    });
+    const mon = dayWindow(MON, EIGHT, NY);
+    const sun = dayWindow(addDays(MON, -1), EIGHT, NY);
+    expect(markedMissing([edge], mon.start, mon.end)).toBe(false);
+    expect(markedMissing([edge], sun.start, sun.end)).toBe(true);
+    // A taken-back mark ("We logged everything" deletes it) notes nothing.
+    expect(markedMissing([{ ...mark, deleted: true }], mon.start, mon.end)).toBe(false);
+    expect(markedMissing(MONDAY, mon.start, mon.end)).toBe(false);
+    // The note never changes what is counted.
+    expect(tally(eventsIn([...MONDAY, mark], mon.start, mon.end))).toEqual(
+      tally(eventsIn(MONDAY, mon.start, mon.end)),
+    );
   });
 
   test('averages count finished days only', () => {

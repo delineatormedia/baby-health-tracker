@@ -1,5 +1,6 @@
 import { formatWeight, type BabyEvent } from '@bht/schema';
 import { minutes, sideTimes, swatch } from './logic.ts';
+import { missedMarks } from './readings.ts';
 
 // Reports (#21): looking back by day, week and month. Days are cut at the household's
 // "Day starts at" time in the phone's time zone, from real wall-clock time, so a day with a
@@ -183,6 +184,16 @@ export function eventsIn(
       return t >= start && t < end;
     })
     .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
+}
+
+/**
+ * True when a "We missed some" mark touches [start, end): the parent said this period is not
+ * fully logged, so its totals are partial. Marks are not counted or drawn, only noted.
+ */
+export function markedMissing(events: readonly BabyEvent[], start: number, end: number): boolean {
+  return missedMarks(events).some(
+    (m) => Date.parse(m.data.start) < end && start < Date.parse(m.data.end),
+  );
 }
 
 export interface Tally {
