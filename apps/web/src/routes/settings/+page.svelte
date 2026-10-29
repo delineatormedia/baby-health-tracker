@@ -85,15 +85,12 @@
 </main>
 
 <style>
-  .back {
-    font: 600 17px var(--sans);
-  }
   .three {
     grid-template-columns: repeat(3, 1fr);
   }
   .note {
     margin: 10px 24px 0;
-    font-size: 13px;
+    font-size: 15px;
     color: var(--dim);
   }
   /* The #20 type rules for the new setting: 20 px controls, 15 px text at 4.5:1. */

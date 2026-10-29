@@ -181,9 +181,11 @@
   }
   .done button {
     align-self: stretch;
+    min-height: 52px;
     padding: 0 16px;
     font-weight: 600;
-    font-size: 15px;
+    font-size: 20px;
+    color: var(--acc);
   }
   .three {
     grid-template-columns: repeat(3, 1fr);

@@ -94,7 +94,7 @@
   }
   .scale {
     position: relative;
-    font: 500 13px var(--mono);
+    font: 500 15px var(--mono);
     color: var(--dim);
   }
   .scale div {
