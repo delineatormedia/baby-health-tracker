@@ -29,7 +29,8 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  const isApi = url.pathname === '/api' || url.pathname.startsWith('/api/');
+  if (url.origin !== self.location.origin || isApi) return;
 
   event.respondWith(
     (async () => {
