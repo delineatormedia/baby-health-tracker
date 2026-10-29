@@ -1,0 +1,208 @@
+/* Instrument tokens, docs/design/README.md. Night is graphite: no red, no white text. */
+:root {
+  --bg: #eceff1;
+  --panel: #ffffff;
+  --ink: #1f2a33;
+  --dim: #77848e;
+  --line: #d9dee2;
+  --acc: #2e6a8e;
+  --acc-ink: #ffffff;
+  --band: #d6e4ec;
+  --flag: #a8552f;
+  --flag-soft: #f7ebe3;
+  --well: #ffffff;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --sans: -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0d0c0b;
+    --panel: #161513;
+    --ink: #ada59a;
+    --dim: #68625a;
+    --line: #252320;
+    --acc: #6f8f84;
+    --acc-ink: #0d0c0b;
+    --band: #1e2925;
+    --flag: #c29a62;
+    --flag-soft: #1b1712;
+    --well: #1c1a17;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='night'] {
+  --bg: #0d0c0b;
+  --panel: #161513;
+  --ink: #ada59a;
+  --dim: #68625a;
+  --line: #252320;
+  --acc: #6f8f84;
+  --acc-ink: #0d0c0b;
+  --band: #1e2925;
+  --flag: #c29a62;
+  --flag-soft: #1b1712;
+  --well: #1c1a17;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 16px/1.4 var(--sans);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+/* A screen fills the viewport; primary actions sit in the bottom thumb zone. */
+.screen {
+  position: relative;
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  padding-bottom: calc(110px + var(--safe-b));
+}
+
+.lab {
+  font: 500 11px/1.3 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 24px 0;
+}
+
+.top h1,
+.top a.back {
+  font: 600 17px var(--sans);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+/* Main action: 66 px, bottom of the screen. */
+.go {
+  position: fixed;
+  left: max(16px, calc(50% - 224px));
+  right: max(16px, calc(50% - 224px));
+  bottom: calc(30px + var(--safe-b));
+  height: 66px;
+  border-radius: 18px;
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 600 18px var(--sans);
+}
+
+.go2 {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 0 16px;
+  height: 54px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  font: 500 16px var(--sans);
+}
+
+.seg {
+  display: flex;
+  margin: 18px 16px 0;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.seg button {
+  flex: 1;
+  height: 54px;
+  font: 600 16px var(--sans);
+}
+
+.seg button + button {
+  border-left: 1px solid var(--line);
+}
+
+.seg button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.sec {
+  margin: 26px 24px 10px;
+}
+
+.opts {
+  display: grid;
+  gap: 8px;
+  margin: 0 16px;
+}
+
+.opts button {
+  min-height: 52px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 15px;
+}
+
+.opts button[aria-pressed='true'] {
+  border: 2px solid var(--ink);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fade {
+    animation: fade 0.16s ease-out;
+  }
+  @keyframes fade {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+}

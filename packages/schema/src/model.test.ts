@@ -1,7 +1,7 @@
 import { decodeTime } from 'ulid';
 import * as v from 'valibot';
 import { describe, expect, test } from 'vitest';
-import { Baby, Id, newId, Timestamp } from './model.ts';
+import { Baby, Id, newId, parseBaby, Timestamp } from './model.ts';
 
 describe('Id', () => {
   test('newId produces valid, sortable ULIDs', () => {
@@ -61,5 +61,25 @@ describe('Baby', () => {
     expect(v.is(Baby, { ...baby, name: '  ' })).toBe(false);
     expect(v.is(Baby, { ...baby, sex: 'f' })).toBe(false);
     expect(v.is(Baby, { ...baby, weight: 3400 })).toBe(false);
+  });
+});
+
+describe('parseBaby', () => {
+  const baby = {
+    id: newId(),
+    householdId: newId(),
+    name: ' June ',
+    birthAt: '2026-10-17T10:42:00.000Z',
+    sex: 'female',
+  };
+
+  test('returns the parsed baby, trimmed', () => {
+    expect(parseBaby(baby)?.name).toBe('June');
+  });
+
+  test('returns null for anything else', () => {
+    expect(parseBaby(null)).toBeNull();
+    expect(parseBaby({ ...baby, sex: 'x' })).toBeNull();
+    expect(parseBaby({ ...baby, extra: 1 })).toBeNull();
   });
 });
