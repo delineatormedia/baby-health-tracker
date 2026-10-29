@@ -51,6 +51,8 @@ class AppState {
   /** When this phone set up its baby (ms); null on installs from before it was recorded. */
   setupAt = $state<number | null>(null);
   events = $state.raw<BabyEvent[]>([]);
+  /** Entries the server refused (#5). They stay on this phone; Settings shows the count. */
+  rejected = $state(0);
   // Read in init(): touching localStorage can throw (SecurityError) and must reach the error screen.
   prefs = $state<Prefs>(DEFAULT_PREFS);
   toast = $state.raw<Toast | null>(null);
@@ -197,6 +199,7 @@ class AppState {
       do {
         this.#reloadAgain = false;
         this.events = this.baby ? await this.store.events(this.baby.id) : [];
+        this.rejected = await this.store.rejectedCount();
       } while (this.#reloadAgain);
     })().finally(() => (this.#loading = null));
     return this.#loading;

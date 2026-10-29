@@ -82,6 +82,7 @@ describe('EventStore', () => {
       ],
       next: 3,
       more: false,
+      through: 3,
     });
     const edit = await store.edit(event.id, { notes: 'c' });
     expect(edit.event.version).toBe(4);

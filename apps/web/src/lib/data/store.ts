@@ -100,9 +100,10 @@ export class EventStore {
 
   /**
    * Records the server's verdict on the versions in `submitted`. Accepted, duplicate and
-   * superseded versions are stored under their seq exactly as submitted. Rejected ones are
-   * dropped (retrying cannot fix them) and returned so the caller can surface them. A pending
-   * row is retired only if it still holds the submitted body; anything else stays pending.
+   * superseded versions are stored under their seq exactly as submitted. A rejected version
+   * is never deleted: it stays on this phone marked rejected, is left out of uploads (retrying
+   * cannot fix it) and is returned so the caller can surface it. A pending row is retired or
+   * marked only if it still holds the submitted body; anything else stays pending.
    */
   async applyPushResults(submitted: BabyEvent[], results: PushResult[]): Promise<PushResult[]> {
     const sent = new Map(submitted.map((e) => [`${e.id}:${e.version}`, e]));
@@ -116,7 +117,7 @@ export class EventStore {
       const unchanged = local !== undefined && canonicalJson(local.event) === canonicalJson(event);
       if (r.status === 'rejected') {
         if (unchanged) {
-          await tx.store.delete(localKey);
+          await tx.store.put({ ...local, pending: 0, rejected: 1, rejectedError: r.error });
           rejected.push(r);
         }
         continue;
@@ -137,6 +138,24 @@ export class EventStore {
     await tx.objectStore('meta').put(page.next, CURSOR);
     await tx.done;
     if (page.versions.length > 0) this.#emit();
+  }
+
+  /**
+   * How many entries hold a refused version that no later synced version of the same entry
+   * has replaced. Refused versions stay on this phone either way; once a later edit (from
+   * here or another phone) reaches the server, that entry is no longer counted.
+   */
+  async rejectedCount(): Promise<number> {
+    const tx = this.db.transaction('versions');
+    const refused = await tx.store.index('byRejected').getAll(1);
+    const open = new Set<string>();
+    for (const r of refused) {
+      if (open.has(r.id)) continue;
+      const rows = await tx.store.index('byId').getAll(r.id);
+      if (!rows.some((o) => o.seq !== null && o.event.version > r.event.version)) open.add(r.id);
+    }
+    await tx.done;
+    return open.size;
   }
 
   async cursor(): Promise<number> {

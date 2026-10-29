@@ -82,6 +82,12 @@
   <p class="note">
     Logs are saved on this phone. Sign-in and sharing with the other parent come next.
   </p>
+  {#if app.rejected > 0}
+    <p class="note refused" role="status">
+      <b>{app.rejected} {app.rejected === 1 ? 'entry' : 'entries'} the server refused.</b> They are still
+      on this phone and were not shared.
+    </p>
+  {/if}
 </main>
 
 <style>
@@ -105,6 +111,14 @@
     color: var(--text-dim);
   }
   .note.day b {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .note.refused {
+    font-size: 15px;
+    color: var(--text-dim);
+  }
+  .note.refused b {
     color: var(--ink);
     font-weight: 500;
   }

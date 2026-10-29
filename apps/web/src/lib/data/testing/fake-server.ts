@@ -1,4 +1,10 @@
-import { parseEvent, resolveCurrent, type BabyEvent, type StoredVersion } from '@bht/schema';
+import {
+  parseEvent,
+  resolveCurrent,
+  SCHEMA_VERSION,
+  type BabyEvent,
+  type StoredVersion,
+} from '@bht/schema';
 import {
   HttpError,
   type PullResponse,
@@ -7,7 +13,7 @@ import {
   type SyncTransport,
 } from '../protocol.ts';
 
-/** In-memory implementation of the proposed /api/sync contract, for client tests. */
+/** In-memory implementation of the /api/sync contract, for client tests. */
 export class FakeServer {
   readonly log: { seq: number; event: BabyEvent }[] = [];
   #seq = 0;
@@ -16,10 +22,15 @@ export class FakeServer {
     return { results: events.map((e) => this.#accept(e)) };
   }
 
-  pull(after: number, limit: number): PullResponse {
-    const page = this.log.filter((v) => v.seq > after).slice(0, limit);
+  pull(after: number, limit: number, through = this.#seq): PullResponse {
+    const page = this.log.filter((v) => v.seq > after && v.seq <= through).slice(0, limit);
     const next = page.at(-1)?.seq ?? after;
-    return { versions: page, next, more: this.log.some((v) => v.seq > next) };
+    return {
+      versions: page,
+      next,
+      more: this.log.some((v) => v.seq > next && v.seq <= through),
+      through,
+    };
   }
 
   current(id: string): BabyEvent | undefined {
@@ -60,12 +71,21 @@ export class FakeTransport implements SyncTransport {
   /** When set, the server applies the next push but the response is lost. */
   dropNextPushResponse = false;
   status: number | null = null;
+  /** When set, a push whose httpTransport body is over this many UTF-8 bytes gets a 413. */
+  maxBytes: number | null = null;
   pushes = 0;
+  /** Versions per push attempt, including attempts answered 413. */
+  readonly pushSizes: number[] = [];
 
   constructor(readonly server: FakeServer) {}
 
   async push(events: BabyEvent[]): Promise<PushResponse> {
     this.#check();
+    this.pushSizes.push(events.length);
+    const body = JSON.stringify({ schemaVersion: SCHEMA_VERSION, events });
+    if (this.maxBytes !== null && new TextEncoder().encode(body).length > this.maxBytes) {
+      throw new HttpError(413);
+    }
     this.pushes += 1;
     const res = this.server.push(structuredClone(events));
     if (this.dropNextPushResponse) {
@@ -75,10 +95,18 @@ export class FakeTransport implements SyncTransport {
     return structuredClone(res);
   }
 
-  async pull(after: number, limit: number): Promise<PullResponse> {
+  /** Pull requests as sent, so tests can check the through a pull carries. */
+  readonly pulls: { after: number; limit: number; through?: number }[] = [];
+  /** Runs after each pull is answered, as when another phone pushes between pages. */
+  afterPull: (() => void) | null = null;
+
+  async pull(after: number, limit: number, through?: number): Promise<PullResponse> {
     this.#check();
     if (this.failPulls) throw new TypeError('network connection lost');
-    return structuredClone(this.server.pull(after, limit));
+    this.pulls.push({ after, limit, through });
+    const page = structuredClone(this.server.pull(after, limit, through));
+    this.afterPull?.();
+    return page;
   }
 
   #check() {
