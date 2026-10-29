@@ -42,7 +42,7 @@
             inherit version src pnpm;
             fetcherVersion = 5;
             # Changes whenever pnpm-lock.yaml does. Set lib.fakeHash, run nix build, copy the "got:" hash.
-            hash = "sha256-/tVUNitRcv9UuRAk7DNR8sKAe3lvVJk4U2gupn44aAk=";
+            hash = "sha256-76led8LmjJMwtcB92OiueCsaef5gVRQg66KtLAJApb0=";
           };
 
           mkWorkspacePackage =
