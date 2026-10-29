@@ -5,7 +5,7 @@
   import { untrack } from 'svelte';
   import type { Stool } from '@bht/schema';
   import { app } from '../../../lib/ui/app.svelte.ts';
-  import { saveDetails } from '../../../lib/ui/details.ts';
+  import { leaveDetails, saveDetails } from '../../../lib/ui/details.ts';
   import { describe, swatch, type Diaper } from '../../../lib/ui/logic.ts';
   import TimeRow from '../../../lib/ui/TimeRow.svelte';
   import { when } from '../../../lib/ui/time.ts';
@@ -82,11 +82,12 @@
     }
   }
 
-  async function undo() {
+  // Fresh: Undo removes the diaper just logged. Reopened: Cancel drops unsaved inputs, no write.
+  async function leave() {
     if (busy || !event) return;
     busy = true;
     try {
-      await app.store.remove(event.id);
+      await leaveDetails(app.store, event, fresh);
       await goto(resolve('/'), { replaceState: true });
     } catch (e) {
       app.fail(e);
@@ -109,7 +110,7 @@
       <div>
         Logged · {describe(event, app.volume).toLowerCase()}
       </div>
-      <button onclick={undo}>Undo</button>
+      <button onclick={leave}>{fresh ? 'Undo' : 'Cancel'}</button>
     </div>
     <TimeRow bind:at />
 

@@ -32,3 +32,15 @@ export async function saveDetails(
   if (fresh) return { event: edit?.event ?? event, undo: () => store.remove(event.id) };
   return edit;
 }
+
+/**
+ * The inline control beside "Logged". Fresh, it is Undo: the diaper was just logged, so it goes.
+ * Reopened, it is Cancel: unsaved inputs are dropped and the saved diaper is left exactly as is.
+ */
+export async function leaveDetails(
+  store: EventStore,
+  event: Diaper,
+  fresh: boolean,
+): Promise<void> {
+  if (fresh) await store.remove(event.id);
+}

@@ -3,7 +3,7 @@ import { newId, type Stool } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
 import { openDatabase } from '../data/db.ts';
 import { EventStore } from '../data/store.ts';
-import { saveDetails } from './details.ts';
+import { leaveDetails, saveDetails } from './details.ts';
 import type { Diaper } from './logic.ts';
 
 const babyId = newId();
@@ -67,4 +67,23 @@ describe('saveDetails', () => {
     expect(change?.event).toEqual(event);
     expect((await change!.undo()).event.deleted).toBe(true);
   });
+});
+
+describe('leaveDetails', () => {
+  for (const kind of ['dirty', 'mixed'] as const) {
+    test(`${kind}: the inline control straight after logging removes the diaper`, async () => {
+      const { store, event } = await logged(kind);
+      await leaveDetails(store, event, true);
+      expect(await store.events(babyId)).toEqual([]);
+    });
+
+    test(`${kind}: Cancel on reopened Details leaves the saved diaper untouched`, async () => {
+      const { store, event } = await logged(kind);
+      await leaveDetails(store, event, false);
+      const [kept] = await store.events(babyId);
+      expect(kept).toEqual(event);
+      expect(kept).toMatchObject({ version: 1, deleted: false, occurredAt: AT });
+      expect(await store.pending(10)).toHaveLength(1);
+    });
+  }
 });
