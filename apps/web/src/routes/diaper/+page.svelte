@@ -4,7 +4,7 @@
   import type { StoolColor } from '@bht/schema';
   import { app } from '../../lib/ui/app.svelte.ts';
   import { FLAG_SWATCHES, NORMAL_SWATCHES } from '../../lib/ui/logic.ts';
-  import TimeField from '../../lib/ui/TimeField.svelte';
+  import TimeRow from '../../lib/ui/TimeRow.svelte';
 
   let mixed = $state(false);
   let at = $state<string | null>(null);
@@ -37,9 +37,9 @@
 <main class="screen fade">
   <header class="top">
     <h1>{mixed ? 'Mixed diaper' : 'Dirty diaper'}</h1>
-    <TimeField bind:at />
   </header>
   <div class="steps"><i class="on"></i><i></i></div>
+  <TimeRow bind:at />
 
   <label class="toggle">
     <span>Also wet <span class="dim">· mixed</span></span>
@@ -98,7 +98,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin: 16px 16px 0;
+    margin: 10px 16px 0;
     padding: 0 16px;
     height: 56px;
     border-radius: 14px;

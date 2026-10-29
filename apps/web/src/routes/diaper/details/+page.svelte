@@ -2,9 +2,12 @@
   import { resolve } from '$app/paths';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
+  import { untrack } from 'svelte';
   import type { Stool } from '@bht/schema';
-  import { app, time } from '../../../lib/ui/app.svelte.ts';
+  import { app } from '../../../lib/ui/app.svelte.ts';
   import { describe, swatch, type Diaper } from '../../../lib/ui/logic.ts';
+  import TimeRow from '../../../lib/ui/TimeRow.svelte';
+  import { when } from '../../../lib/ui/time.ts';
 
   type Consistency = NonNullable<Stool['consistency']>;
   type Size = NonNullable<Stool['size']>;
@@ -37,9 +40,12 @@
   );
   const stool = $derived(event && event.data.kind !== 'wet' ? event.data.stool : null);
 
-  let consistency = $state<Consistency | null>(null);
-  let size = $state<Size | null>(null);
-  let flags = $state<Flag[]>([]);
+  // Seeded from the saved diaper, so reopening it from the toast keeps what was entered.
+  const seed = untrack(() => stool);
+  let consistency = $state<Consistency | null>(seed?.consistency ?? null);
+  let size = $state<Size | null>(seed?.size ?? null);
+  let flags = $state<Flag[]>(seed?.flags ?? []);
+  let at = $state<string | null>(untrack(() => event?.occurredAt ?? null));
   let busy = false;
 
   const toggle = (f: Flag) =>
@@ -49,20 +55,29 @@
     if (busy || !event || event.data.kind === 'wet') return;
     busy = true;
     try {
-      const touched = consistency !== null || size !== null || flags.length > 0;
-      if (touched) {
-        await app.store.edit(event.id, {
-          data: {
-            kind: event.data.kind,
-            stool: { color: stool?.color ?? null, consistency, size, flags },
-          },
-        });
-      }
+      const data = {
+        kind: event.data.kind,
+        stool: { color: stool?.color ?? null, consistency, size, flags },
+      };
+      const occurredAt = at ?? new Date().toISOString();
+      const moved = occurredAt !== event.occurredAt;
+      // Details and the time land as one new version: one sync, one undo.
+      const changed =
+        consistency !== (stool?.consistency ?? null) ||
+        size !== (stool?.size ?? null) ||
+        flags.join() !== (stool?.flags ?? []).join();
+      const saved =
+        moved || changed
+          ? (await app.store.edit(event.id, { data, ...(moved ? { occurredAt } : {}) })).event
+          : event;
       // Undo on home takes back the whole diaper, which is what was just logged.
-      app.showUndo(`${describe(event, app.volume)} logged · ${time(event.occurredAt)}`, {
-        event,
-        undo: () => app.store.remove(event.id),
-      });
+      app.showUndo(
+        `${describe(saved, app.volume)} logged · ${when(saved.occurredAt, Date.now())}`,
+        {
+          event: saved,
+          undo: () => app.store.remove(event.id),
+        },
+      );
       await goto(resolve('/'), { replaceState: true });
     } catch (e) {
       app.fail(e);
@@ -96,10 +111,11 @@
     <div class="done">
       <span class="chip" style:background={swatch(stool?.color)?.hex ?? 'var(--line)'}></span>
       <div>
-        Logged · {describe(event, app.volume).toLowerCase()}<small>{time(event.occurredAt)}</small>
+        Logged · {describe(event, app.volume).toLowerCase()}
       </div>
       <button onclick={undo}>Undo</button>
     </div>
+    <TimeRow bind:at />
 
     <div class="sec lab">Texture</div>
     <div class="opts three">
@@ -165,12 +181,6 @@
   .done div {
     flex: 1;
     font-size: 15px;
-  }
-  .done small {
-    display: block;
-    color: var(--dim);
-    font-size: 13px;
-    margin-top: 2px;
   }
   .done button {
     align-self: stretch;

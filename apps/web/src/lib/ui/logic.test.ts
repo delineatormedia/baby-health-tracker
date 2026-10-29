@@ -6,9 +6,11 @@ import {
   countMarks,
   dayMarks,
   describe as describeEvent,
+  editLink,
   hm,
   intake24h,
   lastSide,
+  latestStart,
   MAX_FEED_SECONDS,
   polar,
   runningFeed,
@@ -176,4 +178,33 @@ describe('saveFailure', () => {
     expect(saveFailure(new Error('boom'))).toMatch(/^Not saved/);
     expect(saveFailure('weird')).toMatch(/^Not saved/);
   });
+});
+
+describe('editLink', () => {
+  test('wet, bottle and finished feeds open the shared Logged screen', () => {
+    for (const e of [
+      ev('diaper', { kind: 'wet' }, 0),
+      ev('bottle', { contents: 'formula', volumeMl: 60 }, 0),
+      ev('breastfeed', { side: 'left', durationSeconds: 600 }, 10),
+    ]) {
+      expect(editLink(e)).toEqual({ label: 'Change time', path: `/logged?id=${e.id}` });
+    }
+  });
+  test('dirty diapers reopen their details, a running feed its timer', () => {
+    const dirty = ev(
+      'diaper',
+      { kind: 'dirty', stool: { color: 'yellow', consistency: null, size: null, flags: [] } },
+      0,
+    );
+    expect(editLink(dirty)).toEqual({ label: 'Details', path: `/diaper/details?id=${dirty.id}` });
+    const running = ev('breastfeed', { side: 'left', durationSeconds: null }, 3);
+    expect(editLink(running).path).toBe('/feed');
+  });
+});
+
+test('latestStart keeps a finished feed ending by now', () => {
+  expect(latestStart(ev('breastfeed', { side: 'left', durationSeconds: 900 }, 15), NOW)).toBe(
+    NOW - 900_000,
+  );
+  expect(latestStart(ev('diaper', { kind: 'wet' }, 0), NOW)).toBeUndefined();
 });
