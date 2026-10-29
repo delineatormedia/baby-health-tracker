@@ -30,8 +30,10 @@ describe('serveWeb', () => {
   });
 
   test('unknown API paths are a JSON 404, never index.html', async () => {
-    for (const method of ['GET', 'POST']) {
-      const res = await app.request('/api/nope', { method });
+    // A POST without a JSON content type gets 415 first (#47); send what a client sends.
+    const json = { headers: { 'content-type': 'application/json' }, body: '{}' };
+    for (const init of [{ method: 'GET' }, { method: 'POST', ...json }]) {
+      const res = await app.request('/api/nope', init);
       expect(res.status).toBe(404);
       expect(res.headers.get('content-type')).toMatch(/json/);
     }
