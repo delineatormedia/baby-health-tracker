@@ -108,9 +108,29 @@
     {
       packages = forAllSystems (system: mkPackages nixpkgs.legacyPackages.${system});
 
-      checks = forAllSystems (system: {
-        inherit (self.packages.${system}) bht-web bht-server;
-      });
+      # services.bht; see docs/DEPLOY.md.
+      nixosModules.default = import ./nix/module.nix { inherit self; };
+
+      checks = forAllSystems (
+        system:
+        {
+          inherit (self.packages.${system}) bht-web bht-server;
+          restore-faults =
+            nixpkgs.legacyPackages.${system}.runCommand "bht-restore-faults"
+              { nativeBuildInputs = [ nixpkgs.legacyPackages.${system}.sqlite ]; }
+              ''
+                bash ${./nix/restore-faults.sh} ${./nix/bht-restore.sh}
+                touch $out
+              '';
+        }
+        # The VM test needs a Linux builder with KVM.
+        // lib.optionalAttrs (lib.hasSuffix "-linux" system) {
+          vm = import ./nix/vm-test.nix {
+            inherit self;
+            pkgs = nixpkgs.legacyPackages.${system};
+          };
+        }
+      );
 
       devShells = forAllSystems (
         system:
