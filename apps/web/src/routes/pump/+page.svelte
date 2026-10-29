@@ -152,6 +152,10 @@
       .filter((v) => v !== null)
       .join(' · '),
   );
+  /** The toast confirms the log with the total; the per-side amounts stay on the entry (#49). */
+  const pumped = $derived(
+    app.volume((pumpsLeft(side) ? left : 0) + (pumpsRight(side) ? right : 0)),
+  );
 
   const save = () =>
     once(async () => {
@@ -162,12 +166,12 @@
         const change = await app.store.edit(timer.id, {
           data: pumpData(side, { left, right }, afterFeed, s),
         });
-        app.showUndo(`Pump · ${volumes} logged`, change);
+        app.showUndo(`Pump · ${pumped} logged`, change);
       } else {
         await app.log(
           'pump',
           pumpData(side, { left, right }, afterFeed),
-          `Pump · ${volumes} logged`,
+          `Pump · ${pumped} logged`,
           {
             occurredAt: at ?? undefined,
           },
