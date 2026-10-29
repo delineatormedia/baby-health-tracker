@@ -12,7 +12,13 @@ import { openDatabase } from '../data/db.ts';
 import { httpTransport } from '../data/protocol.ts';
 import { EventStore, type Change } from '../data/store.ts';
 import { failureReason, SyncClient, type SyncStatus } from '../data/sync.ts';
-import { syncedThrough, waitingOn, type ClockSample, type SyncView } from '../data/watermarks.ts';
+import {
+  syncedThrough,
+  waitingOn,
+  waitingOnWindow,
+  type ClockSample,
+  type SyncView,
+} from '../data/watermarks.ts';
 import {
   authorId,
   DEFAULT_PREFS,
@@ -411,6 +417,12 @@ class AppState {
   waitingOn(end: number, wall: number, mono: number): HouseholdDevice[] {
     const view = this.syncView(wall, mono);
     return view ? waitingOn(view, end) : [];
+  }
+
+  /** The phones a not_synced check whose window ends at `end` waits on. */
+  waitingOnWindow(end: number, wall: number, mono: number): HouseholdDevice[] {
+    const view = this.syncView(wall, mono);
+    return view ? waitingOnWindow(view, end) : [];
   }
 
   /** Starts syncing the signed-in household, or resumes after a retried placement. */

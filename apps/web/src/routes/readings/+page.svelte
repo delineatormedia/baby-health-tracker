@@ -44,7 +44,7 @@
   /** Why a check waits on the other phones, or its usual reason. */
   const why = (r: CheckResult) =>
     r.status === 'not_enough_data' && r.reason === 'not_synced' && app.account
-      ? waitingText(app.waitingOn(Date.parse(r.window.end), clock.wall, clock.mono))
+      ? waitingText(app.waitingOnWindow(Date.parse(r.window.end), clock.wall, clock.mono))
       : reasonText(r, start);
   const waiting = $derived(
     app.account && app.waitingOn(clock.wall, clock.wall, clock.mono).length > 0,

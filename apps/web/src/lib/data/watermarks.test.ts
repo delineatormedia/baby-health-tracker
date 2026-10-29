@@ -1,4 +1,5 @@
-import { newId, type HouseholdDevice } from '@bht/schema';
+import { evaluate } from '@bht/insights';
+import { newId, type BabyEvent, type HouseholdDevice } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
 import {
   DRIFT_BUDGET_MS,
@@ -6,6 +7,7 @@ import {
   sampleHolds,
   syncedThrough,
   waitingOn,
+  waitingOnWindow,
   type ClockSample,
   type SyncView,
 } from './watermarks.ts';
@@ -191,5 +193,60 @@ describe('syncedThrough', () => {
         expect(assessed).toBe(waitingOn(v, end).length === 0);
       }
     }
+  });
+});
+
+describe('waitingOnWindow', () => {
+  const iso = (t: number) => new Date(t).toISOString();
+  const wet = (t: number): BabyEvent => ({
+    id: newId(),
+    babyId: newId(),
+    authorId: self,
+    occurredAt: iso(t),
+    recordedAt: iso(t),
+    version: 1,
+    deleted: false,
+    notes: null,
+    type: 'diaper',
+    data: { kind: 'wet' },
+  });
+
+  test('no_urine, clamped to the watermark that holds it back, names that phone', () => {
+    // Day 3; Sam's phone last synced 3 h ago and the last wet diaper is 9 h old. no_urine's
+    // window ends at syncedThrough, which is Sam's converted watermark (Ignition's probe on #64).
+    const sam = device('Sam', NOON - 3 * H);
+    const v = view([sam], agreed());
+    const synced = syncedThrough(v)!;
+    const r = evaluate({
+      baby: { birthAt: iso(NOON - 50 * H), sex: 'female' },
+      events: [wet(NOON - 9 * H)],
+      now: iso(NOON),
+      fullyLogged: [{ start: iso(NOON - 50 * H), end: iso(NOON) }],
+      syncedThrough: iso(synced),
+    }).find((c) => c.check === 'no_urine')!;
+    expect(r).toMatchObject({ status: 'not_enough_data', reason: 'not_synced' });
+    expect(Date.parse(r.window.end)).toBe(synced);
+    // The bug: the window's own end is not past Sam's watermark, so nobody was named.
+    expect(waitingOn(v, Date.parse(r.window.end))).toEqual([]);
+    expect(waitingOnWindow(v, Date.parse(r.window.end))).toEqual([sam]);
+  });
+
+  test('a clamped window waits on every phone not yet through now', () => {
+    const sam = device('Sam', NOON - 3 * H);
+    const ana = device('Ana', NOON - H);
+    const v = view([sam, ana], agreed());
+    expect(waitingOnWindow(v, syncedThrough(v)!)).toEqual([sam, ana]);
+  });
+
+  test('a window ending past syncedThrough still names only the phones behind its end', () => {
+    const sam = device('Sam', NOON - 3 * H);
+    const ana = device('Ana', NOON - H);
+    const v = view([sam, ana], agreed());
+    expect(waitingOnWindow(v, NOON - 2 * H)).toEqual([sam]);
+  });
+
+  test('nothing known yet: the window waits on every phone', () => {
+    const fresh = device('Sam', null);
+    expect(waitingOnWindow(view([fresh], agreed()), NOON - H)).toEqual([fresh]);
   });
 });

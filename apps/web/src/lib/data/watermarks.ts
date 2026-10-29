@@ -93,3 +93,14 @@ export function waitingOn(view: SyncView, end: number): HouseholdDevice[] {
     return w === null || end > w;
   });
 }
+
+/**
+ * The other phones a not_synced check waits on. A window that ends past syncedThrough waits on
+ * the phones not yet through its end. A window clamped to syncedThrough (no_urine's: "no wet
+ * diaper in the 8 h before the pull") is asking about now, so it waits on every phone not yet
+ * through now, starting with the one whose watermark clamped it.
+ */
+export function waitingOnWindow(view: SyncView, end: number): HouseholdDevice[] {
+  const synced = syncedThrough(view);
+  return waitingOn(view, synced !== null && end <= synced ? view.wall : end);
+}
