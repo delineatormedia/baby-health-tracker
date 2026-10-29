@@ -185,15 +185,20 @@
     color: var(--text-dim);
   }
   .lbs {
-    gap: 16px;
+    gap: 12px;
+    margin-inline: 16px;
   }
   .lbs label {
     display: flex;
+    flex: 0 1 auto;
+    min-width: 0;
     align-items: baseline;
     gap: 6px;
   }
   .lbs input {
     width: 3.2em;
+    min-width: 0;
+    flex: 0 1 auto;
     font: 300 44px/1.2 var(--sans);
     text-align: right;
     background: var(--panel);
