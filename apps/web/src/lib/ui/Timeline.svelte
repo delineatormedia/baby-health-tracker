@@ -1,6 +1,14 @@
 <script lang="ts">
   import type { BabyEvent } from '@bht/schema';
-  import { clockChange, feedBar, hourText, midnightIn, ticks, type DayWindow } from './reports.ts';
+  import {
+    clockChange,
+    feedBar,
+    feedEnd,
+    hourText,
+    midnightIn,
+    ticks,
+    type DayWindow,
+  } from './reports.ts';
 
   // A report day in the dial's shapes. x is real elapsed time, so a 25 h day has 25 equal
   // hours. Feed bars (as long as the feed) and bottle rings share the top lane, like the
@@ -36,8 +44,7 @@
     events.flatMap((e): { kind: MarkKind; x: number; w: number }[] => {
       const t = Date.parse(e.occurredAt);
       if (e.type === 'breastfeed') {
-        const end = e.data.durationSeconds === null ? now : t + e.data.durationSeconds * 1000;
-        const [left, right] = feedBar(t, end, win, x, 3 * k);
+        const [left, right] = feedBar(t, feedEnd(e, now), win, x, 3 * k);
         return [{ kind: 'feed', x: left, w: right - left }];
       }
       if (e.type === 'bottle') return [{ kind: 'bottle', x: x(t), w: 0 }];

@@ -113,9 +113,19 @@
             : `Clocks went forward · no ${skipped}`,
         );
       }
-      return { e, t, dividers, text: rowText(e, app.volume) };
+      const text = rowText(e, app.volume);
+      return {
+        e,
+        t,
+        dividers,
+        text: { ...text, name: glue(text.name), detail: glue(text.detail) },
+      };
     });
   });
+
+  /** Rows wrap between phrases, never inside "60 mL", "15 min" or "R 40 mL". */
+  const glue = (s: string) =>
+    s.replace(/(\d) (?=[a-zA-Z])/g, '$1\u00a0').replace(/\b([LR]) (?=\d)/g, '$1\u00a0');
 
   // Week -----------------------------------------------------------------------------------
   const monday = $derived(mondayOf(date));

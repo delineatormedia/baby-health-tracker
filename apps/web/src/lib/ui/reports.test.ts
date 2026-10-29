@@ -12,6 +12,7 @@ import {
   dayWindow,
   eventsIn,
   feedBar,
+  feedEnd,
   hourText,
   fullDay,
   isSecondOccurrence,
@@ -367,6 +368,51 @@ describe('timeline bars', () => {
     const noon = Date.parse('2026-10-26T12:00:00-04:00');
     expect(feedBar(noon, noon + 60_000, mon, x, 3)).toEqual([x(noon), x(noon) + 3]);
     expect(feedBar(noon, noon + H, mon, x, 3)).toEqual([x(noon), x(noon + H)]);
+  });
+});
+
+describe('pumps and paused feeds (#29, #32)', () => {
+  const pump = (at: string, data: object) =>
+    ev('pump', at, { leftMl: null, rightMl: null, afterFeed: false, ...data });
+
+  test('a running pump and one with no amount are listed and counted, with no mL', () => {
+    const running = pump('2026-10-26T09:00:00-04:00', { side: 'both', durationSeconds: null });
+    const stopped = pump('2026-10-26T10:00:00-04:00', { side: 'left', durationSeconds: 1500 });
+    const logged = pump('2026-10-26T11:00:00-04:00', { leftMl: 60, rightMl: 40 });
+    const day = [running, stopped, logged, bottle('2026-10-26T12:00:00-04:00', 60)];
+    expect(tally(day)).toMatchObject({ pumps: 3, bottle: 1, bottleMl: 60 });
+    const row = (e: BabyEvent) => rowText(e as Extract<BabyEvent, { type: 'pump' }>, String);
+    expect(row(running)).toEqual({ glyph: 'pump', name: 'Pump', detail: 'Both · running' });
+    expect(row(stopped)).toEqual({
+      glyph: 'pump',
+      name: 'Pump',
+      detail: `Left · ${minutes(1500)} · amount not entered`,
+    });
+    expect(row(logged).detail).toBe('L 60 · R 40');
+  });
+
+  test('a paused feed: the bar spans its pauses, the row shows feeding time only', () => {
+    const f = ev('breastfeed', '2026-10-26T09:00:00-04:00', {
+      side: 'left',
+      durationSeconds: 15 * 60,
+      pausedSeconds: 5 * 60,
+    }) as Extract<BabyEvent, { type: 'breastfeed' }>;
+    expect(feedEnd(f, 0)).toBe(Date.parse('2026-10-26T09:20:00-04:00'));
+    expect(rowText(f, String).detail).toBe(`Left · ${minutes(15 * 60)}`);
+    expect(tally([f]).breast).toBe(1);
+  });
+
+  test('a running feed on pause draws to now and reads "Paused"', () => {
+    const f = ev('breastfeed', '2026-10-26T09:00:00-04:00', {
+      side: 'left',
+      durationSeconds: null,
+      segments: [{ side: 'left', seconds: null }],
+      pausedSeconds: 60,
+      pausedAt: iso('2026-10-26T09:10:00-04:00'),
+    }) as Extract<BabyEvent, { type: 'breastfeed' }>;
+    const now = Date.parse('2026-10-26T09:30:00-04:00');
+    expect(feedEnd(f, now)).toBe(now);
+    expect(rowText(f, String).detail).toBe('Paused');
   });
 });
 

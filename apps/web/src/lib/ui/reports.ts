@@ -1,5 +1,5 @@
 import { formatWeight, type BabyEvent } from '@bht/schema';
-import { minutes, sideTimes, swatch } from './logic.ts';
+import { awaitingAmount, isPaused, minutes, pumpSide, sideTimes, swatch } from './logic.ts';
 import { missedMarks } from './readings.ts';
 
 // Reports (#21): looking back by day, week and month. Days are cut at the household's
@@ -204,6 +204,16 @@ export function feedBar(
   return [Math.max(lo, Math.min(a, right - min)), right];
 }
 
+/**
+ * Where a feed's bar ends: now while it runs (paused or not), else after its feeding time and
+ * its pauses (#29). Only the bar spans the pauses; the row and counts use durationSeconds.
+ */
+export function feedEnd(e: Extract<BabyEvent, { type: 'breastfeed' }>, now: number): number {
+  const d = e.data.durationSeconds;
+  if (d === null) return now;
+  return Date.parse(e.occurredAt) + (d + (e.data.pausedSeconds ?? 0)) * 1000;
+}
+
 /** Logged events in [start, end), oldest first. "We missed some" marks are not logs. */
 export function eventsIn(
   events: readonly BabyEvent[],
@@ -369,7 +379,8 @@ export function rowText(
   switch (e.type) {
     case 'breastfeed': {
       const d = e.data.durationSeconds;
-      if (d === null) return { glyph: 'feed', name: 'Breastfeed', detail: 'Running' };
+      if (d === null)
+        return { glyph: 'feed', name: 'Breastfeed', detail: isPaused(e) ? 'Paused' : 'Running' };
       const segs = e.data.segments;
       if (segs && segs.length > 1) {
         const t = sideTimes(e, 0)!;
@@ -400,6 +411,15 @@ export function rowText(
       };
     }
     case 'pump': {
+      // A running pump and one stopped before its amount have no volume to show (#32).
+      if (e.data.durationSeconds === null)
+        return { glyph: 'pump', name: 'Pump', detail: `${cap(pumpSide(e))} · running` };
+      if (awaitingAmount(e))
+        return {
+          glyph: 'pump',
+          name: 'Pump',
+          detail: `${cap(pumpSide(e))} · ${minutes(e.data.durationSeconds!)} · amount not entered`,
+        };
       const side = (ml: number | null, s: string) => (ml === null ? null : `${s} ${volume(ml)}`);
       return {
         glyph: 'pump',
