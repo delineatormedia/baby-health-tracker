@@ -309,6 +309,7 @@
     color: var(--dim);
   }
   .pause {
+    margin-top: 10px;
     margin-bottom: 10px;
   }
   .pause[aria-pressed='true'] {
