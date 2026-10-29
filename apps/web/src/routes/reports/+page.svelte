@@ -677,46 +677,13 @@
     border: 2px solid var(--ink);
   }
   .g {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
     margin-right: 8px;
-    vertical-align: -1px;
-    flex: none;
   }
   .sub .g {
     margin-right: 5px;
   }
   .c .g {
     margin-right: 0;
-  }
-  .g-feed {
-    width: 5px;
-    height: 13px;
-    border-radius: 2px;
-    background: var(--feed);
-  }
-  .g-bottle {
-    border: 2.5px solid var(--bottle);
-    border-radius: 50%;
-  }
-  .g-wet {
-    background: var(--wet);
-    border-radius: 50%;
-  }
-  .g-dirty {
-    background: var(--dirty);
-  }
-  .g-pump {
-    background: var(--pump);
-    transform: rotate(45deg) scale(0.85);
-  }
-  /* "We missed some": hatched, the usual mark for a gap in the record. --text-dim stripes
-     reach 4.5:1 on --panel and --bg in both themes. */
-  .g-miss {
-    border: 1.5px solid var(--text-dim);
-    border-radius: 2px;
-    background: repeating-linear-gradient(135deg, var(--text-dim) 0 1.5px, transparent 1.5px 4px);
   }
   .row .mk {
     margin: 0 0 0 8px;

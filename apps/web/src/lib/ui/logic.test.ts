@@ -13,6 +13,7 @@ import {
   innerMarks,
   describe as describeEvent,
   editLink,
+  kindName,
   feedElapsed,
   finishFeedData,
   followsFeed,
@@ -585,6 +586,20 @@ describe('editLink', () => {
     );
     expect(editLink(mark)).toBeUndefined();
   });
+});
+
+test('kindName names an entry without its details (#49)', () => {
+  const stool = { color: 'pale_yellow', consistency: null, size: null, flags: [] };
+  expect(
+    [
+      ev('diaper', { kind: 'wet' }, 0),
+      ev('diaper', { kind: 'mixed', stool }, 0),
+      ev('bottle', { contents: 'breast_milk', volumeMl: 240 }, 0),
+      ev('breastfeed', { side: 'left', durationSeconds: null }, 3),
+      ev('pump', { side: 'both', durationSeconds: 900, leftMl: 60, rightMl: 45 }, 15),
+      ev('weight', { grams: 4535 }, 0),
+    ].map(kindName),
+  ).toEqual(['Wet diaper', 'Mixed diaper', 'Bottle', 'Breastfeed', 'Pump', 'Weight']);
 });
 
 test('latestStart keeps a finished feed ending by now', () => {

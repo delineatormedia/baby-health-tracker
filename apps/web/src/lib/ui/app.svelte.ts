@@ -188,12 +188,13 @@ class AppState {
     data: EventData<T>,
     /** Toast text, e.g. "Wet logged"; the time is appended. */
     label: string,
-    opts: { occurredAt?: string } = {},
+    /** `day` replaces the appended time for a mark about a whole day, e.g. "Yesterday". */
+    opts: { occurredAt?: string; day?: string } = {},
   ): Promise<Change> {
     const baby = this.baby;
     if (!baby) throw new Error('No baby');
-    const change = await this.store.log(baby.id, type, data, opts);
-    this.showUndo(`${label} · ${when(change.event.occurredAt, Date.now())}`, change);
+    const change = await this.store.log(baby.id, type, data, { occurredAt: opts.occurredAt });
+    this.showUndo(`${label} · ${opts.day ?? when(change.event.occurredAt, Date.now())}`, change);
     return change;
   }
 

@@ -32,8 +32,9 @@
   /** "We missed some" (#24): this day leaves the count checks in Readings. */
   const markMissed = (d: HistoryDay) =>
     once(() =>
-      app.log('missed_logs', window(d), `Marked ${d.label}: we missed some`, {
+      app.log('missed_logs', window(d), 'Missed some', {
         occurredAt: iso(d.start),
+        day: d.label,
       }),
     );
 

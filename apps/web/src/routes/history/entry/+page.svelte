@@ -5,7 +5,7 @@
   import { untrack } from 'svelte';
   import { app } from '../../../lib/ui/app.svelte.ts';
   import { rowText } from '../../../lib/ui/history.ts';
-  import { cappedStart, describe, latestStart } from '../../../lib/ui/logic.ts';
+  import { cappedStart, kindName, latestStart } from '../../../lib/ui/logic.ts';
   import TimeRow from '../../../lib/ui/TimeRow.svelte';
   import { when } from '../../../lib/ui/time.ts';
 
@@ -28,10 +28,7 @@
       const occurredAt = cappedStart(event, at, Date.now());
       if (occurredAt !== event.occurredAt) {
         const change = await app.store.edit(event.id, { occurredAt });
-        app.showUndo(
-          `${describe(event, app.volume)} · moved to ${when(occurredAt, Date.now())}`,
-          change,
-        );
+        app.showUndo(`${kindName(event)} moved · ${when(occurredAt, Date.now())}`, change);
       }
       await back();
     } catch (e) {
@@ -46,7 +43,7 @@
     busy = true;
     try {
       const change = await app.store.remove(event.id);
-      app.showUndo(`${describe(event, app.volume)} · deleted`, change);
+      app.showUndo(`${kindName(event)} deleted`, change);
       await back();
     } catch (e) {
       app.fail(e);

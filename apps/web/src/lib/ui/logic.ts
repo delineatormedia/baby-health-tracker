@@ -561,6 +561,16 @@ export function describe(e: BabyEvent, volume: (ml: number) => string): string {
 }
 
 /**
+ * What an entry is, without its details: "Mixed diaper", "Bottle", "Pump". A toast after a
+ * move, delete or details save names the entry this way; the parent just saw the details (#49).
+ */
+export function kindName(e: BabyEvent): string {
+  if (e.type === 'diaper')
+    return `${{ wet: 'Wet', dirty: 'Dirty', mixed: 'Mixed' }[e.data.kind]} diaper`;
+  return describe(e, String).split(' · ')[0]!;
+}
+
+/**
  * The second action on an event's Logged toast: the screen that changes its time. Dirty and
  * mixed diapers reopen their details; a running feed opens its timer; the rest share /logged.
  * A "We missed some" mark has no time to change, and a stopped pump is on its amount form, so none.
