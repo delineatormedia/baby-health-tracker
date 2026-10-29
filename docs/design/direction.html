@@ -14,11 +14,11 @@ body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:4
 .phone{width:390px;height:844px;border-radius:46px;overflow:hidden;position:relative;box-shadow:0 0 0 10px #111,0 20px 50px rgba(0,0,0,.25);margin:10px;background:var(--bg);color:var(--ink)}
 
 /* Tokens. Light is unchanged from C. Night is "graphite": warm near-black, dim stone ink, muted sage accent. No red. */
-.light{--bg:#ECEFF1;--panel:#FFFFFF;--ink:#1F2A33;--dim:#77848E;--line:#D9DEE2;--acc:#2E6A8E;--accInk:#FFFFFF;--band:#D6E4EC;--flag:#A8552F;--flagSoft:#F7EBE3;--well:#FFFFFF}
-.night{--bg:#0D0C0B;--panel:#161513;--ink:#ADA59A;--dim:#68625A;--line:#252320;--acc:#6F8F84;--accInk:#0D0C0B;--band:#1E2925;--flag:#C29A62;--flagSoft:#1B1712;--well:#1C1A17}
+.light{--feed:#6E2A9C;--bottle:#08664C;--wet:#1F6FD6;--dirty:#7F7410;--pump:#C2367A;--bg:#ECEFF1;--panel:#FFFFFF;--ink:#1F2A33;--dim:#5B6670;--line:#D9DEE2;--acc:#2E6A8E;--accInk:#FFFFFF;--band:#D6E4EC;--flag:#A8552F;--flagSoft:#F7EBE3;--well:#FFFFFF}
+.night{--feed:#B880D8;--bottle:#25876B;--wet:#4C8EF0;--dirty:#ABA53A;--pump:#DA7AA0;--bg:#0D0C0B;--panel:#161513;--ink:#ADA59A;--dim:#8A8378;--line:#252320;--acc:#6F8F84;--accInk:#0D0C0B;--band:#1E2925;--flag:#C29A62;--flagSoft:#1B1712;--well:#1C1A17}
 
 .sb{height:50px;display:flex;justify-content:space-between;align-items:flex-end;padding:0 30px 6px;font:600 15px -apple-system,system-ui,sans-serif}
-.lab{font:500 11px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.lab{font:500 15px ui-monospace,Menlo,monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--dim)}
 .top{display:flex;justify-content:space-between;align-items:baseline;padding:16px 24px 0}
 .top b{font:600 17px -apple-system,system-ui,sans-serif}
 .num{font-variant-numeric:tabular-nums}
@@ -28,32 +28,43 @@ body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:4
 .dial svg{position:absolute;inset:0}
 .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .center .v{font:300 60px/1 -apple-system,system-ui,sans-serif;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin:8px 0}
-.legend{display:flex;justify-content:center;gap:18px;margin-top:16px}
-.legend span{display:flex;align-items:center;gap:6px}
-.legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
-.quiet{text-align:center;margin-top:18px;font-size:14px;color:var(--dim)}
+.legend{display:flex;justify-content:center;gap:18px;margin-top:14px;font:400 15px -apple-system,system-ui,sans-serif;color:var(--dim)}
+.legend b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.legend span{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.legend i{width:12px;height:12px;display:inline-block}
+.quiet{text-align:center;margin-top:18px;font-size:17px;color:var(--dim)}
 .quiet b{color:var(--ink);font-weight:500}
-.chips{position:absolute;left:12px;right:12px;bottom:166px;display:flex;gap:6px}
-.chips div{flex:1;height:40px;border-radius:12px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--dim)}
-.rail{position:absolute;left:0;right:0;bottom:0;padding:10px 12px 30px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:var(--bg)}
-.rail div{height:112px;border-radius:16px;background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:flex-end;padding:12px 10px;font:600 16px -apple-system,system-ui,sans-serif}
-.rail small{font:400 10px ui-monospace,Menlo,monospace;color:var(--dim);margin-top:4px;letter-spacing:.04em}
-.rail .run{background:var(--acc);color:var(--accInk);border-color:var(--acc)}
-.rail .run small{color:var(--accInk);opacity:.7}
-.toast{position:absolute;left:16px;right:16px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;font-size:14px;background:var(--panel)}
+.chips{position:absolute;left:12px;right:12px;bottom:236px;display:flex;gap:6px}
+.chips div{flex:1;height:48px;border-radius:12px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink)}
+.rail{position:absolute;left:0;right:0;bottom:0;padding:10px 12px 30px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:88px 88px;gap:8px;background:var(--bg)}
+.rail>div{--ev:var(--line);border-radius:16px;background:var(--panel);border:2px solid var(--ev);display:flex;flex-direction:column;justify-content:flex-end;padding:10px 12px;font:600 20px/1.1 -apple-system,system-ui,sans-serif}
+.rail .tall{grid-row:span 2}
+.rail b{display:flex;align-items:center;gap:8px;font-weight:600}
+.rail small{white-space:nowrap;font:400 15px/1.25 -apple-system,system-ui,sans-serif;color:var(--dim);margin-top:4px;font-variant-numeric:tabular-nums}
+.rail small em{font-style:normal;color:var(--ink)}
+.rail .run{border-width:3px;background:color-mix(in srgb,var(--ev) 16%,var(--panel))}
+.rail .run small{color:var(--ink)}
+.rail .run .clock{font:300 34px/1 -apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums;margin:6px 0 2px}
+.g{display:inline-block;width:12px;height:12px;flex:none}
+.g.g-feed{background:var(--feed);border-radius:2px;width:6px;height:14px}
+.g.g-bottle{border:2.5px solid var(--bottle);border-radius:50%}
+.g.g-wet{background:var(--wet);border-radius:50%}
+.g.g-dirty{background:var(--dirty)}
+.g.g-pump{background:var(--pump);transform:rotate(45deg) scale(.85)}
+.toast{position:absolute;left:16px;right:16px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;font-size:17px;background:var(--panel)}
 .toast b{font-weight:600}
 .toast .acts{display:flex;gap:18px}
 
 /* shared controls */
 .seg{display:flex;margin:18px 16px 0;border-radius:14px;background:var(--panel);border:1px solid var(--line);overflow:hidden}
-.seg div{flex:1;height:54px;display:flex;align-items:center;justify-content:center;font:600 16px -apple-system,system-ui,sans-serif}
+.seg div{flex:1;height:54px;display:flex;align-items:center;justify-content:center;font:600 20px -apple-system,system-ui,sans-serif}
 .seg div+div{border-left:1px solid var(--line)}
 .seg .on{background:var(--ink);color:var(--bg)}
-.go{position:absolute;left:16px;right:16px;bottom:30px;height:66px;border-radius:18px;background:var(--acc);color:var(--accInk);display:flex;align-items:center;justify-content:center;font:600 18px -apple-system,system-ui,sans-serif}
-.go2{position:absolute;left:16px;right:16px;bottom:106px;height:54px;border-radius:16px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 16px -apple-system,system-ui,sans-serif}
+.go{position:absolute;left:16px;right:16px;bottom:30px;height:66px;border-radius:18px;background:var(--acc);color:var(--accInk);display:flex;align-items:center;justify-content:center;font:600 20px -apple-system,system-ui,sans-serif}
+.go2{position:absolute;left:16px;right:16px;bottom:106px;height:54px;border-radius:16px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 20px -apple-system,system-ui,sans-serif}
 .sec{margin:26px 24px 10px}
 .opts{display:grid;gap:8px;margin:0 16px}
-.opts div{height:52px;border-radius:12px;border:1px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:15px}
+.opts div{height:56px;border-radius:12px;border:1px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:20px}
 .opts .on{border:2px solid var(--ink);font-weight:600}
 .steps{display:flex;gap:6px;margin:14px 24px 0}
 .steps i{flex:1;height:3px;border-radius:2px;background:var(--line)}
@@ -62,27 +73,27 @@ body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:4
 /* diaper */
 .well{margin:14px 16px 0;border-radius:18px;padding:14px;background:var(--well);border:1px solid var(--line)}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.tile{height:84px;border-radius:12px;position:relative;padding:8px 10px;font:500 12px -apple-system,system-ui,sans-serif;display:flex;align-items:flex-end;color:rgba(0,0,0,.66)}
+.tile{height:84px;border-radius:12px;position:relative;padding:8px 10px;font:500 15px/1.1 -apple-system,system-ui,sans-serif;display:flex;align-items:flex-end;color:rgba(0,0,0,.66)}
 .tile.dk{color:rgba(255,255,255,.82)}
 .tile.sm{height:58px}
-.tile.fl::after{content:"!";position:absolute;top:6px;right:9px;font:700 12px ui-monospace,Menlo,monospace}
+.tile.fl::after{content:"!";position:absolute;top:6px;right:9px;font:700 15px ui-monospace,Menlo,monospace}
 .flagnote{margin:16px 2px 8px;color:var(--flag)}
-.toggle{display:flex;justify-content:space-between;align-items:center;margin:16px 16px 0;padding:0 16px;height:56px;border-radius:14px;background:var(--panel);border:1px solid var(--line);font-size:16px}
+.toggle{display:flex;justify-content:space-between;align-items:center;margin:16px 16px 0;padding:0 16px;height:56px;border-radius:14px;background:var(--panel);border:1px solid var(--line);font-size:20px}
 .sw{width:50px;height:30px;border-radius:15px;background:var(--line);position:relative}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--bg)}
 .sw.on{background:var(--acc)}.sw.on::after{left:23px;background:var(--accInk)}
 .hint{position:absolute;left:0;right:0;bottom:40px;text-align:center}
 .done{display:flex;align-items:center;gap:12px;margin:18px 16px 0;padding:14px 16px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
 .done .chip{width:34px;height:34px;border-radius:8px}
-.done div{flex:1;font-size:15px}
-.done small{display:block;color:var(--dim);font-size:13px;margin-top:2px}
+.done div{flex:1;font-size:17px}
+.done small{display:block;color:var(--dim);font-size:15px;margin-top:2px}
 
 /* bottle + pump */
 .bottle{position:relative;margin:22px 16px 0;display:grid;grid-template-columns:1fr 130px 1fr;gap:12px}
 .scale{position:relative}
-.scale div{position:absolute;font:500 13px ui-monospace,Menlo,monospace;color:var(--dim);transform:translateY(-50%)}
+.scale div{position:absolute;font:500 15px ui-monospace,Menlo,monospace;color:var(--dim);transform:translateY(-50%)}
 .scale.l div{right:0}.scale.r div{left:0}
-.scale .hi{color:var(--ink);font-weight:700;font-size:16px}
+.scale .hi{color:var(--ink);font-weight:700;font-size:17px}
 .vessel{position:relative;border:2px solid var(--ink);border-radius:26px 26px 30px 30px;overflow:hidden;background:var(--panel)}
 .fill{position:absolute;left:0;right:0;bottom:0;background:var(--band)}
 .fill::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--acc)}
@@ -101,49 +112,49 @@ body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:4
 .sides{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:56px 16px 0}
 .sides div{height:120px;border-radius:18px;border:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font:600 20px -apple-system,system-ui,sans-serif}
 .sides .on{border:2px solid var(--acc)}
-.sides small{font:400 13px ui-monospace,Menlo,monospace;color:var(--dim)}
+.sides small{font:400 15px ui-monospace,Menlo,monospace;color:var(--dim)}
 
 /* readings */
 .verdict{margin:18px 16px 0;border-radius:18px;padding:18px;background:var(--panel);border:1px solid var(--line)}
 .verdict h3{font:600 20px/1.25 -apple-system,system-ui,sans-serif;margin:8px 0 4px}
-.verdict p{font-size:14px;color:var(--dim)}
+.verdict p{font-size:17px;color:var(--dim)}
 .verdict.flag{background:var(--flagSoft);border:1.5px solid var(--flag)}
 .verdict.flag .lab{color:var(--flag)}
-.verdict .more{display:flex;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:15px;font-weight:600}
+.verdict .more{display:flex;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:17px;font-weight:600}
 .verdict.flag .more{border-top-color:color-mix(in srgb,var(--flag) 35%,transparent)}
 .gauge{margin:10px 16px 0;padding:16px 18px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
 .gauge .r{display:flex;justify-content:space-between;align-items:baseline}
-.gauge .k{font:600 15px -apple-system,system-ui,sans-serif}
-.gauge .v{font:500 15px ui-monospace,Menlo,monospace}
+.gauge .k{font:600 17px -apple-system,system-ui,sans-serif}
+.gauge .v{font:500 17px ui-monospace,Menlo,monospace}
 .track{position:relative;height:26px;margin-top:12px}
 .track .base{position:absolute;left:0;right:0;top:12px;height:2px;background:var(--line)}
 .track .band{position:absolute;top:6px;height:14px;background:var(--band);border-radius:3px}
 .track .pt{position:absolute;top:3px;width:4px;height:20px;background:var(--ink);border-radius:2px;margin-left:-2px}
 
 /* why */
-.prose{margin:22px 24px 0;font-size:16px;line-height:1.5}
+.prose{margin:22px 24px 0;font-size:17px;line-height:1.5}
 .prose h2{font:600 24px/1.2 -apple-system,system-ui,sans-serif;margin:8px 0 12px}
 .prose p{margin-bottom:12px}
-.src{margin:16px 16px 0;padding:14px 16px;border-radius:14px;border:1px dashed var(--line);font-size:13px;line-height:1.45;color:var(--dim)}
+.src{margin:16px 16px 0;padding:14px 16px;border-radius:14px;border:1px dashed var(--line);font-size:15px;line-height:1.45;color:var(--dim)}
 
 /* history + settings + forms */
 .day{margin:20px 24px 6px}
-.ev{display:grid;grid-template-columns:58px 1fr 26px;align-items:center;gap:10px;padding:13px 24px;border-bottom:1px solid var(--line)}
-.ev .t{font:500 14px ui-monospace,Menlo,monospace;color:var(--dim)}
-.ev .k{font-size:16px}
-.ev .k small{display:block;color:var(--dim);font-size:13px;margin-top:2px}
-.ev .who{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 11px ui-monospace,Menlo,monospace;color:var(--dim)}
+.ev{display:grid;grid-template-columns:62px 1fr 30px;align-items:center;gap:10px;padding:13px 24px;border-bottom:1px solid var(--line)}
+.ev .t{font:500 15px ui-monospace,Menlo,monospace;color:var(--dim)}
+.ev .k{font-size:17px}
+.ev .k small{display:block;color:var(--dim);font-size:15px;margin-top:2px}
+.ev .who{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 15px ui-monospace,Menlo,monospace;color:var(--dim)}
 .ev .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:0}
 .list{margin:0 16px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
-.list div{display:flex;justify-content:space-between;align-items:center;padding:0 16px;height:56px;font-size:16px}
+.list div{display:flex;justify-content:space-between;align-items:center;padding:0 16px;height:56px;font-size:17px}
 .list div+div{border-top:1px solid var(--line)}
-.list span{color:var(--dim);font-size:14px}
+.list span{color:var(--dim);font-size:15px}
 .field{margin:0 16px 0;padding:10px 16px 12px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
 .field b{display:block;font:400 19px -apple-system,system-ui,sans-serif;margin-top:4px}
 .field+.field{margin-top:8px}
 .keys{position:absolute;left:12px;right:12px;bottom:110px;display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .keys div{height:58px;border-radius:12px;background:var(--panel);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:400 24px -apple-system,system-ui,sans-serif}
-.keys .ghost{background:none;border:none;color:var(--dim);font-size:18px}
+.keys .ghost{background:none;border:none;color:var(--dim);font-size:20px}
 .mark{display:flex;justify-content:center;margin-top:150px}
 </style></head><body>
 <div id="root"></div>
@@ -154,26 +165,38 @@ const sb=`<div class="sb"><span class="num">2:59</span><span>●●● ▮</span
 const hdr=(t,r)=>`<div class="top"><b>${t}</b><span class="lab">${r}</span></div>`;
 
 function pt(h,r,c=150){const a=(h/24)*2*Math.PI-Math.PI/2;return[c+r*Math.cos(a),c+r*Math.sin(a)]}
-function dialSvg(){
-  const feeds=[2.85,23.83,20.5,17.3,14.6,11.9,8.7,5.6,0.2], wets=[2.08,22.6,19.1,15.8,12.4,9.2,6.1], dirty=[23.33,18.1,13.2,7.4];
+function dialSvg(running){
+  const feeds=[23.83,20.5,17.3,14.6,8.7,5.6,0.2], bottles=[11.9,2.05], wets=[2.08,22.6,19.1,15.8,12.4,9.2,6.1], dirty=[23.33,18.1,13.2,7.4];
+  if(!running) feeds.unshift(1.67);
   const tick=(h,r1,r2,c,w)=>{const[a,b]=pt(h,r1),[x,y]=pt(h,r2);return`<line x1="${a}" y1="${b}" x2="${x}" y2="${y}" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>`};
-  let s=`<circle cx="150" cy="150" r="140" fill="none" stroke="var(--line)" stroke-width="1.5"/>`;
-  [0,6,12,18].forEach(h=>{s+=tick(h,140,131,'var(--dim)',1.5);const[x,y]=pt(h,121);s+=`<text x="${x}" y="${y+4}" text-anchor="middle" font-family="ui-monospace,Menlo" font-size="10" fill="var(--dim)">${h}</text>`});
-  feeds.forEach(h=>s+=tick(h,140,128,'var(--acc)',4));
-  const[a1,b1]=pt(2.85,134),[a2,b2]=pt(2.98,134);
-  s+=`<path d="M${a1} ${b1} A134 134 0 0 1 ${a2} ${b2}" stroke="var(--acc)" stroke-width="12" fill="none" stroke-linecap="round"/>`;
-  wets.forEach(h=>{const[x,y]=pt(h,104);s+=`<circle cx="${x}" cy="${y}" r="3" fill="var(--ink)"/>`});
-  dirty.forEach(h=>{const[x,y]=pt(h,104);s+=`<rect x="${x-3.5}" y="${y-3.5}" width="7" height="7" fill="none" stroke="var(--ink)" stroke-width="1.6"/>`});
+  let s=`<circle cx="150" cy="150" r="140" fill="none" stroke="var(--line)" stroke-width="1.5"/><circle cx="150" cy="150" r="99" fill="none" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"/>`;
+  [0,6,12,18].forEach(h=>{s+=tick(h,140,131,'var(--dim)',1.5);const[x,y]=pt(h,121);s+=`<text x="${x}" y="${y+5}" text-anchor="middle" font-family="ui-monospace,Menlo" font-size="15" fill="var(--dim)">${h}</text>`});
+  feeds.forEach(h=>s+=tick(h,141,126,'var(--feed)',6));
+  bottles.forEach(h=>{const[x,y]=pt(h,134);s+=`<circle cx="${x}" cy="${y}" r="6" fill="var(--panel)" stroke="var(--bottle)" stroke-width="3"/>`});
+  if(running){const[a1,b1]=pt(2.85,134),[a2,b2]=pt(2.98,134);s+=`<path d="M${a1} ${b1} A134 134 0 0 1 ${a2} ${b2}" stroke="var(--feed)" stroke-width="14" fill="none" stroke-linecap="round"/>`}
+  wets.forEach(h=>{const[x,y]=pt(h,99);s+=`<circle cx="${x}" cy="${y}" r="5.5" fill="var(--wet)"/>`});
+  dirty.forEach(h=>{const[x,y]=pt(h,99);s+=`<rect x="${x-5.5}" y="${y-5.5}" width="11" height="11" rx="1" fill="var(--dirty)"/>`});
   return `<svg viewBox="0 0 300 300">${s}</svg>`;
 }
+const legend=(f)=>`<div class="legend"><span><i class="g g-feed"></i>Feed <b>${f}</b></span><span><i class="g g-bottle"></i>Bottle <b>2</b></span><span><i class="g g-wet"></i>Wet <b>7</b></span><span><i class="g g-dirty"></i>Dirty <b>4</b></span></div>`;
+const btn=(ev,label,lines,cls='')=>`<div class="${cls}" style="--ev:var(--${ev})"><b><i class="g g-${ev}"></i>${label}</b>${lines.map(l=>`<small>${l}</small>`).join('')}</div>`;
+function rail(running){return `<div class="rail">${running
+  ?`<div class="tall run" style="--ev:var(--feed)"><b><i class="g g-feed"></i>Stop</b><span class="clock">08:42</span><small><em>Right</em> side</small></div>`
+  :btn('feed','Feed',['<em>1h 19m</em> ago','at 1:40 AM','<em>Left</em> side'],'tall')}
+  ${btn('wet','Wet',running?['<em>Just now</em>','at 2:59 AM']:['<em>54m</em> ago','at 2:05 AM'])}${btn('dirty','Dirty',['<em>3h 10m</em> ago','at 11:49 PM'])}
+  ${btn('bottle','Bottle',['<em>2h 50m</em> ago','60 mL'])}${btn('pump','Pump',['<em>5h 4m</em> ago','<em>Both</em> sides'])}</div>`}
 const S={
 home:()=>`${sb}${hdr('Juniper','Day 12 · last 24 h')}
-<div class="dial">${dialSvg()}<div class="center"><span class="lab">Feeding · right</span><span class="v">08:42</span><span class="lab">since 2:51 AM</span></div></div>
-<div class="legend lab"><span><i style="background:var(--acc)"></i>Feed 9</span><span><i style="background:var(--ink)"></i>Wet 7</span><span><i style="border:1.6px solid var(--ink);border-radius:0;width:6px;height:6px"></i>Dirty 4</span></div>
-<div class="quiet">Last diaper <b class="num">54 min</b> ago</div>
-<div class="toast" style="bottom:220px"><span>Wet logged · 2:59 AM</span><b>Undo</b></div>
-<div class="chips"><div>Pump</div><div>Weight</div><div>History</div><div>Readings</div></div>
-<div class="rail"><div class="run">Stop<small>R · 08:42</small></div><div>Wet<small>1 TAP</small></div><div>Dirty<small>COLOR</small></div><div>Bottle<small>60 ML</small></div></div>`,
+<div class="dial">${dialSvg(false)}<div class="center"><span class="lab">Since last feed</span><span class="v">1:19</span><span class="lab">left side</span></div></div>
+${legend(9)}
+<div class="chips"><div>Weight</div><div>History</div><div>Readings</div></div>
+${rail(false)}`,
+homeFeeding:()=>`${sb}${hdr('Juniper','Day 12 · last 24 h')}
+<div class="dial">${dialSvg(true)}<div class="center"><span class="lab">Feeding · right</span><span class="v">08:42</span><span class="lab">since 2:51 AM</span></div></div>
+${legend(9)}
+<div class="toast" style="bottom:294px"><span>Wet logged · 2:59 AM</span><b>Undo</b></div>
+<div class="chips"><div>Weight</div><div>History</div><div>Readings</div></div>
+${rail(true)}`,
 
 feed:()=>`${sb}${hdr('Breastfeed','Started 2:51 AM ›')}
 <div class="big"><span class="lab">Right side</span><div class="v">08:42</div><span class="lab">Total 08:42 · last feed left</span></div>
@@ -237,7 +260,7 @@ weight:()=>`${sb}${hdr('Weight','Now · 2:59 AM ›')}
 
 history:()=>`${sb}${hdr('History','Both parents')}
 <div class="day lab">Today</div>
-${[["2:59","Wet diaper","","S"],["2:51","Breastfeed","Right · running","K"],["2:05","Wet diaper","","S"],["11:50","Bottle","Breast milk · 60 mL","S"],["11:20","Dirty diaper","Mustard · soft · M","K","#C9A227"],["9:30","Pump","45 L · 38 R · after feed","K"],["8:40","Breastfeed","Left · 14 min","K"]].map(([t,k,d,w,c])=>`<div class="ev"><span class="t">${t}</span><span class="k">${c?`<i class="dot" style="background:${c}"></i>`:''}${k}${d?`<small>${d}</small>`:''}</span><span class="who">${w}</span></div>`).join('')}
+${[["2:59","wet","Wet diaper","","S"],["2:51","feed","Breastfeed","Right · running","K"],["2:05","wet","Wet diaper","","S"],["11:50","bottle","Bottle","Breast milk · 60 mL","S"],["11:20","dirty","Dirty diaper","Mustard · soft · M","K","#C9A227"],["9:30","pump","Pump","45 L · 38 R · after feed","K"],["8:40","feed","Breastfeed","Left · 14 min","K"]].map(([t,g,k,d,w,c])=>`<div class="ev"><span class="t">${t}</span><span class="k"><i class="g g-${g}" style="margin-right:8px"></i>${k}${c?` <i class="dot" style="background:${c};margin:0 0 0 4px"></i>`:''}${d?`<small>${d}</small>`:''}</span><span class="who">${w}</span></div>`).join('')}
 <div class="day lab">Yesterday</div>
 <div class="ev"><span class="t">7:15</span><span class="k">Weight<small>Clinic · 3 610 g</small></span><span class="who">S</span></div>`,
 
@@ -262,17 +285,22 @@ signin:()=>`${sb}
 <div class="go2">I have an invite</div>
 <div class="go">Sign in with a passkey</div>`,
 };
-function gauges(){return [["Wet diapers","7",[50,100],72,"6+ from day 5"],["Dirty diapers","4",[38,100],55,"3+ in week 2"],["Weight vs birth","+3.1%",[40,80],58,"Back to birth weight by day 7–14"]].map(([k,v,[b1,b2],p,n])=>`<div class="gauge"><div class="r"><span class="k">${k}</span><span class="v">${v}</span></div><div class="track"><div class="base"></div><div class="band" style="left:${b1}%;right:${100-b2}%"></div><div class="pt" style="left:${p}%"></div></div><div class="lab" style="margin-top:6px;letter-spacing:.04em;text-transform:none;font-size:12px">${n}</div></div>`).join('')
-+`<div class="gauge"><div class="r"><span class="k">Recorded bottle intake</span><span class="v">≈410 mL</span></div><div style="margin-top:10px;font-size:15px;font-weight:500">Not enough information to assess total intake</div><div class="lab" style="margin-top:4px;letter-spacing:.04em;text-transform:none;font-size:12px">≈410 mL recorded from bottles. 9 breastfeeds not measured.</div></div>`}
+function gauges(){return [["Wet diapers","7",[50,100],72,"6+ from day 5"],["Dirty diapers","4",[38,100],55,"3+ in week 2"],["Weight vs birth","+3.1%",[40,80],58,"Back to birth weight by day 7–14"]].map(([k,v,[b1,b2],p,n])=>`<div class="gauge"><div class="r"><span class="k">${k}</span><span class="v">${v}</span></div><div class="track"><div class="base"></div><div class="band" style="left:${b1}%;right:${100-b2}%"></div><div class="pt" style="left:${p}%"></div></div><div class="lab" style="margin-top:6px;letter-spacing:.02em;text-transform:none;font-size:15px">${n}</div></div>`).join('')
++`<div class="gauge"><div class="r"><span class="k">Recorded bottle intake</span><span class="v">≈410 mL</span></div><div style="margin-top:10px;font-size:15px;font-weight:500">Not enough information to assess total intake</div><div class="lab" style="margin-top:4px;letter-spacing:.02em;text-transform:none;font-size:15px">≈410 mL recorded from bottles. 9 breastfeeds not measured.</div></div>`}
 
 const BOARDS={
+ home:{h:"Home · glanceable (#20)",s:"Owner feedback after real-phone use: the dial read as black and white, the labels were too small, and the buttons should say when each thing was last logged. Each event type now has its own saturated colour and its own shape (feed bar, bottle ring, wet dot, dirty square), so the dial still reads without colour. Night colours are outlines and marks, never fills, and none is brighter than the night text. Buttons carry a coloured outline, the time since the last log, and the last side for Feed and Pump. No text is under 15 px.",cols:[["Home · idle","home","home"],["Home · feeding","homeFeeding","homeFeeding"]]},
  core:{h:"Instrument · core screens",cols:[["Home · 24 h dial","home","home"],["Breastfeed timer","feed","feed"],["Diaper 1 · color","diaperColor","diaperColor"],["Diaper 2 · details","diaperDetails","diaperDetails"],["Bottle","bottle","bottle"],["Readings","readingsFlag","readingsOk"],["Why?","why","why"]]},
  rest:{h:"Instrument · remaining screens",cols:[["Pump","pump","pump"],["Weight","weight","weight"],["History","history","history"],["Add a baby","addBaby","addBaby"],["Household","settings","settings"],["Sign in","signin","signin"]]},
 };
-const which=new URLSearchParams(location.search).get('board')||'core', B=BOARDS[which];
-const pal=[["Night bg","#0D0C0B"],["Panel","#161513"],["Ink","#ADA59A"],["Dim","#68625A"],["Accent","#6F8F84"],["Flag","#C29A62"]];
+const Q=new URLSearchParams(location.search), which=Q.get('board')||'core', B=BOARDS[which];
+const pal=which=='home'
+ ?[["Feed","#6E2A9C","#B880D8"],["Bottle","#08664C","#25876B"],["Wet","#1F6FD6","#4C8EF0"],["Dirty","#7F7410","#ABA53A"],["Pump","#C2367A","#DA7AA0"]]
+ :[["Night bg","#0D0C0B"],["Panel","#161513"],["Ink","#ADA59A"],["Dim","#8A8378"],["Accent","#6F8F84"],["Flag","#C29A62"]];
+// ?cvd=deut previews the board through a deuteranopia simulation (Machado et al. 2009, severity 1, linear RGB).
+if(Q.get('cvd')=='deut'){document.body.insertAdjacentHTML('beforeend',`<svg width="0" height="0" style="position:absolute"><filter id="deut" color-interpolation-filters="linearRGB"><feColorMatrix type="matrix" values="0.367322 0.860646 -0.227968 0 0  0.280085 0.672501 0.047413 0 0  -0.011820 0.042940 0.968881 0 0  0 0 0 1 0"/></filter></svg>`);document.getElementById('root').style.filter='url(#deut)'}
 document.getElementById('root').innerHTML=`<div class="board-h">${B.h}</div>
-<div class="board-s">Direction C, revised. Kept: the 24-hour dial and the instrument feel. Night mode is now graphite instead of red: warm near-black, dim stone text, a muted sage accent, and nothing brighter than it needs to be. Every screen does one job. Diapers take two steps: tap a color to log, add details only if you want. Wet still logs in one tap from home. Stool swatches stay true-color in every mode.</div>
-<div class="palette">${pal.map(([n,c])=>`<div><i style="background:${c}"></i>${n} ${c}</div>`).join('')}</div>`+
+<div class="board-s">${B.s||`Direction C, revised. Kept: the 24-hour dial and the instrument feel. Night mode is now graphite instead of red: warm near-black, dim stone text, a muted sage accent, and nothing brighter than it needs to be. Every screen does one job. Diapers take two steps: tap a color to log, add details only if you want. Wet still logs in one tap from home. Stool swatches stay true-color in every mode.`}${Q.get('cvd')=='deut'?' <b>Deuteranopia simulation.</b>':''}</div>
+<div class="palette">${pal.map(([n,c,c2])=>`<div><i style="background:${c}"></i>${c2?`<i style="background:${c2}"></i>`:''}${n} ${c}${c2?` · ${c2}`:''}</div>`).join('')}</div>`+
 ['light','night'].map(m=>`<div class="row">${B.cols.map(([c,l,n])=>`<div><div class="cap">${m} · ${c}${l!==n&&m=='night'?' · all clear':l!==n?' · flag':''}</div><div class="phone ${m}">${S[m=='light'?l:n]()}</div></div>`).join('')}</div>`).join('');
 </script></body></html>
