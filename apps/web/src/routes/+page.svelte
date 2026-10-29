@@ -72,10 +72,12 @@
     <span class="lab num">{ageDays(baby.birthAt, app.now)} days · last 24 h</span>
   </header>
 
+  <!-- The dial is the last 24 hours, so tapping it opens Reports (#21). While a feed runs it
+       stays the way back to the timer, where the parent switches sides. -->
   <a
-    href={resolve('/feed')}
+    href={running ? resolve('/feed') : resolve('/reports')}
     class="dial-link"
-    aria-label={running ? 'Open the breastfeed timer' : 'Breastfeed'}
+    aria-label={running ? 'Open the breastfeed timer' : 'Open Reports'}
   >
     <Dial {marks} running={running?.occurredAt ?? null} now={app.now}>
       {#if running}
