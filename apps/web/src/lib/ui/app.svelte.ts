@@ -11,6 +11,8 @@ import {
   authorId,
   DEFAULT_PREFS,
   loadBaby,
+  loadSetupAt,
+  markSetup,
   loadPrefs,
   saveBaby,
   savePrefs,
@@ -46,6 +48,8 @@ class AppState {
   ready = $state(false);
   error = $state<string | null>(null);
   baby = $state<Baby | null>(null);
+  /** When this phone set up its baby (ms); null on installs from before it was recorded. */
+  setupAt = $state<number | null>(null);
   events = $state.raw<BabyEvent[]>([]);
   // Read in init(): touching localStorage can throw (SecurityError) and must reach the error screen.
   prefs = $state<Prefs>(DEFAULT_PREFS);
@@ -70,6 +74,7 @@ class AppState {
       this.#kv = kv;
       this.#store = new EventStore(await openDatabase(), authorId(kv));
       this.baby = loadBaby(kv);
+      this.setupAt = loadSetupAt(kv);
       this.#store.subscribe(() => void this.#reload());
       await this.#reload();
     } catch (e) {
@@ -93,6 +98,7 @@ class AppState {
   setBaby(baby: Baby): void {
     try {
       saveBaby(this.#storage, baby);
+      this.setupAt = markSetup(this.#storage, Date.now());
     } catch (e) {
       this.fail(e);
       return;

@@ -262,7 +262,9 @@ function feeding(ctx: Ctx, start: number, end: number): Feeding {
   const formula = fed.some(isFormula);
   const gap = coverage(ctx, start, end);
   const breastMilkOnly = !gap && fed.length > 0 && !formula;
-  return { breastMilkOnly, formula, reason: gap ?? 'feeding_not_exclusive' };
+  // With no feed logged, nothing says other feeds happened; the feeding is just unknown.
+  const reason = gap ?? (fed.length === 0 ? 'no_feeds_logged' : 'feeding_not_exclusive');
+  return { breastMilkOnly, formula, reason };
 }
 
 /** Entries whose feeding population the window establishes. */
@@ -345,11 +347,10 @@ function countCheck(
   const [start, end] = dayBounds(ctx, d);
   const gap = coverage(ctx, start, end);
   if (gap) return notEnough(check, start, end, present, gap, observe(n, 'count', present));
-  const active = forFeeding(present, feeding(ctx, start, end));
+  const fed = feeding(ctx, start, end);
+  const active = forFeeding(present, fed);
   const observed = observe(n, 'count', active);
-  if (!active.some(canFlag)) {
-    return notEnough(check, start, end, present, 'feeding_not_exclusive', observed);
-  }
+  if (!active.some(canFlag)) return notEnough(check, start, end, present, fed.reason, observed);
   return decide(
     check,
     start,

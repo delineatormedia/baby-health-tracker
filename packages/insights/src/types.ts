@@ -98,8 +98,10 @@ export type NotEnoughDataReason =
   | 'no_recent_weight'
   | 'no_weight_near_interval_end'
   | 'sex_unknown'
-  /** A breastfed-only rule, and some formula or no feed was logged. */
-  | 'feeding_not_exclusive';
+  /** A breastfed-only rule, and some formula was logged. */
+  | 'feeding_not_exclusive'
+  /** A breastfed-only rule, and no feed was logged in the window, so the feeding is unknown. */
+  | 'no_feeds_logged';
 
 export interface Interval {
   start: Timestamp;

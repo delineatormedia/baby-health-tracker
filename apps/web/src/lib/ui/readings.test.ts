@@ -2,11 +2,14 @@ import { evaluate, type CheckResult, type Observed } from '@bht/insights';
 import { newId, type BabyEvent } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
 import {
+  COUNT_CHECKS,
   expectedRangeLine,
   fullyLogged,
+  loggingStart,
   marksIn,
   observedText,
   REASON_TEXT,
+  reasonText,
   statusText,
 } from './readings.ts';
 
@@ -79,6 +82,11 @@ describe('readings copy', () => {
     ).toBe('2 logged');
   });
 
+  test('a day with no feed logged never claims other feeds were logged', () => {
+    expect(REASON_TEXT.no_feeds_logged).toBe('No feeds logged');
+    expect(REASON_TEXT.feeding_not_exclusive).toContain('other feeds were logged');
+  });
+
   test('#26: the wording follows the operator, on or off the bound', () => {
     const flag = (observed: Observed): CheckResult => ({
       check: 'weight_loss',
@@ -138,13 +146,13 @@ describe('"We missed some" (#24)', () => {
   const twoWet = [1, 2].map((h) => ev('diaper', BIRTH + 4 * D + h * 3_600_000, { kind: 'wet' }));
   const mark = ev('missed_logs', BIRTH + 4 * D, day);
 
-  /** Readings as the page runs it: everything counts as fully logged except marks. */
+  /** Readings as the page runs it, logging from birth: fully logged except marks. */
   const wet = (events: BabyEvent[]) =>
     evaluate({
       baby: { birthAt: iso(BIRTH), sex: 'female' },
       events,
       now: iso(NOW),
-      fullyLogged: fullyLogged(iso(BIRTH), NOW, events),
+      fullyLogged: fullyLogged(iso(BIRTH), NOW, events, BIRTH),
       syncedThrough: iso(NOW),
     }).find((r) => r.check === 'wet_diapers')!;
 
@@ -179,8 +187,8 @@ describe('"We missed some" (#24)', () => {
   });
 
   test('fully logged is birth to now with the marked periods cut out', () => {
-    expect(fullyLogged(iso(BIRTH), NOW, [])).toEqual([{ start: iso(BIRTH), end: iso(NOW) }]);
-    expect(fullyLogged(iso(BIRTH), NOW, [mark])).toEqual([
+    expect(fullyLogged(iso(BIRTH), NOW, [], BIRTH)).toEqual([{ start: iso(BIRTH), end: iso(NOW) }]);
+    expect(fullyLogged(iso(BIRTH), NOW, [mark], BIRTH)).toEqual([
       { start: iso(BIRTH), end: day.start },
       { start: day.end, end: iso(NOW) },
     ]);
@@ -189,8 +197,116 @@ describe('"We missed some" (#24)', () => {
       start: iso(BIRTH + 4 * D + 1000),
       end: iso(NOW + D),
     });
-    expect(fullyLogged(iso(BIRTH), NOW, [late, mark])).toEqual([
+    expect(fullyLogged(iso(BIRTH), NOW, [late, mark], BIRTH)).toEqual([
       { start: iso(BIRTH), end: day.start },
     ]);
+  });
+
+  describe('before logging began', () => {
+    const H = 3_600_000;
+    const SETUP = BIRTH + 50 * H;
+    // From install at 50 h: a wet diaper every 3 h, a dirty one every 6 h, a feed every 2 h.
+    const every = (h: number, make: (t: number) => BabyEvent) =>
+      Array.from({ length: Math.floor((5 * D - 50 * H) / (h * H)) }, (_, i) =>
+        make(SETUP + i * h * H),
+      );
+    const log = [
+      ...every(3, (t) => ev('diaper', t, { kind: 'wet' })),
+      ...every(6, (t) =>
+        ev('diaper', t, {
+          kind: 'dirty',
+          stool: { color: null, consistency: null, size: null, flags: [] },
+        }),
+      ),
+      ...every(2, (t) => ev('breastfeed', t, { side: 'left', durationSeconds: 900 })),
+    ];
+    const readings = (now: number) => {
+      const events = log.filter((e) => Date.parse(e.occurredAt) <= now);
+      const start = loggingStart(SETUP, events);
+      const results = evaluate({
+        baby: { birthAt: iso(BIRTH), sex: 'female' },
+        events,
+        now: iso(now),
+        fullyLogged: fullyLogged(iso(BIRTH), now, events, start),
+        syncedThrough: iso(now),
+      });
+      return { start, results };
+    };
+
+    test('install at 50 h: the day-1 and day-2 windows are not flagged', () => {
+      // Day 2 ([24, 48 h)) is the latest completed day Readings shows from install until 72 h.
+      for (const now of [SETUP, SETUP + H, BIRTH + 3 * D - 1]) {
+        const { start, results } = readings(now);
+        expect(start).toBe(SETUP);
+        for (const check of COUNT_CHECKS) {
+          const r = results.find((x) => x.check === check)!;
+          expect(r, check).toMatchObject({ status: 'not_enough_data', reason: 'not_fully_logged' });
+          expect(r.window).toEqual({ start: iso(BIRTH + D), end: iso(BIRTH + 2 * D) });
+          expect(reasonText(r, start)).toBe('Before you started logging');
+        }
+        expect(results.filter((r) => r.status === 'flag')).toEqual([]);
+      }
+      // Day 1 was over before install, so no period of it counts as logged; nothing in it can
+      // be assessed, whichever check asks.
+      const covered = fullyLogged(iso(BIRTH), BIRTH + 5 * D, log, loggingStart(SETUP, log));
+      expect(covered).toEqual([{ start: iso(SETUP), end: iso(BIRTH + 5 * D) }]);
+    });
+
+    test('day 3 began before install too; day 4 is fully logged and assessed', () => {
+      const day3 = readings(BIRTH + 3 * D + H).results.find((r) => r.check === 'wet_diapers')!;
+      expect(day3.window.start).toBe(iso(BIRTH + 2 * D));
+      expect(reasonText(day3, SETUP)).toBe('Before you started logging');
+      const { results } = readings(BIRTH + 4 * D + H);
+      for (const check of COUNT_CHECKS) {
+        expect(results.find((r) => r.check === check)!.status, check).toBe('ok');
+      }
+      // A day after install with too few logs still flags: fully logged by default.
+      const sparse = log.filter(
+        (e) => e.type !== 'diaper' || Date.parse(e.occurredAt) < BIRTH + 3 * D,
+      );
+      const events = sparse.filter((e) => Date.parse(e.occurredAt) <= BIRTH + 4 * D + H);
+      const now = BIRTH + 4 * D + H;
+      const r = evaluate({
+        baby: { birthAt: iso(BIRTH), sex: 'female' },
+        events,
+        now: iso(now),
+        fullyLogged: fullyLogged(iso(BIRTH), now, events, loggingStart(SETUP, events)),
+        syncedThrough: iso(now),
+      }).find((x) => x.check === 'wet_diapers')!;
+      expect(r.status).toBe('flag');
+    });
+
+    test("a marked gap after install still reads as the parents' mark", () => {
+      const m = ev('missed_logs', BIRTH + 3 * D, {
+        start: iso(BIRTH + 3 * D),
+        end: iso(BIRTH + 4 * D),
+      });
+      const now = BIRTH + 4 * D + H;
+      const events = [...log.filter((e) => Date.parse(e.occurredAt) <= now), m];
+      const start = loggingStart(SETUP, events);
+      const r = evaluate({
+        baby: { birthAt: iso(BIRTH), sex: 'female' },
+        events,
+        now: iso(now),
+        fullyLogged: fullyLogged(iso(BIRTH), now, events, start),
+        syncedThrough: iso(now),
+      }).find((x) => x.check === 'wet_diapers')!;
+      expect(reasonText(r, start)).toBe('You marked missing logs for this day');
+    });
+
+    test('logging starts at the earlier of setup and the first logged event', () => {
+      const back = ev('diaper', BIRTH + 10 * H, { kind: 'wet' });
+      expect(loggingStart(SETUP, [back, ...log])).toBe(BIRTH + 10 * H);
+      expect(loggingStart(null, log)).toBe(SETUP);
+      expect(loggingStart(SETUP, [])).toBe(SETUP);
+      expect(loggingStart(null, [])).toBeNull();
+      // A deleted event or a mark does not move it.
+      expect(loggingStart(SETUP, [{ ...back, deleted: true } as BabyEvent, m0()])).toBe(SETUP);
+      expect(fullyLogged(iso(BIRTH), SETUP + H, [], null)).toEqual([]);
+      expect(fullyLogged(iso(BIRTH), SETUP + H, [], SETUP)).toEqual([
+        { start: iso(SETUP), end: iso(SETUP + H) },
+      ]);
+    });
+    const m0 = () => ev('missed_logs', BIRTH, { start: iso(BIRTH), end: iso(BIRTH + D) });
   });
 });

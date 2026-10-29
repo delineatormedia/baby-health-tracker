@@ -28,6 +28,7 @@ export const REASON_TEXT: Record<NotEnoughDataReason, string> = {
   no_weight_near_interval_end: 'No weight logged near the end of the period',
   sex_unknown: 'Needs the baby’s sex',
   feeding_not_exclusive: 'This rule is for breast milk only, and other feeds were logged',
+  no_feeds_logged: 'No feeds logged',
 };
 
 /**
@@ -84,19 +85,33 @@ export function marksIn(events: readonly BabyEvent[], w: Interval): MissedLogs[]
 }
 
 /**
- * Everything from birth to now counts as fully logged except the marked periods. The risk
- * the owner accepted: a forgotten diaper on an unmarked day can raise a false flag.
+ * Where the log begins: the earlier of this phone's setup and the first logged event. Before
+ * it nothing was logged, so nothing there is assessed. Null when there is neither yet.
+ */
+export function loggingStart(setupAt: number | null, events: readonly BabyEvent[]): number | null {
+  const first = events
+    .filter((e) => !e.deleted && e.type !== 'missed_logs')
+    .reduce((t, e) => Math.min(t, Date.parse(e.occurredAt)), Infinity);
+  const start = Math.min(setupAt ?? Infinity, first);
+  return Number.isFinite(start) ? start : null;
+}
+
+/**
+ * From where logging started to now counts as fully logged, except the marked periods. The
+ * risk the owner accepted: a forgotten diaper on an unmarked day can raise a false flag.
  */
 export function fullyLogged(
   birthAt: string,
   now: number,
   events: readonly BabyEvent[],
+  start: number | null,
 ): Interval[] {
+  if (start === null) return [];
   const holes = missedMarks(events)
     .map((m) => [Date.parse(m.data.start), Date.parse(m.data.end)] as const)
     .sort((a, b) => a[0] - b[0]);
   const out: Interval[] = [];
-  let from = Date.parse(birthAt);
+  let from = Math.max(Date.parse(birthAt), start);
   for (const [s, e] of holes) {
     if (s > from) out.push({ start: iso(from), end: iso(Math.min(s, now)) });
     from = Math.max(from, e);
@@ -104,6 +119,18 @@ export function fullyLogged(
   }
   if (from < now) out.push({ start: iso(from), end: iso(now) });
   return out.filter((i) => i.start < i.end);
+}
+
+/**
+ * Why a check is not assessed. A window that starts before logging began is not the parents'
+ * gap to mark; otherwise "not fully logged" can only be their "We missed some" mark.
+ */
+export function reasonText(r: CheckResult, start: number | null): string | null {
+  if (r.status !== 'not_enough_data') return null;
+  if (r.reason === 'not_fully_logged' && (start === null || Date.parse(r.window.start) < start)) {
+    return 'Before you started logging';
+  }
+  return REASON_TEXT[r.reason];
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();

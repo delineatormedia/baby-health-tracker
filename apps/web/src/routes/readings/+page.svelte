@@ -8,8 +8,9 @@
     COUNT_CHECKS,
     expectedRangeLine,
     fullyLogged,
+    loggingStart,
     marksIn,
-    REASON_TEXT,
+    reasonText,
     statusText,
   } from '../../lib/ui/readings.ts';
 
@@ -18,6 +19,7 @@
 
   // Re-evaluated once a minute and whenever the events change, always at the real current
   // time: a minute-floored cutoff would leave out a log made earlier this minute.
+  const start = $derived(loggingStart(app.setupAt, app.events));
   const minute = $derived(Math.floor(app.now / 60_000));
   const results = $derived.by(() => {
     void minute;
@@ -26,8 +28,9 @@
       baby: { birthAt: app.baby!.birthAt, sex: app.baby!.sex },
       events: app.events,
       now: new Date(now).toISOString(),
-      // Every period counts as fully logged except the ones marked "We missed some" (#24).
-      fullyLogged: fullyLogged(app.baby!.birthAt, now, app.events),
+      // From where logging began, every period counts as fully logged except the ones marked
+      // "We missed some" (#24).
+      fullyLogged: fullyLogged(app.baby!.birthAt, now, app.events, start),
       // This phone does not sync yet, so its log is the whole log.
       syncedThrough: new Date(now).toISOString(),
     });
@@ -123,7 +126,7 @@
           <b class:flagged={r.status === 'flag'} class="num">{statusText(r, app.volume)}</b>
         </summary>
         {#if r.status === 'not_enough_data'}
-          <p class="why">{REASON_TEXT[r.reason]}.</p>
+          <p class="why">{reasonText(r, start)}.</p>
           {#if r.reason === 'not_fully_logged' && marksIn(app.events, r.window).length > 0}
             <div><button class="mark" onclick={() => unmark(r)}>We logged everything</button></div>
           {/if}

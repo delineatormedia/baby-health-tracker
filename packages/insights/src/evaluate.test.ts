@@ -408,6 +408,19 @@ describe('feeding population (breastfed-only rules)', () => {
     });
   });
 
+  test('no feed logged: the breastfed-only rules say so, not that other feeds were logged', () => {
+    expect(
+      get({ now: after(10), feeds: 'none', events: [dirty(10 * D + H)] }, 'stools'),
+    ).toMatchObject({
+      status: 'not_enough_data',
+      reason: 'no_feeds_logged',
+    });
+    expect(get({ now: 30 * H, feeds: 'none' }, 'no_urine')).toMatchObject({
+      status: 'not_enough_data',
+      reason: 'no_feeds_logged',
+    });
+  });
+
   test('weight loss: ABM 8% only after a breast-milk day; NICE 10% for everyone', () => {
     const w = [weight(2 * H, 3000), weight(6 * D, 2740)];
     expect(status({ now: 6 * D + H, events: w }, 'weight_loss')).toBe('flag');
@@ -682,7 +695,7 @@ describe('feeds per day (first 4 weeks)', () => {
   test('no feed logged: the population is unknown', () => {
     expect(get({ now: after(3), feeds: 'none' }, 'feeds')).toMatchObject({
       status: 'not_enough_data',
-      reason: 'feeding_not_exclusive',
+      reason: 'no_feeds_logged',
     });
   });
 
