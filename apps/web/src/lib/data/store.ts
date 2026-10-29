@@ -3,7 +3,6 @@ import {
   newId,
   nextVersion,
   parseEvent,
-  resolveAll,
   resolveCurrent,
   type BabyEvent,
   type EventData,
@@ -43,13 +42,23 @@ export class EventStore {
     readonly now: () => Date = () => new Date(),
   ) {}
 
-  /** Current, non-deleted events for a baby, newest occurrence first. */
+  /**
+   * Current, non-deleted events for a baby, newest occurrence first. Each event id is resolved
+   * over all of its rows before filtering by baby, so an entry moved to another baby never
+   * shows under the old one from a stale row.
+   */
   async events(babyId: string): Promise<BabyEvent[]> {
-    const rows = await this.db.getAllFromIndex('versions', 'byBaby', babyId);
-    return [...resolveAll(rows.map(toStored)).values()]
-      .map((v) => v.event)
-      .filter((e) => !e.deleted)
-      .sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : a.occurredAt > b.occurredAt ? -1 : 0));
+    const tx = this.db.transaction('versions');
+    const ids = new Set((await tx.store.index('byBaby').getAll(babyId)).map((r) => r.id));
+    const current: BabyEvent[] = [];
+    for (const id of ids) {
+      const event = resolveCurrent((await tx.store.index('byId').getAll(id)).map(toStored))?.event;
+      if (event && event.babyId === babyId && !event.deleted) current.push(event);
+    }
+    await tx.done;
+    return current.sort((a, b) =>
+      a.occurredAt < b.occurredAt ? 1 : a.occurredAt > b.occurredAt ? -1 : 0,
+    );
   }
 
   /** Current version of one event, including a tombstone; undefined if never seen. */
@@ -89,10 +98,11 @@ export class EventStore {
     return { event, undo: () => this.#restore(prev) };
   }
 
-  /** Versions waiting to be pushed, oldest first. */
+  /** Versions waiting to be pushed, oldest first: never a rejected or local-only row. */
   async pending(limit: number): Promise<BabyEvent[]> {
     const rows = await this.db.getAllFromIndex('versions', 'byPending', 1);
     return rows
+      .filter((r) => r.rejected !== 1 && r.localOnly !== 1)
       .map((r) => r.event)
       .sort((a, b) => (a.recordedAt < b.recordedAt ? -1 : a.recordedAt > b.recordedAt ? 1 : 0))
       .slice(0, limit);
@@ -156,6 +166,60 @@ export class EventStore {
     }
     await tx.done;
     return open.size;
+  }
+
+  /**
+   * Joining a household whose baby is `to`: re-keys every entry whose current version is under
+   * `from`, in one transaction. Each moves as a new version (one above every version held)
+   * with the new babyId, so a tombstone stays deleted and an edit moves as its latest body.
+   * Every earlier row of a moved id becomes localOnly. An entry already under `to` is left
+   * alone, so running it again after a commit moves nothing. Resolves to the number moved.
+   * Any failure aborts the whole move.
+   */
+  async moveBaby(from: string, to: string): Promise<number> {
+    const tx = this.db.transaction('versions', 'readwrite');
+    const recordedAt = this.now().toISOString();
+    let moved = 0;
+    try {
+      const ids = new Set((await tx.store.index('byBaby').getAll(from)).map((r) => r.id));
+      for (const id of ids) {
+        const rows = await tx.store.index('byId').getAll(id);
+        const current = resolveCurrent(rows.map(toStored))?.event;
+        if (!current || current.babyId !== from) continue;
+        const parsed = parseEvent({
+          ...current,
+          babyId: to,
+          authorId: this.authorId,
+          recordedAt,
+          version: nextVersion(Math.max(...rows.map((r) => r.event.version))),
+        });
+        if (!parsed.ok) throw new Error(`Cannot move ${id}: ${parsed.errors.join('; ')}`);
+        for (const r of rows) await tx.store.put({ ...r, pending: 0, localOnly: 1 });
+        await tx.store.add({ ...toRow(parsed.value, null), pending: 1 });
+        moved += 1;
+      }
+    } catch (e) {
+      tx.abort();
+      await tx.done.catch(() => {});
+      throw e;
+    }
+    await tx.done;
+    this.#emit(true);
+    return moved;
+  }
+
+  /**
+   * Joining a household without this phone's baby: every row of `from` becomes localOnly and
+   * archived, in one transaction. Nothing is deleted and nothing is uploaded; History can
+   * still show the archived baby read-only.
+   */
+  async archiveBaby(from: string): Promise<void> {
+    const tx = this.db.transaction('versions', 'readwrite');
+    for (const r of await tx.store.index('byBaby').getAll(from)) {
+      await tx.store.put({ ...r, pending: 0, localOnly: 1, archived: 1 });
+    }
+    await tx.done;
+    this.#emit();
   }
 
   async cursor(): Promise<number> {

@@ -15,6 +15,13 @@ export interface VersionRow {
    */
   rejected?: 1;
   rejectedError?: string;
+  /**
+   * Set (1) on this phone's pre-join history: earlier versions of an event moved into the
+   * household's baby, and every row of an archived baby. Kept and shown, never uploaded.
+   */
+  localOnly?: 1;
+  /** Set (1) with localOnly when the baby was archived at join rather than moved. */
+  archived?: 1;
   event: BabyEvent;
 }
 

@@ -74,6 +74,8 @@ export class FakeTransport implements SyncTransport {
   /** When set, a push whose httpTransport body is over this many UTF-8 bytes gets a 413. */
   maxBytes: number | null = null;
   pushes = 0;
+  /** Every batch the server took, as sent. */
+  readonly pushed: BabyEvent[][] = [];
   /** Versions per push attempt, including attempts answered 413. */
   readonly pushSizes: number[] = [];
 
@@ -87,6 +89,7 @@ export class FakeTransport implements SyncTransport {
       throw new HttpError(413);
     }
     this.pushes += 1;
+    this.pushed.push(structuredClone(events));
     const res = this.server.push(structuredClone(events));
     if (this.dropNextPushResponse) {
       this.dropNextPushResponse = false;
