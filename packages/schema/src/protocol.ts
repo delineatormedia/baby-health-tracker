@@ -6,6 +6,12 @@ import { BabyEvent } from './events.ts';
 
 export const MAX_PUSH_BATCH = 500;
 export const MAX_PULL_LIMIT = 1000;
+/**
+ * Largest push body the server reads, in bytes. 500 valid versions can exceed it (2,000
+ * characters of CJK notes are 6,000 UTF-8 bytes each), so clients batch by bytes as well as
+ * by count.
+ */
+export const MAX_PUSH_BYTES = 2 * 1024 * 1024;
 
 const Seq = v.pipe(v.number(), v.safeInteger(), v.minValue(1));
 const Cursor = v.pipe(v.number(), v.safeInteger(), v.minValue(0));

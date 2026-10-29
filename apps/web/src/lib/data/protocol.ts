@@ -7,7 +7,13 @@ import {
 } from '@bht/schema';
 
 // The /api/sync wire format lives in @bht/schema (protocol.ts), shared with the server.
-export { MAX_PUSH_BATCH, type PullResponse, type PushResponse, type PushResult } from '@bht/schema';
+export {
+  MAX_PUSH_BATCH,
+  MAX_PUSH_BYTES,
+  type PullResponse,
+  type PushResponse,
+  type PushResult,
+} from '@bht/schema';
 
 export interface SyncTransport {
   push(events: BabyEvent[]): Promise<PushResponse>;

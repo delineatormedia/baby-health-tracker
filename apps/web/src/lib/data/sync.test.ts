@@ -1,9 +1,9 @@
 import 'fake-indexeddb/auto';
-import { newId } from '@bht/schema';
+import { newId, SCHEMA_VERSION } from '@bht/schema';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { openDatabase } from './db.ts';
 import { EventStore } from './store.ts';
-import { SyncClient } from './sync.ts';
+import { pushBytes, SyncClient, TOO_LARGE, type SyncOptions } from './sync.ts';
 import { FakeServer, FakeTransport } from './testing/fake-server.ts';
 
 const babyId = newId();
@@ -13,7 +13,7 @@ afterEach(() => {
   for (const c of clients.splice(0)) c.stop();
 });
 
-async function phone(server: FakeServer, opts: { pullLimit?: number } = {}) {
+async function phone(server: FakeServer, opts: SyncOptions = {}) {
   const store = new EventStore(await openDatabase(`test-${newId()}`), newId());
   const transport = new FakeTransport(server);
   const rejected: unknown[] = [];
@@ -206,6 +206,109 @@ describe('SyncClient', () => {
     // A new pull starts a new snapshot: no through on its first page.
     expect(dad.transport.pulls.at(-1)).toEqual({ after: 3, limit: 1, through: undefined });
     expect(await dad.store.cursor()).toBe(4);
+  });
+
+  test('pushes split by bytes as well as count, and the backlog drains', async () => {
+    const server = new FakeServer();
+    const mom = await phone(server, { pushByteBudget: 20_000 });
+    const notes = '日'.repeat(2000); // 6,000 UTF-8 bytes
+    for (let i = 0; i < 9; i++) await mom.store.log(babyId, 'diaper', { kind: 'wet' }, { notes });
+    await mom.sync.sync();
+    expect(mom.sync.status).toBe('idle');
+    expect(mom.transport.pushSizes).toEqual([3, 3, 3]);
+    expect(await mom.store.pending(10)).toEqual([]);
+    expect(server.log).toHaveLength(9);
+    expect(mom.transport.pulls).toHaveLength(1);
+  });
+
+  test('pushBytes is the size of the body httpTransport sends', async () => {
+    const server = new FakeServer();
+    const mom = await phone(server);
+    await mom.store.log(babyId, 'diaper', { kind: 'wet' }, { notes: 'ünïcødé 日本' });
+    await mom.store.log(babyId, 'bottle', { contents: 'formula', volumeMl: 90 });
+    const events = await mom.store.pending(10);
+    const body = JSON.stringify({ schemaVersion: SCHEMA_VERSION, events });
+    expect(pushBytes(events)).toBe(new TextEncoder().encode(body).length);
+  });
+
+  test('a 413 halves the batch until the backlog drains', async () => {
+    const server = new FakeServer();
+    const mom = await phone(server);
+    const notes = '日'.repeat(2000);
+    for (let i = 0; i < 8; i++) await mom.store.log(babyId, 'diaper', { kind: 'wet' }, { notes });
+    // A server cap below the client's budget: only two of these fit in one push.
+    mom.transport.maxBytes = 13_000;
+    await mom.sync.sync();
+    expect(mom.sync.status).toBe('idle');
+    expect(mom.transport.pushSizes).toEqual([8, 4, 2, 2, 2, 2]);
+    expect(await mom.store.pending(10)).toEqual([]);
+    expect(server.log).toHaveLength(8);
+    expect(await mom.store.rejectedCount()).toBe(0);
+    expect(mom.transport.pulls).toHaveLength(1);
+  });
+
+  test('a version too large for any push is kept, refused locally and counted; the rest drain', async () => {
+    const server = new FakeServer();
+    // A cap that one long-notes entry cannot fit under, standing in for an oversized version.
+    const mom = await phone(server, { maxPushBytes: 4_000, pushByteBudget: 3_000 });
+    const before = await mom.store.log(babyId, 'diaper', { kind: 'wet' });
+    const big = await mom.store.log(
+      babyId,
+      'diaper',
+      { kind: 'wet' },
+      { notes: '日'.repeat(2000) },
+    );
+    const after = await mom.store.log(babyId, 'diaper', { kind: 'wet' });
+    await mom.sync.sync();
+    expect(mom.sync.status).toBe('idle');
+    expect(server.log.map((v) => v.event.id)).toEqual([before.event.id, after.event.id]);
+    expect(mom.rejected).toEqual([
+      { id: big.event.id, version: 1, status: 'rejected', error: TOO_LARGE },
+    ]);
+    expect(await mom.store.pending(10)).toEqual([]);
+    expect(await mom.store.rejectedCount()).toBe(1);
+    // Still on the phone with its error, and never uploaded.
+    expect(await mom.store.current(big.event.id)).toEqual(big.event);
+    const [row] = await mom.store.db.getAllFromIndex('versions', 'byRejected', 1);
+    expect(row?.rejectedError).toBe(TOO_LARGE);
+    const pushes = mom.transport.pushes;
+    await mom.sync.sync();
+    expect(mom.transport.pushes).toBe(pushes);
+    expect(mom.transport.pulls).toHaveLength(2);
+  });
+
+  test('a single version over the budget that gets a 413 is refused locally', async () => {
+    const server = new FakeServer();
+    const mom = await phone(server, { pushByteBudget: 3_000 });
+    const big = await mom.store.log(
+      babyId,
+      'diaper',
+      { kind: 'wet' },
+      { notes: '日'.repeat(2000) },
+    );
+    const small = await mom.store.log(babyId, 'diaper', { kind: 'wet' });
+    mom.transport.maxBytes = 4_000;
+    await mom.sync.sync();
+    expect(mom.sync.status).toBe('idle');
+    expect(server.log.map((v) => v.event.id)).toEqual([small.event.id]);
+    expect(mom.rejected).toEqual([
+      { id: big.event.id, version: 1, status: 'rejected', error: TOO_LARGE },
+    ]);
+    expect(await mom.store.rejectedCount()).toBe(1);
+  });
+
+  test('a small version that gets a 413 stays pending and backs off', async () => {
+    const server = new FakeServer();
+    const mom = await phone(server);
+    const { event } = await mom.store.log(babyId, 'diaper', { kind: 'wet' });
+    mom.transport.maxBytes = 50; // a misconfigured proxy, not an oversized version
+    await mom.sync.sync();
+    expect(mom.sync.status).toBe('offline');
+    expect(await mom.store.pending(10)).toEqual([event]);
+    expect(await mom.store.rejectedCount()).toBe(0);
+    mom.transport.maxBytes = null;
+    await mom.sync.sync();
+    expect(server.current(event.id)).toEqual(event);
   });
 
   test('401 stops syncing until sign-in', async () => {

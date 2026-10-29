@@ -1,4 +1,10 @@
-import { MAX_PULL_LIMIT, MAX_PUSH_BATCH, isPushRequestBody, SCHEMA_VERSION } from '@bht/schema';
+import {
+  MAX_PULL_LIMIT,
+  MAX_PUSH_BATCH,
+  MAX_PUSH_BYTES,
+  isPushRequestBody,
+  SCHEMA_VERSION,
+} from '@bht/schema';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { DatabaseSync } from 'node:sqlite';
@@ -17,9 +23,6 @@ export interface AppOptions {
   session?: (c: Context) => Session | null | Promise<Session | null>;
   now?: () => Date;
 }
-
-/** 500 versions at the largest valid size stay well under this. */
-const MAX_PUSH_BYTES = 2 * 1024 * 1024;
 
 type Env = { Variables: { session: Session } };
 

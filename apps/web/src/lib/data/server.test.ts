@@ -78,6 +78,25 @@ describe('SyncClient against the real server', () => {
     expect(await dad.store.pending(10)).toEqual([]);
   });
 
+  test('500 valid entries over the 2 MiB body cap drain, and the pull runs', async () => {
+    const app = realServer();
+    const mom = await phone(transportTo(app));
+    // Adversarial's #46 case: 2,000-character Chinese notes put 500 entries past 3 MB.
+    const notes = '日'.repeat(2000);
+    for (let i = 0; i < 500; i++) await mom.store.log(babyId, 'diaper', { kind: 'wet' }, { notes });
+    const dad = await phone(transportTo(app));
+    const late = await dad.store.log(babyId, 'diaper', { kind: 'wet' });
+    await dad.sync.sync();
+    await mom.sync.sync();
+    expect(mom.sync.status).toBe('idle');
+    expect(await mom.store.pending(1000)).toEqual([]);
+    expect(await mom.store.rejectedCount()).toBe(0);
+    // Mom's pull ran after her pushes: she has dad's entry too.
+    expect(await mom.store.current(late.event.id)).toEqual(late.event);
+    await dad.sync.sync();
+    expect(await dad.store.events(babyId)).toHaveLength(501);
+  }, 60_000);
+
   test('a newer app than the server keeps its writes pending, then syncs after the upgrade', async () => {
     const app = realServer();
     const ahead = await phone(transportTo(app, SCHEMA_VERSION + 1));

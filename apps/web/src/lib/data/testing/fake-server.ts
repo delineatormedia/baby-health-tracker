@@ -1,4 +1,10 @@
-import { parseEvent, resolveCurrent, type BabyEvent, type StoredVersion } from '@bht/schema';
+import {
+  parseEvent,
+  resolveCurrent,
+  SCHEMA_VERSION,
+  type BabyEvent,
+  type StoredVersion,
+} from '@bht/schema';
 import {
   HttpError,
   type PullResponse,
@@ -65,12 +71,21 @@ export class FakeTransport implements SyncTransport {
   /** When set, the server applies the next push but the response is lost. */
   dropNextPushResponse = false;
   status: number | null = null;
+  /** When set, a push whose httpTransport body is over this many UTF-8 bytes gets a 413. */
+  maxBytes: number | null = null;
   pushes = 0;
+  /** Versions per push attempt, including attempts answered 413. */
+  readonly pushSizes: number[] = [];
 
   constructor(readonly server: FakeServer) {}
 
   async push(events: BabyEvent[]): Promise<PushResponse> {
     this.#check();
+    this.pushSizes.push(events.length);
+    const body = JSON.stringify({ schemaVersion: SCHEMA_VERSION, events });
+    if (this.maxBytes !== null && new TextEncoder().encode(body).length > this.maxBytes) {
+      throw new HttpError(413);
+    }
     this.pushes += 1;
     const res = this.server.push(structuredClone(events));
     if (this.dropNextPushResponse) {
