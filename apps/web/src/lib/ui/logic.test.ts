@@ -1,13 +1,15 @@
-import { newId, toMl, type BabyEvent } from '@bht/schema';
+import { newId, parseEvent, toMl, type BabyEvent } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
 import {
   ageDays,
   cappedStart,
   clock,
   countMarks,
+  currentSide,
   dayMarks,
   describe as describeEvent,
   editLink,
+  finishFeedData,
   hm,
   intake24h,
   lastSide,
@@ -16,11 +18,16 @@ import {
   polar,
   runningFeed,
   saveFailure,
+  segmentStart,
+  sideTimes,
   snapBottle,
+  startFeedData,
   stepBottle,
   stopSeconds,
   suggestSide,
+  switchFeedData,
   typedSide,
+  type Breastfeed,
 } from './logic.ts';
 
 const NOW = Date.parse('2026-10-29T12:00:00.000Z');
@@ -82,6 +89,113 @@ describe('breastfeed timer', () => {
     }
     expect(typedSide([done])).toBe('left');
     expect(typedSide([])).toBe('left');
+  });
+});
+
+describe('per-side timing (#19)', () => {
+  /** A running feed that started `minutesAgo`, with its data checked against the schema. */
+  function feed(data: Breastfeed['data'], minutesAgo: number): Breastfeed {
+    const e = ev('breastfeed', data, minutesAgo) as Breastfeed;
+    const r = parseEvent(e);
+    if (!r.ok) throw new Error(r.errors.join('; '));
+    return e;
+  }
+  const MIN = 60_000;
+
+  test('starting on either side opens one segment on it', () => {
+    for (const side of ['left', 'right'] as const) {
+      const f = feed(startFeedData(side), 3);
+      expect(currentSide(f)).toBe(side);
+      expect(sideTimes(f, NOW)).toEqual({ left: 0, right: 0, [side]: 3 * MIN });
+    }
+  });
+
+  test('switching closes the first side and keeps both durations to the stop', () => {
+    const f = feed(startFeedData('left'), 14);
+    const switched = feed(switchFeedData(f, NOW - 6 * MIN)!, 14);
+    expect(switched.data).toEqual({
+      side: 'both',
+      durationSeconds: null,
+      segments: [
+        { side: 'left', seconds: 480 },
+        { side: 'right', seconds: null },
+      ],
+    });
+    expect(currentSide(switched)).toBe('right');
+    expect(segmentStart(switched)).toBe(NOW - 6 * MIN);
+    expect(sideTimes(switched, NOW)).toEqual({ left: 8 * MIN, right: 6 * MIN });
+
+    const done = feed(finishFeedData(switched, NOW)!, 14);
+    expect(done.data).toEqual({
+      side: 'both',
+      durationSeconds: 840,
+      segments: [
+        { side: 'left', seconds: 480 },
+        { side: 'right', seconds: 360 },
+      ],
+    });
+    expect(describeEvent(done, String)).toBe('Breastfeed · left 8 min · right 6 min');
+  });
+
+  test('switching back adds a third segment and adds the time per side', () => {
+    let f = feed(startFeedData('left'), 20);
+    f = feed(switchFeedData(f, NOW - 15 * MIN)!, 20);
+    f = feed(switchFeedData(f, NOW - 5 * MIN)!, 20);
+    expect(f.data.segments?.map((s) => s.side)).toEqual(['left', 'right', 'left']);
+    expect(sideTimes(f, NOW)).toEqual({ left: 10 * MIN, right: 10 * MIN });
+    expect(feed(finishFeedData(f, NOW)!, 20).data.durationSeconds).toBe(1200);
+  });
+
+  test('a one-side timer stops with its one segment closed', () => {
+    const done = feed(finishFeedData(feed(startFeedData('right'), 9), NOW)!, 9);
+    expect(done.data).toEqual({
+      side: 'right',
+      durationSeconds: 540,
+      segments: [{ side: 'right', seconds: 540 }],
+    });
+    expect(describeEvent(done, String)).toBe('Breastfeed · right · 9 min');
+  });
+
+  test('a start moved later than the earlier sides never yields a negative side', () => {
+    const f = feed(switchFeedData(feed(startFeedData('left'), 10), NOW - 2 * MIN)!, 10);
+    expect(latestStart(f, NOW)).toBe(NOW - 8 * MIN);
+    // Even if a start slipped past that cap, the stop still saves a valid feed.
+    const late = feed({ ...f.data }, 5);
+    const done = feed(finishFeedData(late, NOW)!, 5);
+    expect(done.data.segments?.at(-1)?.seconds).toBe(0);
+    expect(done.data.durationSeconds).toBe(480);
+  });
+
+  test('a feed from before per-side timing still stops, and an old both timer cannot switch', () => {
+    const old = feed({ side: 'left', durationSeconds: null }, 7);
+    expect(currentSide(old)).toBe('left');
+    expect(finishFeedData(old, NOW)).toEqual({ side: 'left', durationSeconds: 420 });
+    const both = feed({ side: 'both', durationSeconds: null }, 7);
+    expect(currentSide(both)).toBeNull();
+    expect(switchFeedData(both, NOW)).toBeNull();
+    expect(sideTimes(both, NOW)).toBeNull();
+  });
+
+  test('switching or stopping an overrun timer saves nothing', () => {
+    const f = feed(startFeedData('left'), MAX_FEED_SECONDS / 60 + 1);
+    expect(switchFeedData(f, NOW)).toBeNull();
+    expect(finishFeedData(f, NOW)).toBeNull();
+  });
+
+  test('the next side is the other one from where the last feed started', () => {
+    const switched = feed(
+      {
+        side: 'both',
+        durationSeconds: 840,
+        segments: [
+          { side: 'right', seconds: 480 },
+          { side: 'left', seconds: 360 },
+        ],
+      },
+      30,
+    );
+    expect(suggestSide([switched])).toBe('left');
+    expect(lastSide([switched])).toBe('both');
   });
 });
 

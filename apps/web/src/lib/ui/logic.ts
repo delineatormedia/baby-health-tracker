@@ -1,7 +1,9 @@
 import {
   fromMl,
+  segmentsSide,
   toMl,
   type BabyEvent,
+  type FeedSegment,
   type Side,
   type StoolColor,
   type VolumeDisplay,
@@ -43,14 +45,20 @@ export function saveFailure(e: unknown): string {
 
 /** The last finished breastfeed's side, which the next feed usually alternates from. */
 export function lastSide(events: readonly BabyEvent[]): Side | null {
-  const last = events.find(
-    (e): e is Breastfeed => e.type === 'breastfeed' && e.data.durationSeconds !== null,
-  );
-  return last?.data.side ?? null;
+  return lastFeed(events)?.data.side ?? null;
 }
 
+function lastFeed(events: readonly BabyEvent[]): Breastfeed | undefined {
+  return events.find(
+    (e): e is Breastfeed => e.type === 'breastfeed' && e.data.durationSeconds !== null,
+  );
+}
+
+/** The other breast from the one the last feed started on. */
 export function suggestSide(events: readonly BabyEvent[]): 'left' | 'right' {
-  return lastSide(events) === 'left' ? 'right' : 'left';
+  const last = lastFeed(events);
+  const started = last?.data.segments?.[0]?.side ?? last?.data.side;
+  return started === 'left' ? 'right' : 'left';
 }
 
 /**
@@ -59,6 +67,79 @@ export function suggestSide(events: readonly BabyEvent[]): 'left' | 'right' {
  */
 export function typedSide(events: readonly BabyEvent[]): Side {
   return runningFeed(events)?.data.side ?? suggestSide(events);
+}
+
+type Breast = FeedSegment['side'];
+
+/** A new timer on one breast. */
+export function startFeedData(side: Breast): Breastfeed['data'] {
+  return { side, durationSeconds: null, segments: [{ side, seconds: null }] };
+}
+
+/**
+ * A feed's per-side stretches. A feed from before per-side timing has one on its side;
+ * a typed or old "both" feed has no known split, so null.
+ */
+export function feedSegments(f: Breastfeed): FeedSegment[] | null {
+  if (f.data.segments) return f.data.segments;
+  return f.data.side === 'both' ? null : [{ side: f.data.side, seconds: f.data.durationSeconds }];
+}
+
+const closedSeconds = (segs: readonly FeedSegment[]) =>
+  segs.reduce((t, s) => t + (s.seconds ?? 0), 0);
+
+/** The breast a running feed is on now, or null for an old "both" timer. */
+export function currentSide(f: Breastfeed): Breast | null {
+  return feedSegments(f)?.at(-1)?.side ?? null;
+}
+
+/** When the side being fed now started: the feed's start plus every earlier side. */
+export function segmentStart(f: Breastfeed): number {
+  return Date.parse(f.occurredAt) + closedSeconds(feedSegments(f) ?? []) * 1000;
+}
+
+/** Milliseconds on each breast so far; the running side counts up to `now`. */
+export function sideTimes(f: Breastfeed, now: number): Record<Breast, number> | null {
+  const segs = feedSegments(f);
+  if (!segs) return null;
+  const t = { left: 0, right: 0 };
+  const open = Math.max(0, now - segmentStart(f));
+  for (const s of segs) t[s.side] += s.seconds === null ? open : s.seconds * 1000;
+  return t;
+}
+
+/**
+ * Switch a running feed to the other breast: the side being fed closes at its length so far.
+ * Null when there is no side to switch from (an old "both" timer) or the timer has overrun.
+ */
+export function switchFeedData(f: Breastfeed, now: number): Breastfeed['data'] | null {
+  const segs = feedSegments(f);
+  const open = segs?.at(-1);
+  if (!segs || !open || open.seconds !== null) return null;
+  const seconds = Math.max(0, Math.round((now - segmentStart(f)) / 1000));
+  if (closedSeconds(segs) + seconds > MAX_FEED_SECONDS) return null;
+  const next: Breast = open.side === 'left' ? 'right' : 'left';
+  const segments = [
+    ...segs.slice(0, -1),
+    { side: open.side, seconds },
+    { side: next, seconds: null },
+  ];
+  return { side: segmentsSide(segments), durationSeconds: null, segments };
+}
+
+/**
+ * The finished feed when the timer stops now, or null past the 4-hour bound (see stopSeconds).
+ * The side being fed takes whatever the total leaves after the earlier sides.
+ */
+export function finishFeedData(f: Breastfeed, now: number): Breastfeed['data'] | null {
+  const total = stopSeconds(f.occurredAt, now);
+  if (total === null) return null;
+  const segs = f.data.segments;
+  if (!segs) return { ...f.data, durationSeconds: total };
+  const closed = closedSeconds(segs.slice(0, -1));
+  const last = Math.max(0, total - closed);
+  const segments = [...segs.slice(0, -1), { side: segs.at(-1)!.side, seconds: last }];
+  return { side: segmentsSide(segments), durationSeconds: closed + last, segments };
 }
 
 /** Elapsed time as "08:42", or "1:08:42" past an hour. */
@@ -204,6 +285,9 @@ export function swatch(color: StoolColor | null | undefined): Swatch | undefined
   return [...NORMAL_SWATCHES, ...FLAG_SWATCHES].find((s) => s.color === color);
 }
 
+/** Whole minutes for a feed, at least 1. */
+export const minutes = (seconds: number) => `${Math.max(1, Math.round(seconds / 60))} min`;
+
 /** "Wet diaper", "Dirty diaper · mustard", "Breastfeed · left · 14 min". */
 export function describe(e: BabyEvent, volume: (ml: number) => string): string {
   switch (e.type) {
@@ -216,7 +300,14 @@ export function describe(e: BabyEvent, volume: (ml: number) => string): string {
       return `Bottle · ${e.data.contents === 'formula' ? 'formula' : 'breast milk'} · ${volume(e.data.volumeMl)}`;
     case 'breastfeed': {
       const d = e.data.durationSeconds;
-      return `Breastfeed · ${e.data.side}${d === null ? ' · running' : ` · ${Math.max(1, Math.round(d / 60))} min`}`;
+      if (d === null) return `Breastfeed · ${currentSide(e) ?? e.data.side} · running`;
+      const segs = e.data.segments;
+      if (segs && segs.length > 1) {
+        // Finished, so no side is open and the clock does not matter.
+        const t = sideTimes(e, 0)!;
+        return `Breastfeed · left ${minutes(t.left / 1000)} · right ${minutes(t.right / 1000)}`;
+      }
+      return `Breastfeed · ${e.data.side} · ${minutes(d)}`;
     }
     case 'pump':
       return 'Pump';
@@ -242,13 +333,15 @@ export function editLink(e: BabyEvent): { label: string; path: EditPath } {
 }
 
 /**
- * The latest start a saved event can be moved to: a finished feed has to have ended by now.
- * Undefined means now.
+ * The latest start a saved event can be moved to: a finished feed has to have ended by now,
+ * and a running one has to fit the sides it already switched from. Undefined means now.
  */
 export function latestStart(e: BabyEvent, now: number): number | undefined {
-  if (e.type === 'breastfeed' && e.data.durationSeconds !== null)
-    return now - e.data.durationSeconds * 1000;
-  return undefined;
+  if (e.type !== 'breastfeed') return undefined;
+  if (e.data.durationSeconds !== null) return now - e.data.durationSeconds * 1000;
+  // A running feed's earlier sides already happened, so they must fit before now.
+  const closed = closedSeconds(e.data.segments ?? []);
+  return closed > 0 ? now - closed * 1000 : undefined;
 }
 
 /**

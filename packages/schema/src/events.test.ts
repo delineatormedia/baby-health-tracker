@@ -107,6 +107,124 @@ describe('breastfeed', () => {
   ])('rejects %j', (data) => {
     expectInvalid(event('breastfeed', data));
   });
+
+  test('a timer on one side has one open segment', () => {
+    expectValid(
+      event('breastfeed', {
+        side: 'left',
+        durationSeconds: null,
+        segments: [{ side: 'left', seconds: null }],
+      }),
+    );
+  });
+
+  test('a switch keeps the first side and runs on the second', () => {
+    expectValid(
+      event('breastfeed', {
+        side: 'both',
+        durationSeconds: null,
+        segments: [
+          { side: 'left', seconds: 480 },
+          { side: 'right', seconds: null },
+        ],
+      }),
+    );
+  });
+
+  test('a finished switched feed keeps both durations', () => {
+    const e = expectValid(
+      event('breastfeed', {
+        side: 'both',
+        durationSeconds: 840,
+        segments: [
+          { side: 'left', seconds: 480 },
+          { side: 'right', seconds: 360 },
+        ],
+      }),
+    );
+    expect(e.data).toMatchObject({ segments: [{ seconds: 480 }, { seconds: 360 }] });
+  });
+
+  test('feeds without segments stay valid', () => {
+    expectValid(event('breastfeed', { side: 'both', durationSeconds: 600 }));
+  });
+
+  test.each([
+    ['an empty list', { side: 'left', durationSeconds: null, segments: [] }],
+    [
+      'an open segment before the last',
+      {
+        side: 'both',
+        durationSeconds: null,
+        segments: [
+          { side: 'left', seconds: null },
+          { side: 'right', seconds: null },
+        ],
+      },
+    ],
+    [
+      'a finished feed with an open segment',
+      { side: 'left', durationSeconds: 60, segments: [{ side: 'left', seconds: null }] },
+    ],
+    [
+      'a running feed with every segment closed',
+      { side: 'left', durationSeconds: null, segments: [{ side: 'left', seconds: 60 }] },
+    ],
+    [
+      'the same side twice in a row',
+      {
+        side: 'left',
+        durationSeconds: 120,
+        segments: [
+          { side: 'left', seconds: 60 },
+          { side: 'left', seconds: 60 },
+        ],
+      },
+    ],
+    [
+      'a side that disagrees with the segments',
+      { side: 'right', durationSeconds: 60, segments: [{ side: 'left', seconds: 60 }] },
+    ],
+    [
+      'a switched feed not marked both',
+      {
+        side: 'left',
+        durationSeconds: 120,
+        segments: [
+          { side: 'left', seconds: 60 },
+          { side: 'right', seconds: 60 },
+        ],
+      },
+    ],
+    [
+      'segments that do not add up',
+      {
+        side: 'both',
+        durationSeconds: 900,
+        segments: [
+          { side: 'left', seconds: 480 },
+          { side: 'right', seconds: 360 },
+        ],
+      },
+    ],
+    [
+      'a both segment',
+      { side: 'both', durationSeconds: 60, segments: [{ side: 'both', seconds: 60 }] },
+    ],
+    [
+      'a negative segment',
+      {
+        side: 'both',
+        durationSeconds: null,
+        segments: [
+          { side: 'left', seconds: -1 },
+          { side: 'right', seconds: null },
+        ],
+      },
+    ],
+  ])('rejects %s', (_, data) => {
+    expectInvalid(event('breastfeed', data));
+  });
 });
 
 describe('bottle', () => {
