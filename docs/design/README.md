@@ -246,7 +246,8 @@ The burst window (`BURST_MS`), side-switch gap (`SIDE_GAP`), ring radii
   left-then-right feed reads as one session in two parts. A typed duration or a
   one-side feed has no gap. The gap sits at the share of the feed that the
   first side took; if the feed was paused, it is approximate, because pauses
-  are stored as a total, not as times.
+  are stored as a total, not as times. The gap is painted last, over the
+  arc's round ends, so on a short feed an end cap never fills it.
 - **Pumps on both sides** pump at once, so they are one arc with no gap.
 - **Overlap.** Sessions on the same ring (a backdated feed over another, or a
   burst of short feeds) are drawn longest first. Every arc has a 2-unit casing
@@ -256,6 +257,14 @@ The burst window (`BURST_MS`), side-switch gap (`SIDE_GAP`), ring radii
 - **The 24 hours.** An arc is drawn if any part of it falls in the last 24
   hours. A part before that is cut off at the "now" line with a flat end. The
   legend still counts a feed by its start.
+- **Clock time, always.** Every end, side switch, mark and the "now" line sits
+  at its own local clock time, never at a start plus elapsed time, so each
+  lands on the tick a parent reads. When the clocks go forward, an arc sweeps
+  over the skipped hour. When they go back, a session can end at or before
+  its start's clock time; it is drawn forward from its start at its minimum
+  width, never as a full circle. The 24 hours stay elapsed time: on those two
+  days they hold 23 or 25 clock hours, so the flat cut sits an hour after or
+  before the "now" line.
 - **Legend.** Pump joins the legend ("Pump 2"). It has to fit on one line at
   320 px with the other four; if it doesn't, it takes a second line.
 

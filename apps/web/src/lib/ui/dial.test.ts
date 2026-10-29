@@ -1,15 +1,13 @@
 import { newId, type BabyEvent } from '@bht/schema';
-import { describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
   ARC_WIDTH,
-  arcParts,
   BURST_MS,
   dialFace,
   INNER_STEP,
   LABEL_STEP,
   placeInner,
   RING,
-  SIDE_GAP,
   unitsToHours,
   type Point,
 } from './dial.ts';
@@ -179,9 +177,6 @@ describe('session arcs (#52)', () => {
     expect(arc!.to - arc!.from).toBeCloseTo(35 / 60);
     expect(arc!.switches).toHaveLength(1);
     expect(arc!.switches[0]! - arc!.from).toBeCloseTo(20 / 60);
-    const parts = arcParts(arc!);
-    expect(parts).toHaveLength(2);
-    expect(parts[1]![0] - parts[0]![1]).toBeCloseTo(unitsToHours(SIDE_GAP, RING.feed));
   });
 
   test('paused time lengthens the arc and moves the switch in proportion', () => {
@@ -198,7 +193,6 @@ describe('session arcs (#52)', () => {
       NOW,
     ).arcs;
     expect(arc!.switches).toEqual([]);
-    expect(arcParts(arc!)).toHaveLength(1);
   });
 
   test('a running feed grows to now, switch included', () => {
@@ -283,5 +277,108 @@ describe('session arcs (#52)', () => {
     expect(
       dialFace([ago('breastfeed', { side: 'left', durationSeconds: 60 }, 24 * 60 + 10)], NOW).arcs,
     ).toEqual([]);
+  });
+});
+
+describe('arcs across a DST change (America/New_York)', () => {
+  const zone = process.env.TZ;
+  beforeAll(() => {
+    process.env.TZ = 'America/New_York';
+  });
+  afterAll(() => {
+    process.env.TZ = zone;
+  });
+  const t = Date.parse;
+  const LEFT = { side: 'left', durationSeconds: null };
+  const PUMP = { leftMl: null, rightMl: null, afterFeed: false, side: 'both' };
+  const minWidth = unitsToHours(ARC_WIDTH.feed, RING.feed);
+
+  test('spring forward: a running feed and pump reach the now line over the skipped hour', () => {
+    const start = t('2026-03-08T01:30:00-05:00');
+    const now = t('2026-03-08T03:30:00-04:00');
+    for (const [type, data] of [
+      ['breastfeed', LEFT],
+      ['pump', { ...PUMP, durationSeconds: null }],
+    ] as const) {
+      const face = dialFace([at(type, data, start)], now);
+      expect(face.now).toBeCloseTo(3.5);
+      expect(face.arcs[0]!.from).toBeCloseTo(1.5);
+      expect(face.arcs[0]!.to).toBeCloseTo(face.now);
+    }
+  });
+
+  test('spring forward: a finished pump ends on its clock time', () => {
+    // 01:40 EST + 50 min = 03:30 EDT.
+    const start = t('2026-03-08T01:40:00-05:00');
+    const [arc] = dialFace(
+      [at('pump', { ...PUMP, durationSeconds: 50 * 60 }, start)],
+      t('2026-03-08T06:00:00-04:00'),
+    ).arcs;
+    expect(arc!.from).toBeCloseTo(1 + 40 / 60);
+    expect(arc!.to).toBeCloseTo(3.5);
+  });
+
+  test('fall back: a running feed reaches the now line, never a full circle', () => {
+    const now = t('2026-11-01T01:20:00-05:00');
+    const [long] = dialFace([at('breastfeed', LEFT, t('2026-11-01T00:50:00-04:00'))], now).arcs;
+    expect(long!.from).toBeCloseTo(50 / 60);
+    expect(long!.to).toBeCloseTo(1 + 20 / 60);
+    // Started in the first 01:30, now the second: same clock time, an hour apart.
+    const face = dialFace([at('breastfeed', LEFT, t('2026-11-01T01:30:00-04:00'))], now + 10 * MIN);
+    expect(face.now).toBeCloseTo(1.5);
+    expect(face.arcs[0]!.from).toBeCloseTo(1.5);
+    expect(face.arcs[0]!.to - face.arcs[0]!.from).toBeCloseTo(minWidth);
+  });
+
+  test('fall back: a finished feed ends on its clock time, switch included', () => {
+    // 00:20 EDT, 30 min left then 90 right: switch 00:50 EDT, end 01:20 EST.
+    const feed = {
+      side: 'both',
+      durationSeconds: 120 * 60,
+      segments: [
+        { side: 'left', seconds: 30 * 60 },
+        { side: 'right', seconds: 90 * 60 },
+      ],
+    };
+    const [arc] = dialFace(
+      [at('breastfeed', feed, t('2026-11-01T00:20:00-04:00'))],
+      t('2026-11-01T06:00:00-05:00'),
+    ).arcs;
+    expect(arc!.from).toBeCloseTo(20 / 60);
+    expect(arc!.switches).toHaveLength(1);
+    expect(arc!.switches[0]!).toBeCloseTo(50 / 60);
+    expect(arc!.to).toBeCloseTo(1 + 20 / 60);
+    // Ending earlier on the clock than it started: drawn forward at its minimum width.
+    const [back] = dialFace(
+      [
+        at(
+          'breastfeed',
+          { side: 'left', durationSeconds: 50 * 60 },
+          t('2026-11-01T01:20:00-04:00'),
+        ),
+      ],
+      t('2026-11-01T06:00:00-05:00'),
+    ).arcs;
+    expect(back!.from).toBeCloseTo(1 + 20 / 60);
+    expect(back!.to - back!.from).toBeCloseTo(minWidth);
+  });
+
+  test('the 24-hour cut is elapsed time, drawn at its own clock time', () => {
+    // 24 hours before 12:00 EDT is 11:00 EST: the window holds 23 clock hours.
+    const spring = dialFace(
+      [at('breastfeed', { side: 'left', durationSeconds: 3600 }, t('2026-03-07T10:30:00-05:00'))],
+      t('2026-03-08T12:00:00-04:00'),
+    );
+    expect(spring.arcs[0]!.cut).toBe(true);
+    expect(spring.arcs[0]!.from).toBeCloseTo(11);
+    expect(spring.arcs[0]!.to).toBeCloseTo(11.5);
+    // 24 hours before 12:00 EST is 13:00 EDT: 25 clock hours.
+    const fall = dialFace(
+      [at('breastfeed', { side: 'left', durationSeconds: 3600 }, t('2026-10-31T12:30:00-04:00'))],
+      t('2026-11-01T12:00:00-05:00'),
+    );
+    expect(fall.arcs[0]!.cut).toBe(true);
+    expect(fall.arcs[0]!.from).toBeCloseTo(13);
+    expect(fall.arcs[0]!.to).toBeCloseTo(13.5);
   });
 });

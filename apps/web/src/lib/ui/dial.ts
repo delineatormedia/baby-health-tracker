@@ -41,17 +41,23 @@ export const INNER_STEP = unitsToHours(16, RING.inner);
  */
 export const LABEL_STEP = unitsToHours(28, RING.label);
 
-function hourOf(ms: number): number {
-  const d = new Date(ms);
-  return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
-}
+/**
+ * Local wall-clock time, in ms from a local-time epoch: what a parent reads off a clock. Every
+ * point on the dial (marks, arc ends, side switches, the now line) maps to its angle through
+ * this, never as a start plus elapsed time, so a DST change moves nothing off its tick.
+ */
+const wall = (ms: number) => ms - new Date(ms).getTimezoneOffset() * 60_000;
+/** Hour of the day on the dial for a wall-clock time. */
+const clock = (w: number) => (((w % DAY) + DAY) % DAY) / HOUR;
+const hourOf = (ms: number) => clock(wall(ms));
 
 /** A session on the feed or pump ring. Hours are local hours of day; `to` may pass 24. */
 export interface Arc {
   kind: 'feed' | 'pump';
   from: number;
   to: number;
-  /** Hours where a breastfeed switched sides, strictly between `from` and `to`. */
+  /** Hours where a breastfeed switched sides, strictly between `from` and `to` (a switch that
+   * a fall-back hour puts outside the arc is dropped). */
   switches: number[];
   /** Started more than 24 hours ago: `from` is the cut at the "now" line, drawn flat. */
   cut: boolean;
@@ -142,21 +148,29 @@ function sessions(events: readonly BabyEvent[], now: number): Session[] {
   return out.filter((s) => s.end > now - DAY);
 }
 
-/** Hours of one session, clipped to the last 24 hours. */
+/**
+ * Hours of one session, clipped to the last 24 hours. Both ends are wall-clock hours, so across
+ * spring forward the arc sweeps over the skipped hour. Across fall back the end's clock time can
+ * be at or before the start's: the arc is then drawn forward from the start at its minimum
+ * width, never as a full circle. The 24-hour cut is elapsed time, drawn at its clock time.
+ */
 function toArc(s: Session, count: number, now: number): Arc {
   const cut = s.start <= now - DAY;
-  const start = cut ? now - DAY : s.start;
-  const from = hourOf(start);
+  const start = wall(cut ? now - DAY : s.start);
+  const from = clock(start);
   const r = s.kind === 'feed' ? RING.feed : RING.pump;
   const span = Math.min(
     MAX_SPAN,
-    Math.max((s.end - start) / HOUR, unitsToHours(ARC_WIDTH[s.kind], r)),
+    Math.max((wall(s.end) - start) / HOUR, unitsToHours(ARC_WIDTH[s.kind], r)),
   );
+  const to = from + span;
   return {
     kind: s.kind,
     from,
-    to: from + span,
-    switches: s.switches.filter((t) => t > start).map((t) => from + (t - start) / HOUR),
+    to,
+    switches: s.switches
+      .map((t) => from + (wall(t) - start) / HOUR)
+      .filter((h) => h > from && h < to),
     cut,
     count,
   };
@@ -313,17 +327,4 @@ export function arcPath(h0: number, h1: number, r: number): string {
   const [x0, y0] = polar(h0, r);
   const [x1, y1] = polar(h1, r);
   return `M${x0} ${y0} A${r} ${r} 0 ${h1 - h0 > 12 ? 1 : 0} 1 ${x1} ${y1}`;
-}
-
-/** The arc's parts between side switches, each shortened by half the gap at a switch. */
-export function arcParts(a: Arc): [number, number][] {
-  const half = unitsToHours(SIDE_GAP, RING.feed) / 2;
-  const edges = [a.from, ...a.switches, a.to];
-  const parts: [number, number][] = [];
-  for (let i = 0; i + 1 < edges.length; i++) {
-    const lo = i > 0 ? edges[i]! + half : edges[i]!;
-    const hi = i + 2 < edges.length ? edges[i + 1]! - half : edges[i + 1]!;
-    if (hi > lo) parts.push([lo, hi]);
-  }
-  return parts;
 }

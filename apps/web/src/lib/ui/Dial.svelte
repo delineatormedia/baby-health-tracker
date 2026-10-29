@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { CAPTION_RADIUS, chordWidth, polar } from './logic.ts';
-  import { ARC_WIDTH, CASING, RING, arcParts, arcPath, type Arc, type DialFace } from './dial.ts';
+  import { ARC_WIDTH, CASING, RING, SIDE_GAP, arcPath, type Arc, type DialFace } from './dial.ts';
 
   let { face, children }: { face: DialFace; children: Snippet } = $props();
 
@@ -96,11 +96,23 @@
         />
         {#if !a.cut}<circle cx={sx} cy={sy} r={w / 2 + CASING} fill="var(--bg)" />{/if}
         <circle cx={ex} cy={ey} r={w / 2 + CASING} fill="var(--bg)" />
-        {#each arcParts(a) as [lo, hi], k (k)}
-          <path d={arcPath(lo, hi, r)} stroke={colour(a)} stroke-width={w} fill="none" />
-        {/each}
+        <path d={arcPath(a.from, a.to, r)} stroke={colour(a)} stroke-width={w} fill="none" />
         {#if !a.cut}<circle cx={sx} cy={sy} r={w / 2} fill={colour(a)} />{/if}
         <circle cx={ex} cy={ey} r={w / 2} fill={colour(a)} />
+        <!-- Side switches last, across the casing too, so no end cap covers a gap. -->
+        {#each a.switches as s, k (k)}
+          {@const [ix, iy] = polar(s, r - w / 2 - CASING)}
+          {@const [ox, oy] = polar(s, r + w / 2 + CASING)}
+          <line
+            x1={ix}
+            y1={iy}
+            x2={ox}
+            y2={oy}
+            stroke="var(--bg)"
+            stroke-width={SIDE_GAP}
+            data-gap
+          />
+        {/each}
       </g>
     {/each}
     <!-- After the arcs: a feed's casing reaches past the outline. -->
