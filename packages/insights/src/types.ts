@@ -51,6 +51,24 @@ export const CHECK_LABEL: Record<CheckId, string> = {
   formula_per_feed: 'Formula per feed',
 };
 
+/**
+ * Checks that look for a red-flag stool. Their `ok` means none was logged in the lookback
+ * (including stools logged without a colour), not that there was none. Show it as "None
+ * logged", and leave these out of the "in the expected range" line.
+ */
+export const NONE_LOGGED_CHECKS: ReadonlySet<CheckId> = new Set([
+  'pale_stool',
+  'black_stool',
+  'blood_in_stool',
+]);
+
+/** The ok checks the "Diapers and weight are in the expected range" line may name. */
+export function inExpectedRange(results: readonly CheckResult[]): CheckId[] {
+  return results
+    .filter((r) => r.status === 'ok' && !NONE_LOGGED_CHECKS.has(r.check))
+    .map((r) => r.check);
+}
+
 export interface Citation {
   entryId: string;
   organization: string;
@@ -79,7 +97,9 @@ export type NotEnoughDataReason =
   | 'no_birth_weight'
   | 'no_recent_weight'
   | 'no_weight_near_interval_end'
-  | 'sex_unknown';
+  | 'sex_unknown'
+  /** A breastfed-only rule, and some formula or no feed was logged. */
+  | 'feeding_not_exclusive';
 
 export interface Interval {
   start: Timestamp;

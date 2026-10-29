@@ -1,7 +1,8 @@
 import { newId, parseEvent, type BabyEvent, type Sex } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
-import { evaluate } from './evaluate.ts';
-import type { CheckId, CheckResult } from './types.ts';
+import { ENTRIES, isCitable, population } from './entries.ts';
+import { ENTRY_URGENCY, evaluate } from './evaluate.ts';
+import { inExpectedRange, type CheckId, type CheckResult } from './types.ts';
 
 const H = 3_600_000;
 const D = 24 * H;
@@ -53,12 +54,20 @@ interface Run {
   /** Default: now. */
   synced?: number | null;
   sex?: Sex;
+  /** Default: a breastfeed every 3 h from birth when the test logs no feed of its own. */
+  feeds?: 'none';
 }
 
-function run({ now, events = [], logged, synced, sex = 'female' }: Run): CheckResult[] {
+const isFeedRecord = (e: BabyEvent) => e.type === 'breastfeed' || e.type === 'bottle';
+
+function run({ now, events = [], logged, synced, sex = 'female', feeds }: Run): CheckResult[] {
+  const fill =
+    feeds === 'none' || events.some(isFeedRecord)
+      ? []
+      : Array.from({ length: Math.ceil(now / (3 * H)) }, (_, i) => breastfeed(i * 3 * H + H));
   return evaluate({
     baby: { birthAt: iso(0), sex },
-    events,
+    events: [...events, ...fill],
     now: iso(now),
     fullyLogged: (logged ?? [[0, now]]).map(([s, e]) => ({ start: iso(s), end: iso(e) })),
     syncedThrough: synced === null ? null : iso(synced ?? now),
@@ -206,9 +215,54 @@ describe('stools', () => {
     expect(status({ now: after(d), events: inDay(d, ok, (t) => dirty(t)) }, 'stools')).toBe('ok');
   });
 
-  test('from day 21 low counts may be normal, and the low-confidence formula rule never runs alone', () => {
-    expect(status({ now: after(21) }, 'stools')).toBe('absent');
-    expect(status({ now: after(60) }, 'stools')).toBe('absent');
+  test('AAP from day 5 is KidsDoc "within 24 hours"', () => {
+    const c = flag({ now: after(5), events: inDay(5, 2, (t) => dirty(t)) }, 'stools');
+    expect(c.urgency).toBe('within_24h');
+    expect(cited(c)[0]).toBe('stools_min_aap_from_dol5');
+  });
+
+  test('on day 2 CDC decides, and Why gives the AAP normal range', () => {
+    const c = flag({ now: after(1), events: inDay(1, 2, (t) => dirty(t)) }, 'stools');
+    expect(c.urgency).toBe('consider');
+    expect(c.why).toMatch(/AAP says 1–2 stools a day can be normal/);
+    // No stool at all is outside the AAP range too.
+    expect(flag({ now: after(1) }, 'stools').why).not.toMatch(/1–2 stools/);
+    expect(flag({ now: after(2), events: inDay(2, 1, (t) => dirty(t)) }, 'stools').why).not.toMatch(
+      /1–2 stools/,
+    );
+  });
+
+  describe('from day 21 low counts are normal only with adequate gain and soft stools', () => {
+    const gain = (g: number) => [weight(H, 3000), weight(28 * D, 3000 + g)];
+    const now = after(30);
+
+    test('weight gain not yet assessed (before day 28): the low count still runs', () => {
+      expect(status({ now: after(22) }, 'stools')).toBe('flag');
+      expect(
+        status({ now: after(22), events: [weight(H, 3000), weight(22 * D, 2700)] }, 'stools'),
+      ).toBe('flag');
+    });
+
+    test('weight gain ok: the suppressible entries stop applying, so no check', () => {
+      expect(status({ now, events: gain(500) }, 'stools')).toBe('absent');
+    });
+
+    test('weight gain flagged or not enough data: the low count runs', () => {
+      expect(status({ now, events: gain(400) }, 'stools')).toBe('flag');
+      expect(status({ now }, 'stools')).toBe('flag');
+    });
+
+    test('a hard stool in the lookback means stools are not soft', () => {
+      const hard = ev('diaper', 25 * D, {
+        kind: 'dirty',
+        stool: { color: 'yellow', consistency: 'hard', size: null, flags: [] },
+      });
+      expect(status({ now, events: [...gain(500), hard] }, 'stools')).toBe('flag');
+    });
+
+    test('past the breastfed entries only the low-confidence formula rule is left', () => {
+      expect(status({ now: after(60) }, 'stools')).toBe('absent');
+    });
   });
 
   test('a mixed diaper counts as a stool', () => {
@@ -255,6 +309,117 @@ describe('no urine for more than 8 hours (days 2-4 only)', () => {
       status: 'not_enough_data',
       reason: 'not_synced',
     });
+  });
+});
+
+describe('no urine: one time frame for age, window and hours', () => {
+  test('pulled on day 1, now day 2: not enough data, never a day-1 gap flag', () => {
+    expect(get({ now: 30 * H, synced: 10 * H, logged: [[0, 10 * H]] }, 'no_urine')).toMatchObject({
+      status: 'not_enough_data',
+      reason: 'not_synced',
+    });
+  });
+
+  test('a wet diaper inside the 8 h before a stale pull says nothing about now', () => {
+    const c = get({ now: 40 * H, synced: 30 * H, events: [wet(22 * H)], logged: [] }, 'no_urine');
+    expect(c).toMatchObject({ status: 'not_enough_data', reason: 'not_synced' });
+    expect(c.status === 'not_enough_data' && c.observed).toBeUndefined();
+  });
+
+  test('a wet diaper exactly 8 h ago is ok with no marks at all (window start is inclusive)', () => {
+    expect(get({ now: 30 * H, events: [wet(22 * H)], logged: [] }, 'no_urine')).toMatchObject({
+      status: 'ok',
+      observed: { value: 8, unit: 'h' },
+    });
+  });
+
+  test('the reported hours stop at the start of the fully logged period', () => {
+    // Only the 8 h logged: the feeding over the day before is unknown too.
+    expect(get({ now: 30 * H, logged: [[22 * H, 30 * H]] }, 'no_urine')).toMatchObject({
+      status: 'not_enough_data',
+      reason: 'not_fully_logged',
+    });
+    const c = flag({ now: 30 * H, logged: [[6 * H, 30 * H]] }, 'no_urine');
+    expect(c.observed.value).toBe(24);
+    expect(c.why).toMatch(/at least 24 hours/);
+    expect(flag({ now: 30 * H }, 'no_urine').observed.value).toBe(30);
+    expect(flag({ now: 30 * H, events: [wet(15 * H)] }, 'no_urine').observed.value).toBe(15);
+  });
+
+  test('flagged at the pull: the window and hours end there', () => {
+    const c = flag({ now: 40 * H, synced: 35 * H }, 'no_urine');
+    expect(c.window).toEqual({ start: iso(27 * H), end: iso(35 * H) });
+    expect(c.observed.value).toBe(35);
+  });
+});
+
+describe('feeding population (breastfed-only rules)', () => {
+  const formulaDay = (d: number) => inDay(d, 8, (t) => bottle(t, 90));
+
+  test('formula-only day 11: no breastfed stool flag', () => {
+    const c = get({ now: after(10), events: [...formulaDay(10), dirty(10 * D + H)] }, 'stools');
+    expect(c).toMatchObject({ status: 'not_enough_data', reason: 'feeding_not_exclusive' });
+  });
+
+  test('one formula top-up is enough to stop the breastfed rules', () => {
+    const events = [...inDay(10, 8, breastfeed), bottle(10 * D + 2 * H, 30), dirty(10 * D + H)];
+    expect(get({ now: after(10), events }, 'stools')).toMatchObject({
+      reason: 'feeding_not_exclusive',
+    });
+  });
+
+  test('breast milk from a bottle counts as breast milk', () => {
+    const events = [...inDay(10, 8, (t) => bottle(t, 90, 'breast_milk')), dirty(10 * D + H)];
+    expect(status({ now: after(10), events }, 'stools')).toBe('flag');
+  });
+
+  test('wet diapers: formula days keep the any-feeding AAP rules', () => {
+    const c = flag(
+      { now: after(10), events: [...formulaDay(10), ...inDay(10, 5, wet)] },
+      'wet_diapers',
+    );
+    expect(cited(c)).toEqual([
+      'wet_diapers_min_aap_dehydration',
+      'wet_diapers_severe_dehydration',
+      'wet_diapers_min_aap_general',
+    ]);
+    expect(
+      get({ now: after(2), events: [...formulaDay(2), ...inDay(2, 3, wet)] }, 'wet_diapers'),
+    ).toMatchObject({ reason: 'feeding_not_exclusive' });
+  });
+
+  test('feeds: formula days use the bottle rule', () => {
+    expect(cited(get({ now: after(3), events: formulaDay(3) }, 'feeds'))).toEqual([
+      'bottle_feeds_min_newborn',
+    ]);
+  });
+
+  test('no urine: a formula bottle in the day before the pull stops the breastfed gap rule', () => {
+    expect(get({ now: 30 * H, events: [bottle(20 * H, 30)] }, 'no_urine')).toMatchObject({
+      status: 'not_enough_data',
+      reason: 'feeding_not_exclusive',
+    });
+    expect(get({ now: 30 * H, logged: [[20 * H, 30 * H]] }, 'no_urine')).toMatchObject({
+      reason: 'not_fully_logged',
+    });
+  });
+
+  test('weight loss: ABM 8% only after a breast-milk day; NICE 10% for everyone', () => {
+    const w = [weight(2 * H, 3000), weight(6 * D, 2740)];
+    expect(status({ now: 6 * D + H, events: w }, 'weight_loss')).toBe('flag');
+    expect(status({ now: 6 * D + H, events: [...w, bottle(6 * D - H, 30)] }, 'weight_loss')).toBe(
+      'ok',
+    );
+    const big = [weight(2 * H, 3000), weight(6 * D, 2690), bottle(6 * D - H, 30)];
+    expect(status({ now: 6 * D + H, events: big }, 'weight_loss')).toBe('flag');
+  });
+
+  test("black stool: ABM's meconium rule needs a breast-milk day; the AAP rule does not", () => {
+    const c = flag(
+      { now: 121 * H, events: [dirty(120 * H, 'black'), bottle(119 * H, 30)] },
+      'black_stool',
+    );
+    expect(c.why).not.toMatch(/ABM/);
   });
 });
 
@@ -500,6 +665,13 @@ describe('feeds per day (first 4 weeks)', () => {
     expect(status({ now: after(0), events: inDay(0, 8, breastfeed) }, 'feeds')).toBe('ok');
   });
 
+  test('no feed logged: the population is unknown', () => {
+    expect(get({ now: after(3), feeds: 'none' }, 'feeds')).toMatchObject({
+      status: 'not_enough_data',
+      reason: 'feeding_not_exclusive',
+    });
+  });
+
   test('cites the breastfeeding or bottle sources that match the day', () => {
     const bottles = inDay(3, 8, (t) => bottle(t, 40));
     expect(cited(get({ now: after(3), events: bottles }, 'feeds'))).toEqual([
@@ -512,8 +684,44 @@ describe('feeds per day (first 4 weeks)', () => {
   });
 
   test('stops at 4 weeks', () => {
-    expect(status({ now: after(27) }, 'feeds')).toBe('flag');
-    expect(status({ now: after(28) }, 'feeds')).toBe('absent');
+    expect(status({ now: after(27), events: inDay(27, 7, breastfeed) }, 'feeds')).toBe('flag');
+    expect(status({ now: after(28), events: inDay(28, 7, breastfeed) }, 'feeds')).toBe('absent');
+  });
+
+  test('a top-up within 30 minutes of the end of a feed is the same feed', () => {
+    const topUps = inDay(3, 4, (t) => bottle(t + 20 * 60_000, 30, 'breast_milk'));
+    const c = flag({ now: after(3), events: [...inDay(3, 4, breastfeed), ...topUps] }, 'feeds');
+    expect(c.observed.value).toBe(4);
+    expect(c.evidence).toHaveLength(8);
+    // The breastfeed lasts 10 min, so a bottle 40 min after its start is 30 min after its end.
+    const edge = inDay(3, 8, (t) => bottle(t + 40 * 60_000, 30, 'breast_milk'));
+    expect(
+      get({ now: after(3), events: [...inDay(3, 8, breastfeed), ...edge] }, 'feeds'),
+    ).toMatchObject({ status: 'ok', observed: { value: 8 } });
+    const late = inDay(3, 4, (t) => bottle(t + 40 * 60_000 + 1, 30, 'breast_milk'));
+    expect(
+      get({ now: after(3), events: [...inDay(3, 4, breastfeed), ...late] }, 'feeds'),
+    ).toMatchObject({ status: 'ok', observed: { value: 8 } });
+  });
+
+  test('a weighed feed is a measurement, never a feed', () => {
+    const weighings = inDay(3, 4, (t) =>
+      ev('weighted_feed', t + 11 * 60_000, { beforeGrams: 3000, afterGrams: 3040, side: 'left' }),
+    );
+    const c = flag({ now: after(3), events: [...inDay(3, 4, breastfeed), ...weighings] }, 'feeds');
+    expect(c.observed.value).toBe(4);
+  });
+
+  test('an episode belongs to the day its first record starts in', () => {
+    // A top-up at the very start of day 4 joins the last feed of day 3.
+    const events = [
+      ...inDay(3, 7, breastfeed),
+      breastfeed(4 * D - 15 * 60_000),
+      bottle(4 * D, 30),
+      ...inDay(4, 8, breastfeed),
+    ];
+    expect(get({ now: after(3), events }, 'feeds')).toMatchObject({ observed: { value: 8 } });
+    expect(get({ now: after(4), events }, 'feeds')).toMatchObject({ observed: { value: 8 } });
   });
 });
 
@@ -548,7 +756,43 @@ describe('formula', () => {
   });
 });
 
+describe('feeding populations from the #11 notes', () => {
+  test('every citable entry states a population; WHO standards apply to every feeding', () => {
+    for (const e of ENTRIES.filter(isCitable)) expect(() => population(e), e.id).not.toThrow();
+    expect(population(ENTRIES.find((e) => e.id === 'weight_gain_who_p5_0_4w_male')!)).toBe('any');
+    expect(population(ENTRIES.find((e) => e.id === 'stools_min_aap_from_dol5')!)).toBe('breastfed');
+    expect(population(ENTRIES.find((e) => e.id === 'bottle_feeds_min_newborn')!)).toBe(
+      'formula_fed',
+    );
+    expect(population(ENTRIES.find((e) => e.id === 'weight_loss_max_pct_10')!)).toBe('any');
+  });
+});
+
+describe('urgency follows the wording #11 quotes', () => {
+  test('every citable entry whose source says "within 24 hours" maps to within_24h', () => {
+    const quoted = ENTRIES.filter((e) => isCitable(e) && /within 24 hours/.test(e.notes));
+    expect(quoted.map((e) => e.id).sort()).toEqual([
+      'no_urine_hours_dol2_4',
+      'stools_min_aap_from_dol5',
+      'wet_diapers_min_aap_kidsdoc_from_dol5',
+    ]);
+    for (const e of quoted) expect(ENTRY_URGENCY[e.id], e.id).toBe('within_24h');
+  });
+});
+
 describe('results', () => {
+  test('red-flag ok means none logged and stays out of the expected-range line', () => {
+    const now = after(10);
+    const results = run({ now, events: [...inDay(10, 6, wet), dirty(now - H)] });
+    const ok = results.filter((r) => r.status === 'ok').map((r) => r.check);
+    expect(ok).toEqual(expect.arrayContaining(['wet_diapers', 'pale_stool', 'blood_in_stool']));
+    const line = inExpectedRange(results);
+    expect(line).toContain('wet_diapers');
+    expect(line).not.toContain('pale_stool');
+    expect(line).not.toContain('black_stool');
+    expect(line).not.toContain('blood_in_stool');
+  });
+
   test('sorted strictest first: by urgency, then not enough data, then ok', () => {
     const now = after(4);
     const results = run({

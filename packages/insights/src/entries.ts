@@ -67,6 +67,21 @@ export function canFlag(e: ThresholdEntry): boolean {
   return isCitable(e) && e.confidence !== 'low' && !e.requires_signs?.length;
 }
 
+/** Which babies an entry was written for, from the "Population:" sentence in its notes. */
+export type Population = 'breastfed' | 'formula_fed' | 'any';
+
+/**
+ * The WHO growth standards come from breastfed infants (MGRS) but WHO publishes them as the
+ * standard for every infant, whatever the feeding, so they are 'any' here.
+ */
+export function population(e: ThresholdEntry): Population {
+  if (e.id.startsWith('weight_gain_who_p5_')) return 'any';
+  const sentence = /Population:([^.]*)\./.exec(e.notes)?.[1];
+  if (sentence === undefined) throw new Error(`${e.id}: notes have no Population sentence`);
+  if (sentence.includes('formula-fed')) return 'formula_fed';
+  return sentence.includes('breastfed') ? 'breastfed' : 'any';
+}
+
 /** Does the observed value trip this entry's comparison? Ignores age and confidence. */
 export function trips(e: ThresholdEntry, observed: number): boolean {
   const v = e.value;

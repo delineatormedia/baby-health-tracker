@@ -1,5 +1,13 @@
 import type { BabyEvent, Id, Stool, StoolColor, Timestamp } from '@bht/schema';
-import { activeAt, canFlag, entry, isCitable, trips, type ThresholdEntry } from './entries.ts';
+import {
+  activeAt,
+  canFlag,
+  entry,
+  isCitable,
+  population,
+  trips,
+  type ThresholdEntry,
+} from './entries.ts';
 import {
   CHECK_IDS,
   URGENCIES,
@@ -27,14 +35,23 @@ export const RED_FLAG_LOOKBACK_DAYS = 7;
 const NO_URINE_HOURS = 8;
 
 /**
+ * A feed record starting within this many minutes of the end of the previous one joins its
+ * feed episode, so a breastfeed and its top-up bottle are one feed. App policy, not #11 (PM
+ * decision on #16, 2026-10-29).
+ */
+export const FEED_EPISODE_GAP_MINUTES = 30;
+
+/**
  * Urgency of each entry when it flags, from the wording #11 quotes. Every other entry is
  * 'consider'. The strictest firing entry sets the result's urgency.
  */
-const ENTRY_URGENCY: Readonly<Record<string, Urgency>> = {
+export const ENTRY_URGENCY: Readonly<Record<string, Urgency>> = {
   // KidsDoc: "Wet diapers are less than 6 per day" -> contact doctor within 24 hours.
   wet_diapers_min_aap_kidsdoc_from_dol5: 'within_24h',
   // #11 §9: only 1-2 wet diapers a day is a severe sign; seek care now.
   wet_diapers_severe_dehydration: 'now',
+  // KidsDoc: "Yellow seedy stools are less than 3 per day" -> contact doctor within 24 hours.
+  stools_min_aap_from_dol5: 'within_24h',
   // KidsDoc: day 2-4 and no urine in more than 8 hours -> contact doctor within 24 hours.
   no_urine_hours_dol2_4: 'within_24h',
   // KidsDoc: the 8 h gap with dark urine, no stool, dry mouth, no tears -> seek care now. It needs
@@ -148,35 +165,112 @@ function stools(ctx: Ctx): CheckResult | null {
     d * DAY_MS,
   );
   // From day 21 a low count is normal when stools are soft and weight gain is adequate
-  // (stool_interval_breastfed_normal). #11 defines no test for "adequate", so v1 cannot rule
-  // the exception out and the suppressible entries do not run (source exceptions win).
+  // (stool_interval_breastfed_normal). App policy (PM decision on #16, 2026-10-29): gain is
+  // adequate when weight_gain is ok, and stools are soft when none logged in the lookback
+  // was hard. Only then do the suppressible entries stop applying.
   const suppressor = entry('stool_interval_breastfed_normal');
-  if (activeAt(suppressor, d * DAY_MS)) {
+  if (activeAt(suppressor, d * DAY_MS) && stoolIntervalNormal(ctx)) {
     active = active.filter((e) => !e.suppressed_by?.some((s) => s.id === suppressor.id));
   }
   const dirty = inDay(ctx, d).filter(isStool);
+  // AAP calls 1-2 stools a day normal on days 1-2; the stricter CDC minimum still decides.
+  const aapNormal = activeAt(entry('stools_expected_aap_dol1_2'), d * DAY_MS);
   return countCheck(ctx, 'stools', d, active, dirty, (n, firing, min) => ({
     title: 'Fewer stools than expected',
-    why: `${plural(n, 'stool')} logged on day ${d + 1} of life. ${orgs(firing)} expect at least ${min} at this age.`,
+    why:
+      `${plural(n, 'stool')} logged on day ${d + 1} of life. ${orgs(firing)} expect at least ${min} at this age.` +
+      (aapNormal && n > 0
+        ? ' The AAP says 1–2 stools a day can be normal on days 1 and 2; the app uses the stricter CDC minimum (app policy).'
+        : ''),
   }));
+}
+
+/** The day-21 exception: weight gain is ok and no stool in the lookback was logged as hard. */
+function stoolIntervalNormal(ctx: Ctx): boolean {
+  if (weightGain(ctx)?.status !== 'ok') return false;
+  const start = ctx.now - RED_FLAG_LOOKBACK_DAYS * DAY_MS;
+  return !ctx.events.some((e) => at(e) >= start && stoolOf(e)?.consistency === 'hard');
 }
 
 function feeds(ctx: Ctx): CheckResult | null {
   const d = latestCompletedDay(ctx);
   if (d === null) return null;
-  const logged = inDay(ctx, d).filter(
-    (e) => e.type === 'breastfeed' || e.type === 'bottle' || e.type === 'weighted_feed',
+  const [start, end] = dayBounds(ctx, d);
+  // An episode belongs to the day its first record starts in.
+  const episodes = feedEpisodes(ctx).filter((ep) => at(ep[0]!) >= start && at(ep[0]!) < end);
+  const active = activeEntries(
+    ['breastfeeds_min_newborn_cdc', 'breastfeeds_min_newborn_aap', 'bottle_feeds_min_newborn'],
+    d * DAY_MS,
   );
-  const breast = logged.some((e) => e.type !== 'bottle');
-  const bottle = logged.some((e) => e.type === 'bottle');
-  const ids = [
-    ...(breast || !bottle ? ['breastfeeds_min_newborn_cdc', 'breastfeeds_min_newborn_aap'] : []),
-    ...(bottle || !breast ? ['bottle_feeds_min_newborn'] : []),
-  ];
-  return countCheck(ctx, 'feeds', d, activeEntries(ids, d * DAY_MS), logged, (n, firing, min) => ({
-    title: 'Fewer feeds than expected',
-    why: `${plural(n, 'feed')} logged on day ${d + 1} of life. ${orgs(firing)} expect at least ${min} feeds a day in the first weeks.`,
-  }));
+  return countCheck(
+    ctx,
+    'feeds',
+    d,
+    active,
+    episodes.flat(),
+    (n, firing, min) => ({
+      title: 'Fewer feeds than expected',
+      why: `${plural(n, 'feed')} logged on day ${d + 1} of life (app policy: a top-up within ${FEED_EPISODE_GAP_MINUTES} minutes counts with the feed before it). ${orgs(firing)} expect at least ${min} feeds a day in the first weeks.`,
+    }),
+    episodes.length,
+  );
+}
+
+type FeedEvent = Extract<BabyEvent, { type: 'breastfeed' | 'bottle' }>;
+
+function isFeed(e: BabyEvent): e is FeedEvent {
+  return e.type === 'breastfeed' || e.type === 'bottle';
+}
+
+/**
+ * Feed records grouped into episodes: a record starting within FEED_EPISODE_GAP_MINUTES of
+ * the end of the episode so far joins it. A weighted feed is a measurement of a breastfeed,
+ * never a feed of its own.
+ */
+function feedEpisodes(ctx: Ctx): FeedEvent[][] {
+  const out: { records: FeedEvent[]; end: number }[] = [];
+  for (const e of ctx.events.filter(isFeed)) {
+    const end = at(e) + (e.type === 'breastfeed' ? (e.data.durationSeconds ?? 0) * 1000 : 0);
+    const last = out.at(-1);
+    if (last && at(e) - last.end <= FEED_EPISODE_GAP_MINUTES * 60_000) {
+      last.records.push(e);
+      last.end = Math.max(last.end, end);
+    } else {
+      out.push({ records: [e], end });
+    }
+  }
+  return out.map((ep) => ep.records);
+}
+
+interface Feeding {
+  /** Every feed in the window was breast milk, and the window is fully logged and synced. */
+  breastMilkOnly: boolean;
+  /** Some formula was logged in the window. */
+  formula: boolean;
+  /** Why breastMilkOnly is false, when it is. */
+  reason: NotEnoughDataReason;
+}
+
+/**
+ * The feeding behind a window. App policy (PM decision on #16, 2026-10-29): breastfed-only
+ * entries apply only when every logged feed was breast milk (at the breast or a breast-milk
+ * bottle). Any formula, or no feed at all, does not establish it; neither does a window that
+ * is not fully logged.
+ */
+function feeding(ctx: Ctx, start: number, end: number): Feeding {
+  const fed = ctx.events.filter((e) => isFeed(e) && at(e) >= start && at(e) < end) as FeedEvent[];
+  const formula = fed.some(isFormula);
+  const gap = coverage(ctx, start, end);
+  const breastMilkOnly = !gap && fed.length > 0 && !formula;
+  return { breastMilkOnly, formula, reason: gap ?? 'feeding_not_exclusive' };
+}
+
+/** Entries whose feeding population the window establishes. */
+function forFeeding(active: ThresholdEntry[], f: Feeding): ThresholdEntry[] {
+  return active.filter((e) => {
+    const p = population(e);
+    return p === 'any' || (p === 'breastfed' ? f.breastMilkOnly : f.formula);
+  });
 }
 
 function formulaPerDay(ctx: Ctx): CheckResult | null {
@@ -234,21 +328,28 @@ type Wording = (
   why: string;
 };
 
-/** A minimum count over one completed day. Runs only if the day is fully logged and synced. */
+/**
+ * A minimum count over one completed day. Runs only if the day is fully logged and synced,
+ * and only with the entries whose feeding population the day establishes.
+ */
 function countCheck(
   ctx: Ctx,
   check: CheckId,
   d: number,
-  active: ThresholdEntry[],
+  present: ThresholdEntry[],
   matched: BabyEvent[],
   wording: Wording,
+  n = matched.length,
 ): CheckResult | null {
-  if (!active.some(canFlag)) return null;
+  if (!present.some(canFlag)) return null;
   const [start, end] = dayBounds(ctx, d);
-  const n = matched.length;
-  const observed = observe(n, 'count', active);
   const gap = coverage(ctx, start, end);
-  if (gap) return notEnough(check, start, end, active, gap, observed);
+  if (gap) return notEnough(check, start, end, present, gap, observe(n, 'count', present));
+  const active = forFeeding(present, feeding(ctx, start, end));
+  const observed = observe(n, 'count', active);
+  if (!active.some(canFlag)) {
+    return notEnough(check, start, end, present, 'feeding_not_exclusive', observed);
+  }
   return decide(
     check,
     start,
@@ -264,42 +365,67 @@ function countCheck(
 // --- Absence over hours ---
 
 /**
- * No wet diaper for more than 8 h on days 2-4 of life (no_urine_hours_dol2_4). The gap is
- * measured back from this device's last pull, because a wet diaper written after it may not
- * have arrived yet. The composite dehydration entry is cited but never flags (it needs signs
- * v1 does not log). There is no gap check on day 1 or after day 4.
+ * No wet diaper for more than 8 h on days 2-4 of life (no_urine_hours_dol2_4). The composite
+ * dehydration entry is cited but never flags (it needs signs v1 does not log). There is no
+ * gap check on day 1 or after day 4.
+ *
+ * A wet diaper logged in the 8 h before now answers it as ok, synced or not. Otherwise the
+ * only time the log can vouch for is this device's last pull, so the age window, the 8 h
+ * window and the reported hours are all taken at that time. A gap that ended before the pull
+ * says nothing about now, so that is not enough data rather than ok.
  */
 function noUrine(ctx: Ctx): CheckResult | null {
-  const age = ctx.now - ctx.birth;
   const rule = entry('no_urine_hours_dol2_4');
-  if (!activeAt(rule, age)) return null;
-  const active = activeEntries(['no_urine_hours_dol2_4', 'no_urine_hours_dehydration'], age);
-  const end = ctx.synced === null ? ctx.now : Math.min(ctx.now, ctx.synced);
-  const start = end - NO_URINE_HOURS * HOUR_MS;
-  const wets = ctx.events.filter(isWet);
-  const last = wets.at(-1);
-  const hoursSince = (t: number) => (t - (last ? at(last) : ctx.birth)) / HOUR_MS;
-  // A wet diaper anywhere from the window start to now, synced or not, answers the check.
-  if (last && at(last) >= start) {
-    const observed = observe(hoursSince(ctx.now), 'h', active);
-    return decide('no_urine', start, end, active, observed, () => false, [], noWording);
+  const ids = [rule.id, 'no_urine_hours_dehydration'];
+  if (!activeAt(rule, ctx.now - ctx.birth)) return null;
+  const present = activeEntries(ids, ctx.now - ctx.birth);
+  const gapMs = NO_URINE_HOURS * HOUR_MS;
+  const last = ctx.events.filter(isWet).at(-1);
+  if (last && at(last) >= ctx.now - gapMs) {
+    const observed = observe((ctx.now - at(last)) / HOUR_MS, 'h', present);
+    return decide(
+      'no_urine',
+      ctx.now - gapMs,
+      ctx.now,
+      present,
+      observed,
+      () => false,
+      [],
+      noWording,
+    );
   }
-  // Hours from the last logged wet diaper (or birth) to the end of the window: over 8.
-  const hours = hoursSince(end);
-  const observed = observe(hours, 'h', active);
-  const gap = ctx.synced === null ? 'not_synced' : coverage(ctx, start, end);
-  if (gap) return notEnough('no_urine', start, end, active, gap, last ? observed : undefined);
+  if (ctx.synced === null) {
+    return notEnough('no_urine', ctx.now - gapMs, ctx.now, present, 'not_synced');
+  }
+  const end = Math.min(ctx.now, ctx.synced);
+  const start = end - gapMs;
+  // Pulled before day 2, or a wet diaper inside the 8 h before the pull: now is unknown.
+  if (!activeAt(rule, end - ctx.birth) || (last && at(last) >= start)) {
+    return notEnough('no_urine', start, end, present, 'not_synced');
+  }
+  const gap = coverage(ctx, start, end);
+  if (gap) return notEnough('no_urine', start, end, present, gap);
+  // The rule is for breastfed babies: judge the feeding over the day before the pull.
+  const fed = feeding(ctx, end - DAY_MS, end);
+  const active = forFeeding(activeEntries(ids, end - ctx.birth), fed);
+  if (!active.some(canFlag)) return notEnough('no_urine', start, end, present, fed.reason);
+  // No wet diaper in the fully logged [start, end], so the gap is over 8 h. Report only the
+  // hours the log vouches for: back to the last wet diaper or birth, but not past the start
+  // of the fully logged period.
+  const loggedFrom = ctx.covered.find(([s, e]) => s <= start && end <= e)![0];
+  const since = Math.max(last ? at(last) : ctx.birth, loggedFrom);
+  const hours = (end - since) / HOUR_MS;
   return decide(
     'no_urine',
     start,
     end,
     active,
-    observed,
-    (e) => trips(e, hours),
+    observe(hours, 'h', active),
+    () => true,
     last ? [last.id] : [],
     () => ({
       title: 'No wet diaper for over 8 hours',
-      why: `No wet diaper was logged in the 8 hours before the last sync. The AAP says a baby on days 2–4 of life with no urine for more than 8 hours should see a doctor within 24 hours.`,
+      why: `No wet diaper was logged for at least ${fmt(hours)} hours before the last sync. The AAP says a baby on days 2–4 of life with no urine for more than 8 hours should see a doctor within 24 hours.`,
     }),
   );
 }
@@ -403,10 +529,14 @@ function redFlag(
   const active = activeEntries(entryIds, ctx.now - ctx.birth);
   if (!active.some(canFlag)) return null;
   const start = Math.max(ctx.birth, ctx.now - RED_FLAG_LOOKBACK_DAYS * DAY_MS);
+  // A breastfed-only entry counts a stool only if the day before it was all breast milk.
+  const applies = (e: ThresholdEntry, ev: BabyEvent) =>
+    activeAt(e, at(ev) - ctx.birth) &&
+    (population(e) !== 'breastfed' || feeding(ctx, at(ev) - DAY_MS, at(ev)).breastMilkOnly);
   const counts = (e: ThresholdEntry) =>
-    ctx.events.filter((ev) => at(ev) >= start && match(ev) && activeAt(e, at(ev) - ctx.birth));
+    ctx.events.filter((ev) => at(ev) >= start && match(ev) && applies(e, ev));
   const matched = ctx.events.filter(
-    (ev) => at(ev) >= start && match(ev) && active.some((e) => activeAt(e, at(ev) - ctx.birth)),
+    (ev) => at(ev) >= start && match(ev) && active.some((e) => applies(e, ev)),
   );
   return decide(
     check,
@@ -438,8 +568,10 @@ function weightLoss(ctx: Ctx): CheckResult | null {
   if (!latest || latest === birth) {
     return notEnough('weight_loss', at(birth), ctx.now, present, 'no_recent_weight');
   }
-  // Each rule applies at the age the weight was taken (ABM: loss "on day 5 or later").
-  const active = activeEntries(ids, at(latest) - ctx.birth);
+  // Each rule applies at the age the weight was taken (ABM: loss "on day 5 or later"), and the
+  // breastfed-only ABM rule only if the day before the weigh-in was all breast milk.
+  const fed = feeding(ctx, at(latest) - DAY_MS, at(latest));
+  const active = forFeeding(activeEntries(ids, at(latest) - ctx.birth), fed);
   const bw = birth.data.grams;
   const pct = ((bw - latest.data.grams) * 100) / bw;
   return decide(
