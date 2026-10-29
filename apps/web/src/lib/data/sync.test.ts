@@ -398,7 +398,9 @@ describe('SyncClient', () => {
       await running;
       await new Promise((r) => setTimeout(r, 50));
       expect(pulls).toBe(1);
-      expect(sync.status).toBe('offline');
+      // The stopped run is fenced: its failure reports nothing, so no stale 'offline' either.
+      expect(sync.status).toBe('syncing');
+      expect(sync.error).toBeNull();
       await sync.sync();
       expect(pulls).toBe(1);
     } finally {

@@ -25,7 +25,12 @@ export interface EditFields {
   notes?: string | null;
 }
 
-const CURSOR = 'cursor';
+/**
+ * The pull cursor's meta key. The cursor is a server-wide seq that only means something for
+ * the household it was pulled from, so each household keeps its own: a phone that signs in to
+ * another household starts that one at 0, and signing back in to the first resumes it.
+ */
+const cursorKey = (household: string) => (household ? `cursor:${household}` : 'cursor');
 
 /**
  * Local-first event log in IndexedDB. Every write lands here first and is visible at once;
@@ -141,12 +146,12 @@ export class EventStore {
     return rejected;
   }
 
-  /** Stores pulled versions and advances the cursor in one transaction. */
-  async applyPull(page: PullResponse): Promise<void> {
+  /** Stores pulled versions and advances `household`'s cursor in one transaction. */
+  async applyPull(page: PullResponse, household = ''): Promise<void> {
     const tx = this.db.transaction(['versions', 'meta'], 'readwrite');
     const versions = tx.objectStore('versions');
     for (const { seq, event } of page.versions) await versions.put(toRow(event, seq));
-    await tx.objectStore('meta').put(page.next, CURSOR);
+    await tx.objectStore('meta').put(page.next, cursorKey(household));
     await tx.done;
     if (page.versions.length > 0) this.#emit();
   }
@@ -223,16 +228,22 @@ export class EventStore {
     this.#emit();
   }
 
-  async cursor(): Promise<number> {
-    return (await this.db.get('meta', CURSOR)) ?? 0;
+  async cursor(household = ''): Promise<number> {
+    return (await this.db.get('meta', cursorKey(household))) ?? 0;
+  }
+
+  /** Forgets how far this phone has pulled from `household`. Called at sign-out. */
+  async resetCursor(household = ''): Promise<void> {
+    await this.db.delete('meta', cursorKey(household));
   }
 
   /**
-   * Forgets how far this phone has pulled. Called at sign-out: the cursor is a server-wide seq,
-   * so keeping it would skip another household's earlier entries at the next sign-in.
+   * Whether this phone holds any row for `babyId`: a visible entry, a tombstone, a pending,
+   * refused or local-only version. Placement at sign-in asks by this, not by visible entries,
+   * so an undone entry's versions are never uploaded under a household that lacks the baby.
    */
-  async resetCursor(): Promise<void> {
-    await this.db.delete('meta', CURSOR);
+  async hasRows(babyId: string): Promise<boolean> {
+    return (await this.db.countFromIndex('versions', 'byBaby', babyId)) > 0;
   }
 
   /** Whether any entry of `babyId` reached a server, by this phone's push or a pull. */

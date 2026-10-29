@@ -96,9 +96,12 @@ class AppState {
   #reloadAgain = false;
   #account: Account | null = null;
   #sync: SyncClient | null = null;
-  #stopSync: (() => void) | null = null;
-  /** Baby ids the server has, from the last household load. */
-  readonly #knownBabies = new Set<string>();
+  #stopSync: (() => Promise<void>) | null = null;
+  /**
+   * Baby ids the server has, from the last household load. Replaced, not cleared, so a
+   * stopped client's late prepare cannot add to the set the next client reads.
+   */
+  #knownBabies = new Set<string>();
 
   async init(): Promise<void> {
     if (this.#store) return;
@@ -155,17 +158,34 @@ class AppState {
    * Runs a sign-in ceremony (register, join or login), then places this phone's baby. The
    * account is stored before the household loads, marked unplaced, so a failed load retries
    * later instead of leaving a session nobody knows about. Sync waits for placement.
+   *
+   * The old account's sync client is stopped and drained before the ceremony sets the new
+   * session cookie, so none of its requests go out under the new account. Each household
+   * keeps its own pull cursor, so signing in to another one pulls it from the start.
    */
   async signIn(ceremony: (account: Account) => Promise<SignedIn>): Promise<void> {
-    const { householdId, memberId } = await ceremony(this.#api);
-    this.#setAccount({ householdId, memberId, placed: false });
+    await this.#dropSync();
+    let signedIn: SignedIn;
+    try {
+      signedIn = await ceremony(this.#api);
+    } catch (e) {
+      this.#restartSync();
+      throw e;
+    }
+    this.#setAccount({
+      householdId: signedIn.householdId,
+      memberId: signedIn.memberId,
+      placed: false,
+    });
     await this.place();
   }
 
   /**
-   * Loads the household and decides about this phone's baby (see placeBaby). A phone with no
-   * entries for its own baby just takes the household's. Throws, with syncError set, if the
-   * household cannot be loaded; Settings offers a retry.
+   * Loads the household and decides about this phone's baby (see placeBaby). A phone holding
+   * no rows at all for its own baby just takes the household's. Any row counts, an undone
+   * entry's tombstone included: otherwise those versions would upload under a household
+   * without the baby. Throws, with syncError set, if the household cannot be loaded; Settings
+   * offers a retry.
    */
   async place(): Promise<void> {
     const account = this.account;
@@ -183,10 +203,9 @@ class AppState {
       }
       throw e;
     }
-    this.#knownBabies.clear();
-    for (const b of household.babies) this.#knownBabies.add(b.id);
+    this.#knownBabies = new Set(household.babies.map((b) => b.id));
     const placement = placeBaby(this.baby, household);
-    if (placement.kind === 'choose' && this.events.length > 0) {
+    if (placement.kind === 'choose' && (await this.store.hasRows(this.baby!.id))) {
       saveJoining(this.#storage, placement.baby);
       this.joining = placement.baby;
     } else if (placement.kind !== 'keep' && placement.kind !== 'none') {
@@ -213,19 +232,24 @@ class AppState {
     this.#startSync();
   }
 
-  /** Revokes this phone's session. Logs stay here; the next sign-in pulls from the start. */
+  /**
+   * Revokes this phone's session. Logs stay here; the next sign-in pulls from the start. Sync
+   * is stopped and drained first, so no late response lands after the cursor is reset.
+   */
   async signOut(): Promise<void> {
+    const household = this.account?.householdId;
+    await this.#dropSync();
     try {
       await this.#api.logout();
     } catch (e) {
       // An expired session is signed out already.
-      if (!(e instanceof AccountError && e.status === 401)) throw e;
+      if (!(e instanceof AccountError && e.status === 401)) {
+        this.#restartSync();
+        throw e;
+      }
     }
-    this.#stopSync?.();
-    this.#stopSync = null;
-    this.#sync = null;
-    await this.store.resetCursor();
-    this.#knownBabies.clear();
+    if (household) await this.store.resetCursor(household);
+    this.#knownBabies = new Set();
     saveJoining(this.#storage, null);
     this.joining = null;
     this.#setAccount(null);
@@ -250,13 +274,27 @@ class AppState {
     void this.#reload();
   }
 
-  /** Starts syncing, or resumes after a sign-in lifted the 401 pause. */
+  /** Puts back sync that #dropSync stopped, when a sign-in or sign-out fails part way. */
+  #restartSync() {
+    if (this.account && this.account.placed !== false && !this.joining) this.#startSync();
+  }
+
+  /** Stops the sync client, if any, and waits for a store write its run had started. */
+  async #dropSync(): Promise<void> {
+    const stop = this.#stopSync;
+    this.#stopSync = null;
+    this.#sync = null;
+    await stop?.();
+  }
+
+  /** Starts syncing the signed-in household, or resumes after a retried placement. */
   #startSync() {
     if (this.#sync) {
       void this.#sync.resume();
       return;
     }
     const sync = new SyncClient(this.store, httpTransport(), {
+      household: this.account?.householdId,
       prepare: babyPreparer(
         (b) => this.#api.addBaby(b),
         this.#knownBabies,
