@@ -426,7 +426,7 @@ export function describe(e: BabyEvent, volume: (ml: number) => string): string {
 /**
  * The second action on an event's Logged toast: the screen that changes its time. Dirty and
  * mixed diapers reopen their details; a running feed opens its timer; the rest share /logged.
- * A "We missed some" mark has no time to change, so none.
+ * A "We missed some" mark has no time to change, and a stopped pump is on its amount form, so none.
  */
 export type EditPath = `/diaper/details?id=${string}` | '/feed' | '/pump' | `/logged?id=${string}`;
 
@@ -438,7 +438,8 @@ export function editLink(e: BabyEvent): { label: string; path: EditPath } | unde
     return { label: 'Change time', path: '/feed' };
   if (e.type === 'pump' && e.data.durationSeconds === null)
     return { label: 'Change time', path: '/pump' };
-  if (e.type === 'pump' && awaitingAmount(e)) return { label: 'Add amount', path: '/pump' };
+  // Its Stop toast sits on the amount form already, so nothing to link to.
+  if (e.type === 'pump' && awaitingAmount(e)) return undefined;
   return { label: 'Change time', path: `/logged?id=${e.id}` };
 }
 

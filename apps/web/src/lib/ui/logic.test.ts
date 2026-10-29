@@ -475,7 +475,7 @@ describe('pump timer (#22)', () => {
     expect(lastPump(events)?.id).toBe(before.id);
     expect(lastPumpMl(events, 'left')).toBe(80);
     expect(describeEvent(stopped, (ml) => `${ml} mL`)).toBe('Pump · both · 25 min · add amount');
-    expect(editLink(stopped)).toEqual({ label: 'Add amount', path: '/pump' });
+    expect(editLink(stopped)).toBeUndefined();
     expect(latestStart(stopped, NOW)).toBe(NOW - 1_500_000);
     // Running and finished pumps are never "stopped"; nor is an old pump with a 0 mL side.
     expect(stoppedPump([pumpEv(startPumpData('left'), 1)])).toBeUndefined();

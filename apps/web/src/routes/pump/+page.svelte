@@ -132,6 +132,8 @@
       form = null;
       return;
     }
+    // The Stop toast no longer describes the pump, and its Undo would stop it again.
+    app.dismissToast();
     void once(() => app.store.edit(p.id, { data: startPumpData(pumpSide(p)) }));
   }
 
