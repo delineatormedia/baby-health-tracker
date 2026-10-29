@@ -91,6 +91,8 @@ class AppState {
   syncStatus = $state<SyncStatus>('idle');
   /** SyncClient.error, or why the household could not be loaded after sign-in. */
   syncError = $state<string | null>(null);
+  /** The account transition running now; Settings holds back the other one meanwhile. */
+  transition = $state<'signIn' | 'signOut' | null>(null);
 
   #store: EventStore | null = null;
   #kv: Storage | null = null;
@@ -111,6 +113,10 @@ class AppState {
    * started, no error shown. A late answer for the old account cannot bring it back.
    */
   #epoch = 0;
+  /** Sign-ins and sign-outs, one at a time: each starts once the one before has settled. */
+  #transitions: Promise<unknown> = Promise.resolve();
+  /** Sign-ins queued or running; a sign-out aborts their ceremonies. */
+  #ceremonies = new Set<AbortController>();
 
   async init(): Promise<void> {
     if (this.#store) return;
@@ -176,24 +182,40 @@ class AppState {
    * The old account's sync client is stopped and drained before the ceremony sets the new
    * session cookie, so none of its requests go out under the new account. Each household
    * keeps its own pull cursor, so signing in to another one pulls it from the start.
+   *
+   * A sign-out aborts the ceremony and queues behind it. Aborted before verify, it returns
+   * with nothing sent. Once verify is out, the server has the session whatever happens here,
+   * so the account is stored (the sign-out behind clears it) but not placed.
    */
-  async signIn(ceremony: (account: Account) => Promise<SignedIn>): Promise<void> {
-    const current = this.#transition();
-    await this.#dropSync();
-    let signedIn: SignedIn;
-    try {
-      signedIn = await ceremony(this.#api);
-    } catch (e) {
-      if (current()) this.#resumeAccount();
-      throw e;
-    }
-    if (!current()) return;
-    this.#setAccount({
-      householdId: signedIn.householdId,
-      memberId: signedIn.memberId,
-      placed: false,
+  async signIn(
+    ceremony: (account: Account, signal: AbortSignal) => Promise<SignedIn>,
+  ): Promise<void> {
+    const abort = new AbortController();
+    this.#ceremonies.add(abort);
+    const signedIn = await this.#serial('signIn', async () => {
+      try {
+        if (abort.signal.aborted) return false;
+        this.#transition();
+        await this.#dropSync();
+        let signedIn: SignedIn;
+        try {
+          signedIn = await ceremony(this.#api, abort.signal);
+        } catch (e) {
+          if (abort.signal.aborted) return false;
+          this.#resumeAccount();
+          throw e;
+        }
+        this.#setAccount({
+          householdId: signedIn.householdId,
+          memberId: signedIn.memberId,
+          placed: false,
+        });
+        return !abort.signal.aborted;
+      } finally {
+        this.#ceremonies.delete(abort);
+      }
     });
-    await this.place();
+    if (signedIn) await this.place();
   }
 
   /**
@@ -258,28 +280,33 @@ class AppState {
   /**
    * Revokes this phone's session. Logs stay here; the next sign-in pulls from the start. Sync
    * is stopped and drained first, so no late response lands after the cursor is reset.
+   *
+   * A sign-in in flight is aborted, and logout waits for it to settle: a verify already sent
+   * may set a session cookie, and logout after it revokes that session as well.
    */
-  async signOut(): Promise<void> {
-    const current = this.#transition();
-    const household = this.account?.householdId;
-    await this.#dropSync();
-    try {
-      await this.#api.logout();
-    } catch (e) {
-      // An expired session is signed out already.
-      if (!(e instanceof AccountError && e.status === 401)) {
-        if (current()) this.#resumeAccount();
-        throw e;
+  signOut(): Promise<void> {
+    for (const ceremony of this.#ceremonies) ceremony.abort();
+    return this.#serial('signOut', async () => {
+      this.#transition();
+      const household = this.account?.householdId;
+      await this.#dropSync();
+      try {
+        await this.#api.logout();
+      } catch (e) {
+        // An expired session is signed out already.
+        if (!(e instanceof AccountError && e.status === 401)) {
+          this.#resumeAccount();
+          throw e;
+        }
       }
-    }
-    if (household) await this.store.resetCursor(household);
-    if (!current()) return;
-    this.#knownBabies = new Set();
-    saveJoining(this.#storage, null);
-    this.joining = null;
-    this.#setAccount(null);
-    this.syncStatus = 'idle';
-    this.syncError = null;
+      if (household) await this.store.resetCursor(household);
+      this.#knownBabies = new Set();
+      saveJoining(this.#storage, null);
+      this.joining = null;
+      this.#setAccount(null);
+      this.syncStatus = 'idle';
+      this.syncError = null;
+    });
   }
 
   /** An invite code for the other parent. */
@@ -294,9 +321,22 @@ class AppState {
   }
 
   /** Begins an account transition: work fenced under the previous account drops itself. */
-  #transition(): () => boolean {
+  #transition() {
     this.#epoch++;
-    return this.#fence();
+  }
+
+  /** Runs an account transition after the ones before it have settled, failed or not. */
+  #serial<T>(kind: 'signIn' | 'signOut', run: () => Promise<T>): Promise<T> {
+    const next = this.#transitions.then(async () => {
+      this.transition = kind;
+      try {
+        return await run();
+      } finally {
+        this.transition = null;
+      }
+    });
+    this.#transitions = next.catch(() => {});
+    return next;
   }
 
   /**

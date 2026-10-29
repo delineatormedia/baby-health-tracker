@@ -320,6 +320,118 @@ describe('an account transition fences placement in flight', () => {
   });
 });
 
+describe('a sign-out aborts the sign-in in flight, and waits for its verify', () => {
+  /**
+   * A phone whose session expired: Settings shows both the login button and Sign out. The
+   * server's session follows verify and logout; every other route is 401 without one.
+   */
+  async function expiredWithLogin(answer: Partial<Record<string, Promise<Response>>>) {
+    const a = baby();
+    kv.set('bht.baby', JSON.stringify(a));
+    kv.set('bht.account', JSON.stringify({ householdId: a.householdId, memberId: newId() }));
+    const server = { session: false };
+    const prompts: AbortSignal[] = [];
+    const credential = answer.credential;
+    const passkey = vi.fn(async (_options: unknown, signal?: AbortSignal) => {
+      prompts.push(signal!);
+      return credential ? credential.then((r) => r.json()) : {};
+    });
+    vi.doMock('../data/account.ts', async (original) => ({
+      ...(await original<typeof import('../data/account.ts')>()),
+      browserPasskeys: () => ({ get: passkey, create: passkey }),
+    }));
+    serve(async (url) => {
+      if (url === '/api/auth/login/options') {
+        return answer.options ?? json({ flowId: newId(), options: {} });
+      }
+      if (url === '/api/auth/login/verify') {
+        const res = await (answer.verify ?? json({}));
+        server.session = true;
+        return json({ householdId: a.householdId, memberId: newId() }, res.status);
+      }
+      if (url === '/api/auth/logout') {
+        server.session = false;
+        return json({});
+      }
+      if (url === '/api/household' && server.session) {
+        return json({ id: a.householdId, members: [], babies: [a] });
+      }
+      return json({ error: 'Signed out' }, 401);
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('signed_out'));
+    return { app, server, passkey, prompts };
+  }
+  const verifies = () => requests.filter((r) => r === 'POST /api/auth/login/verify');
+  afterEach(() => vi.doUnmock('../data/account.ts'));
+
+  test('sign-out before options returns: no passkey prompt, no verify', async () => {
+    const options = held();
+    const { app, server, passkey } = await expiredWithLogin({ options: options.response });
+    const login = app.signIn((account, signal) => account.login(signal));
+    await vi.waitFor(() => expect(requests).toContain('POST /api/auth/login/options'));
+
+    const out = app.signOut();
+    options.release(json({ flowId: newId(), options: {} }));
+    await Promise.all([login, out]);
+    await settle();
+
+    expect(passkey).not.toHaveBeenCalled();
+    expect(verifies()).toHaveLength(0);
+    expect(requests).toContain('POST /api/auth/logout');
+    expect(server.session).toBe(false);
+    expect(app.account).toBeNull();
+    expect(kv.has('bht.account')).toBe(false);
+  });
+
+  test('sign-out during the passkey prompt: the prompt is aborted, no verify', async () => {
+    const credential = held();
+    const { app, server, prompts } = await expiredWithLogin({ credential: credential.response });
+    const login = app.signIn((account, signal) => account.login(signal));
+    await vi.waitFor(() => expect(prompts).toHaveLength(1));
+
+    const out = app.signOut();
+    expect(prompts[0]!.aborted).toBe(true);
+    // A browser that hands back a credential anyway is still not verified.
+    credential.release(json({ id: 'late' }));
+    await Promise.all([login, out]);
+    await settle();
+
+    expect(verifies()).toHaveLength(0);
+    expect(server.session).toBe(false);
+    expect(app.account).toBeNull();
+  });
+
+  test('sign-out with verify in flight logs out after it, so its session is revoked', async () => {
+    const verify = held();
+    const { app, server } = await expiredWithLogin({ verify: verify.response });
+    const login = app.signIn((account, signal) => account.login(signal));
+    await vi.waitFor(() => expect(verifies()).toHaveLength(1));
+
+    const out = app.signOut();
+    await settle();
+    expect(requests).not.toContain('POST /api/auth/logout');
+    expect(app.transition).toBe('signIn');
+
+    verify.release(json({}));
+    await Promise.all([login, out]);
+    await settle();
+
+    expect(requests.indexOf('POST /api/auth/logout')).toBeGreaterThan(
+      requests.indexOf('POST /api/auth/login/verify'),
+    );
+    expect(server.session).toBe(false);
+    // Not placed: the household load never went out under the revoked session.
+    expect(requests.slice(requests.indexOf('POST /api/auth/login/verify'))).not.toContain(
+      'GET /api/household',
+    );
+    expect(app.account).toBeNull();
+    expect(kv.has('bht.account')).toBe(false);
+    expect(app.syncStatus).toBe('idle');
+    expect(app.transition).toBeNull();
+  });
+});
+
 describe('placement goes by stored rows', () => {
   test('an undone entry still asks before joining, and keeping it off uploads nothing', async () => {
     const old = baby();

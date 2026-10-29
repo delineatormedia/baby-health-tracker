@@ -9,7 +9,11 @@ import {
   type RegisterRequest,
   type SignedIn,
 } from '@bht/schema';
-import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
+import {
+  startAuthentication,
+  startRegistration,
+  WebAuthnAbortService,
+} from '@simplewebauthn/browser';
 import { HttpError } from './protocol.ts';
 import { SEEDED_REFUSAL, SeededRefusal, refuseSeeded } from './seeded.ts';
 
@@ -27,7 +31,7 @@ export class AccountError extends HttpError {
 /** The account routes' HTTP calls. Every POST is JSON, so the server's 415 rule holds. */
 export interface AccountTransport {
   get<T>(path: string): Promise<T>;
-  post<T>(path: string, body: unknown): Promise<T>;
+  post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T>;
 }
 
 /** Same-origin fetch; the session and the flow cookie ride along as HttpOnly cookies. */
@@ -44,26 +48,42 @@ export function httpAccount(base = ''): AccountTransport {
   }
   return {
     get: (path) => call(path),
-    post: (path, body) =>
+    post: (path, body, signal) =>
       call(path, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
+        signal,
       }),
   };
 }
 
 /** navigator.credentials, as WebAuthn JSON in and out. */
 export interface Passkeys {
-  create(options: CeremonyOptions['options']): Promise<unknown>;
-  get(options: CeremonyOptions['options']): Promise<unknown>;
+  create(options: CeremonyOptions['options'], signal?: AbortSignal): Promise<unknown>;
+  get(options: CeremonyOptions['options'], signal?: AbortSignal): Promise<unknown>;
 }
 
-/** The browser's passkey prompts. The server's options are WebAuthn JSON already. */
+/**
+ * The browser's passkey prompts. The server's options are WebAuthn JSON already. An abort
+ * closes the open prompt; the library holds one ceremony at a time.
+ */
 export function browserPasskeys(): Passkeys {
+  async function prompt(run: () => Promise<unknown>, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    const cancel = () => WebAuthnAbortService.cancelCeremony();
+    signal?.addEventListener('abort', cancel);
+    try {
+      return await run();
+    } finally {
+      signal?.removeEventListener('abort', cancel);
+    }
+  }
   return {
-    create: (options) => startRegistration({ optionsJSON: options as never }),
-    get: (options) => startAuthentication({ optionsJSON: options as never }),
+    create: (options, signal) =>
+      prompt(() => startRegistration({ optionsJSON: options as never }), signal),
+    get: (options, signal) =>
+      prompt(() => startAuthentication({ optionsJSON: options as never }), signal),
   };
 }
 
@@ -84,6 +104,9 @@ type Kind = 'register' | 'join' | 'login';
  * is replaced with a fresh id and the ceremony runs again, so the parent never hits a dead
  * end. Register and join are refused at options, before a passkey is made; a login only at
  * verify, so it prompts for the passkey a second time.
+ *
+ * An aborted ceremony (a sign-out came) stops before its next step: no prompt, no verify, no
+ * retry. Verify itself is never aborted once sent; see #once.
  */
 export class Account {
   constructor(
@@ -93,18 +116,18 @@ export class Account {
   ) {}
 
   /** Creates the household around this phone's baby; the first member is signed in. */
-  register(request: Omit<RegisterRequest, 'deviceId'>): Promise<SignedIn> {
-    return this.#ceremony('register', (deviceId) => ({ ...request, deviceId }));
+  register(request: Omit<RegisterRequest, 'deviceId'>, signal?: AbortSignal): Promise<SignedIn> {
+    return this.#ceremony('register', (deviceId) => ({ ...request, deviceId }), signal);
   }
 
   /** Joins a household with an invite code. */
-  join(request: Omit<JoinRequest, 'deviceId'>): Promise<SignedIn> {
-    return this.#ceremony('join', (deviceId) => ({ ...request, deviceId }));
+  join(request: Omit<JoinRequest, 'deviceId'>, signal?: AbortSignal): Promise<SignedIn> {
+    return this.#ceremony('join', (deviceId) => ({ ...request, deviceId }), signal);
   }
 
   /** Signs in with a passkey this phone already holds. */
-  login(): Promise<SignedIn> {
-    return this.#ceremony('login', (deviceId) => ({ deviceId }));
+  login(signal?: AbortSignal): Promise<SignedIn> {
+    return this.#ceremony('login', (deviceId) => ({ deviceId }), signal);
   }
 
   async logout(): Promise<void> {
@@ -125,22 +148,35 @@ export class Account {
     return this.http.post('/api/invites', {});
   }
 
-  async #ceremony(kind: Kind, body: (deviceId: string) => unknown): Promise<SignedIn> {
+  async #ceremony(
+    kind: Kind,
+    body: (deviceId: string) => unknown,
+    signal?: AbortSignal,
+  ): Promise<SignedIn> {
     try {
-      return await this.#once(kind, body(this.device.get()));
+      return await this.#once(kind, body(this.device.get()), signal);
     } catch (e) {
       if (!isDeviceRefusal(e)) throw e;
-      return this.#once(kind, body(this.device.mint()));
+      signal?.throwIfAborted();
+      return this.#once(kind, body(this.device.mint()), signal);
     }
   }
 
-  async #once(kind: Kind, request: unknown): Promise<SignedIn> {
+  async #once(kind: Kind, request: unknown, signal?: AbortSignal): Promise<SignedIn> {
+    signal?.throwIfAborted();
     const { flowId, options } = await this.http.post<CeremonyOptions>(
       `/api/auth/${kind}/options`,
       request,
+      signal,
     );
+    signal?.throwIfAborted();
     const response =
-      kind === 'login' ? await this.passkeys.get(options) : await this.passkeys.create(options);
+      kind === 'login'
+        ? await this.passkeys.get(options, signal)
+        : await this.passkeys.create(options, signal);
+    signal?.throwIfAborted();
+    // Not aborted from here: verify's Set-Cookie lands whatever the page does, so the caller
+    // waits for it and a sign-out behind it revokes that session too.
     return this.http.post<SignedIn>(`/api/auth/${kind}/verify`, { flowId, response });
   }
 }

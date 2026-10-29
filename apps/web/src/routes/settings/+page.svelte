@@ -165,7 +165,11 @@
           their phone under Join the other parent. Works once, until {expires(invite.expiresAt)}.
         </p>
       {/if}
-      <button class="go2" disabled={busy} onclick={() => act(() => app.signOut())}>Sign out</button>
+      <button
+        class="go2"
+        disabled={busy || app.transition === 'signIn'}
+        onclick={() => act(() => app.signOut())}>Sign out</button
+      >
     </div>
     <p class="note">Signing out keeps this phone's logs here.</p>
   {/if}

@@ -27,18 +27,18 @@
   );
 
   async function go() {
-    if (!valid || busy) return;
+    if (!valid || busy || app.transition === 'signOut') return;
     busy = true;
     error = null;
     try {
       const displayName = name.trim();
-      await app.signIn((account) => {
-        if (mode === 'login') return account.login();
-        if (mode === 'join') return account.join({ code: normalized!, displayName });
+      await app.signIn((account, signal) => {
+        if (mode === 'login') return account.login(signal);
+        if (mode === 'join') return account.join({ code: normalized!, displayName }, signal);
         const baby = app.baby;
         if (!baby) throw new Error('Add a baby first.');
         const { householdId, ...rest } = baby;
-        return account.register({ householdId, displayName, baby: rest });
+        return account.register({ householdId, displayName, baby: rest }, signal);
       });
       onDone?.();
     } catch (e) {
@@ -69,7 +69,7 @@
     </label>
   {/if}
   {#if error}<p class="err" role="alert">{error}</p>{/if}
-  <button class="go2 primary" disabled={!valid || busy} onclick={go}
+  <button class="go2 primary" disabled={!valid || busy || app.transition === 'signOut'} onclick={go}
     >{busy ? 'Waiting for passkey…' : label}</button
   >
 </div>
