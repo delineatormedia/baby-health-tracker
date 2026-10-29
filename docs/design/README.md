@@ -43,7 +43,7 @@ flag color is the only warm accent, and it appears only on a flag.
 
 **Stool swatches are true-color in every mode.** They sit in their own well and
 never take the theme tint. The red-flag colors (pale yellow, clay, white, red)
-are grouped under "Call your pediatrician".
+are grouped under "Consider talking to your pediatrician".
 
 ## Flows
 
@@ -62,6 +62,17 @@ bottle, readings (flag and all-clear states), why.
 
 Remaining: pump, weight, history, add a baby, household settings, sign in.
 
-The insight wording and sources are placeholders until the clinical reference
-(#11) lands. The milk-supply estimate is out of v1 (owner, 2026-10-29), so the
-readings screen shows measured intake with error bars instead.
+## Readings and flag copy
+
+- The milk-supply estimate and any intake uncertainty display are out of v1
+  (owner, 2026-10-29; #11). Readings shows recorded volume as approximate
+  ("≈410 mL"), with no range.
+- When any feed is unmeasured (a breastfeed) or the other phone's sync is
+  stale, intake reads "Not enough information to assess total intake".
+- A reassuring line names only the checks that were evaluated ("Diapers and
+  weight are in the expected range"). Never a blanket "everything is fine".
+- Flags default to "Consider talking to your pediatrician". Stronger urgency
+  appears only where docs/CLINICAL_REFERENCE.md cites it, and the Why screen
+  shows that citation. Example: a pale or clay stool reads "Call your
+  pediatrician promptly" (AAP: "as soon as possible"; NHS: urgent).
+- Copy never diagnoses and never promises an outcome.

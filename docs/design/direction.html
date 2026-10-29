@@ -119,9 +119,6 @@ body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:4
 .track .base{position:absolute;left:0;right:0;top:12px;height:2px;background:var(--line)}
 .track .band{position:absolute;top:6px;height:14px;background:var(--band);border-radius:3px}
 .track .pt{position:absolute;top:3px;width:4px;height:20px;background:var(--ink);border-radius:2px;margin-left:-2px}
-.track .err{position:absolute;top:12px;height:2px;background:var(--ink)}
-.track .err::before,.track .err::after{content:"";position:absolute;top:-5px;width:2px;height:12px;background:var(--ink)}
-.track .err::before{left:0}.track .err::after{right:0}
 
 /* why */
 .prose{margin:22px 24px 0;font-size:16px;line-height:1.5}
@@ -189,7 +186,7 @@ diaperColor:()=>`${sb}${hdr('Dirty diaper','Now · 2:59 AM ›')}
 <div class="toggle"><span>Also wet <span style="color:var(--dim)">· mixed</span></span><span class="sw"></span></div>
 <div class="well"><div class="lab">Color · true in every mode</div>
 <div class="grid" style="margin-top:10px">${SW.normal.map(([n,c,d])=>`<div class="tile ${d?'dk':''}" style="background:${c}">${n}</div>`).join('')}</div>
-<div class="lab flagnote">! Call your pediatrician</div>
+<div class="lab flagnote">! Consider talking to your pediatrician</div>
 <div class="grid" style="grid-template-columns:repeat(4,1fr)">${SW.flag.map(([n,c,d])=>`<div class="tile sm fl ${d?'dk':''}" style="background:${c}">${n}</div>`).join('')}</div></div>
 <div class="hint lab">Tap a color to log · details are optional</div>`,
 
@@ -212,18 +209,18 @@ bottle:()=>{const H=400,at=v=>H-(v/240)*H;
 <div class="go">Log 60 mL</div>`},
 
 readingsFlag:()=>`${sb}${hdr('Readings','Day 12 · 24 h')}
-<div class="verdict flag"><div class="lab">! Call your pediatrician today</div><h3>Clay-colored stool</h3><p>Logged 4:10 PM by K</p><div class="more"><span>Why?</span><span>›</span></div></div>
+<div class="verdict flag"><div class="lab">! Call your pediatrician promptly</div><h3>Clay-colored stool</h3><p>Logged 4:10 PM by K</p><div class="more"><span>Why?</span><span>›</span></div></div>
 ${gauges()}`,
 readingsOk:()=>`${sb}${hdr('Readings','Day 12 · 24 h')}
-<div class="verdict"><div class="lab">Updated 2:59 AM</div><h3>Everything is in the expected range</h3></div>
+<div class="verdict"><div class="lab">3 checks · both phones synced 2:59 AM</div><h3>Diapers and weight are in the expected range</h3><p>Total intake is not assessed. See below.</p></div>
 ${gauges()}`,
 
 why:()=>`${sb}${hdr('‹ Readings','Why this flag')}
-<div class="prose"><div class="lab" style="color:var(--flag)">! Call your pediatrician today</div><h2>Clay-colored stool</h2>
-<p>Pale, clay or white stool can be an early sign of a liver problem. It is treatable when caught early.</p>
-<p style="color:var(--dim)">Placeholder wording until the clinical reference (#11) lands.</p></div>
+<div class="prose"><div class="lab" style="color:var(--flag)">! Call your pediatrician promptly</div><h2>Clay-colored stool</h2>
+<p>In young babies, pale, clay or white stool can be a sign of a liver problem. The AAP says to bring it to a doctor's attention as soon as possible, even once.</p>
+<p style="color:var(--dim)">The app can't tell what caused it. Your pediatrician can.</p></div>
 <div class="done" style="margin-top:8px"><span class="chip" style="background:#BDB3A1"></span><div>Dirty diaper · clay<small>Today 4:10 PM · K</small></div><span class="lab">›</span></div>
-<div class="src"><b style="color:var(--ink)">Source</b><br>[Citation from docs/clinical reference, #11]</div>
+<div class="src"><b style="color:var(--ink)">Sources</b><br>AAP, “The Many Colors of Poop” (healthychildren.org)<br>NHS, “Jaundice in newborns” (nhs.uk)<br>From docs/CLINICAL_REFERENCE.md · red-flag colours</div>
 <div class="go2">Edit the diaper</div>
 <div class="go">Talked to the pediatrician</div>`,
 
@@ -265,8 +262,8 @@ signin:()=>`${sb}
 <div class="go2">I have an invite</div>
 <div class="go">Sign in with a passkey</div>`,
 };
-function gauges(){return [["Wet diapers","7",[50,100],72,"6+ from day 5"],["Dirty diapers","4",[38,100],55,"3+ in week 2"],["Weight vs birth","+3.1%",[40,80],58,"Back to birth weight by day 10–14"]].map(([k,v,[b1,b2],p,n])=>`<div class="gauge"><div class="r"><span class="k">${k}</span><span class="v">${v}</span></div><div class="track"><div class="base"></div><div class="band" style="left:${b1}%;right:${100-b2}%"></div><div class="pt" style="left:${p}%"></div></div><div class="lab" style="margin-top:6px;letter-spacing:.04em;text-transform:none;font-size:12px">${n}</div></div>`).join('')
-+`<div class="gauge"><div class="r"><span class="k">Measured intake</span><span class="v">410 mL</span></div><div class="track"><div class="base"></div><div class="band" style="left:35%;right:30%"></div><div class="err" style="left:44%;width:22%"></div><div class="pt" style="left:55%"></div></div><div class="lab" style="margin-top:6px;letter-spacing:.04em;text-transform:none;font-size:12px">Bottles only. 9 breastfeeds not measured.</div></div>`}
+function gauges(){return [["Wet diapers","7",[50,100],72,"6+ from day 5"],["Dirty diapers","4",[38,100],55,"3+ in week 2"],["Weight vs birth","+3.1%",[40,80],58,"Back to birth weight by day 7–14"]].map(([k,v,[b1,b2],p,n])=>`<div class="gauge"><div class="r"><span class="k">${k}</span><span class="v">${v}</span></div><div class="track"><div class="base"></div><div class="band" style="left:${b1}%;right:${100-b2}%"></div><div class="pt" style="left:${p}%"></div></div><div class="lab" style="margin-top:6px;letter-spacing:.04em;text-transform:none;font-size:12px">${n}</div></div>`).join('')
++`<div class="gauge"><div class="r"><span class="k">Total intake</span><span class="v">≈410 mL</span></div><div style="margin-top:10px;font-size:15px;font-weight:500">Not enough information to assess total intake</div><div class="lab" style="margin-top:4px;letter-spacing:.04em;text-transform:none;font-size:12px">≈410 mL recorded from bottles. 9 breastfeeds not measured.</div></div>`}
 
 const BOARDS={
  core:{h:"Instrument · core screens",cols:[["Home · 24 h dial","home","home"],["Breastfeed timer","feed","feed"],["Diaper 1 · color","diaperColor","diaperColor"],["Diaper 2 · details","diaperDetails","diaperDetails"],["Bottle","bottle","bottle"],["Readings","readingsFlag","readingsOk"],["Why?","why","why"]]},
