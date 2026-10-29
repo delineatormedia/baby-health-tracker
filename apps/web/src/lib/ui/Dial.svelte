@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { polar, type Mark } from './logic.ts';
+  import { innerMarks, polar, type Mark } from './logic.ts';
 
   let {
     marks,
@@ -26,6 +26,8 @@
     const [x1, y1] = polar(h1, 134);
     return `M${x0} ${y0} A134 134 0 ${h1 - h0 > 12 ? 1 : 0} 1 ${x1} ${y1}`;
   });
+  // Wet and dirty marks spread side by side where they would overlap (a mixed diaper is both).
+  const inner = $derived(innerMarks(marks));
   const hand = $derived(polar(hourOf(now), 146));
 </script>
 
@@ -44,9 +46,9 @@
     {#each [0, 6, 12, 18] as h (h)}
       {@const [a, b] = polar(h, 140)}
       {@const [x, y] = polar(h, 131)}
-      {@const [tx, ty] = polar(h, 121)}
+      {@const [tx, ty] = polar(h, 115)}
       <line x1={a} y1={b} x2={x} y2={y} stroke="var(--dim)" stroke-width="1.5" />
-      <text x={tx} y={ty + 5} text-anchor="middle" class="h">{h}</text>
+      <text x={tx} y={ty + 6} text-anchor="middle" class="h">{h}</text>
     {/each}
     <!-- Each kind has its own colour and shape, as on the keys: feeds and bottles share the
          outer ring, wet and dirty the inner one, so the dial still reads without colour. -->
@@ -71,13 +73,20 @@
     {#if arc}
       <path d={arc} stroke="var(--feed)" stroke-width="14" fill="none" stroke-linecap="round" />
     {/if}
-    {#each marks as m, i (i)}
+    {#each inner as m, i (i)}
+      {@const [x, y] = polar(m.at, 99)}
       {#if m.kind === 'wet'}
-        {@const [x, y] = polar(m.hour, 99)}
-        <circle cx={x} cy={y} r="5.5" fill="var(--wet)" />
-      {:else if m.kind === 'dirty'}
-        {@const [x, y] = polar(m.hour, 99)}
-        <rect x={x - 5.5} y={y - 5.5} width="11" height="11" rx="1" fill="var(--dirty)" />
+        <circle cx={x} cy={y} r="5.5" fill="var(--wet)" data-mark="wet" />
+      {:else}
+        <rect
+          x={x - 5.5}
+          y={y - 5.5}
+          width="11"
+          height="11"
+          rx="1"
+          fill="var(--dirty)"
+          data-mark="dirty"
+        />
       {/if}
     {/each}
     <circle cx={hand[0]} cy={hand[1]} r="3.5" fill="var(--dim)" />
@@ -98,8 +107,9 @@
     width: 100%;
     height: 100%;
   }
+  /* 18.5 units: the dial is 300 units but as small as 249.6 px (78vw at 320), so 15.4 px. */
   .h {
-    font: 15px var(--mono);
+    font: 18.5px var(--mono);
     fill: var(--text-dim);
   }
   .center {

@@ -7,6 +7,8 @@ import {
   countMarks,
   currentSide,
   dayMarks,
+  INNER_STEP,
+  innerMarks,
   describe as describeEvent,
   editLink,
   feedElapsed,
@@ -401,6 +403,50 @@ describe('dial', () => {
     const at = new Date(NOW - 30 * 60_000);
     const [m] = dayMarks([ev('diaper', { kind: 'wet' }, 30)], NOW);
     expect(m?.hour).toBeCloseTo(at.getHours() + at.getMinutes() / 60);
+  });
+
+  test('a mixed diaper draws a wet and a dirty mark side by side', () => {
+    const marks = dayMarks([ev('diaper', { kind: 'mixed', stool: null }, 30)], NOW);
+    const inner = innerMarks(marks);
+    expect(inner.map((m) => m.kind)).toEqual(['wet', 'dirty']);
+    expect(inner[1]!.at - inner[0]!.at).toBeCloseTo(INNER_STEP);
+    // Centred on the logged hour, which each mark keeps.
+    expect((inner[0]!.at + inner[1]!.at) / 2).toBeCloseTo(marks[0]!.hour);
+    expect(inner.every((m) => m.hour === marks[0]!.hour)).toBe(true);
+  });
+
+  test('separate wet and dirty entries minutes apart do not overlap; the count matches the legend', () => {
+    const events = [
+      ev('diaper', { kind: 'wet' }, 30),
+      ev('diaper', { kind: 'dirty', stool: null }, 30),
+      ev('diaper', { kind: 'mixed', stool: null }, 32),
+      ev('diaper', { kind: 'wet' }, 300),
+      ev('bottle', { contents: 'formula', volumeMl: 60 }, 30),
+    ];
+    const marks = dayMarks(events, NOW);
+    const inner = innerMarks(marks);
+    const n = countMarks(marks);
+    expect(inner.filter((m) => m.kind === 'wet')).toHaveLength(n.wet);
+    expect(inner.filter((m) => m.kind === 'dirty')).toHaveLength(n.dirty);
+    const at = inner.map((m) => m.at).toSorted((a, b) => a - b);
+    for (let i = 1; i < at.length; i++) {
+      expect(at[i]! - at[i - 1]!).toBeGreaterThanOrEqual(INNER_STEP - 1e-9);
+    }
+    // The lone wet four and a half hours earlier stays where it was logged.
+    const lone = inner.find((m) => Math.abs(m.hour - m.at) < 1e-9 && m.kind === 'wet');
+    expect(lone).toBeDefined();
+  });
+
+  test('marks either side of midnight are spread across it', () => {
+    const inner = innerMarks([
+      { hour: 23.99, kind: 'wet' },
+      { hour: 0.01, kind: 'dirty' },
+    ]);
+    expect(inner).toHaveLength(2);
+    const [a, b] = inner.map((m) => m.at);
+    const gap = Math.min(Math.abs(a! - b!), 24 - Math.abs(a! - b!));
+    expect(gap).toBeCloseTo(INNER_STEP);
+    expect(inner.every((m) => m.at >= 0 && m.at < 24)).toBe(true);
   });
 
   test('polar puts 0 h at the top and 6 h on the right', () => {

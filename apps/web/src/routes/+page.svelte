@@ -67,7 +67,7 @@
   <header class="top">
     <span class="title-row">
       <h1>{baby.name}</h1>
-      <span class="lab num">{ageDays(baby.birthAt, app.now)} days · last 24 h</span>
+      <span class="lab num age">{ageDays(baby.birthAt, app.now)} days · last 24 h</span>
     </span>
     <!-- The #20 board has no place for Settings; it left the chip row for Weight and History. -->
     <a class="act" href={resolve('/settings')}>Settings</a>
@@ -183,7 +183,14 @@
     margin: 8px 0;
   }
   .held {
-    color: var(--dim);
+    color: var(--text-dim);
+  }
+  /* Home captions at the README floor: 15 px and --text-dim, which reaches 4.5:1 where the
+     shared 11 px --dim .lab does not. Shared tokens move in #38. */
+  .lab {
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
   }
   .legend {
     display: flex;
@@ -204,14 +211,11 @@
     color: var(--ink);
     font-weight: 600;
   }
+  .age {
+    white-space: nowrap;
+  }
   .quiet {
     text-align: center;
-    margin-top: 14px;
-    font-size: 14px;
-    color: var(--dim);
-  }
-  p.lab.quiet {
-    font-size: 10px;
     margin-top: 8px;
   }
   .dock {
