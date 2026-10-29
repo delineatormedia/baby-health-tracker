@@ -67,8 +67,12 @@ Remaining: pump, weight, history, add a baby, household settings, sign in.
 - The milk-supply estimate and any intake uncertainty display are out of v1
   (owner, 2026-10-29; #11). Readings shows recorded volume as approximate
   ("≈410 mL"), with no range.
-- When any feed is unmeasured (a breastfeed) or the other phone's sync is
-  stale, intake reads "Not enough information to assess total intake".
+- The intake row is headed "Recorded bottle intake", not "Total intake".
+  When any feed is unmeasured (a breastfeed) or the other phone's sync is
+  stale, it reads "Not enough information to assess total intake".
+- Missing logs are not evidence (docs/CLINICAL_REFERENCE.md). Count checks
+  (wet and dirty diapers) run only on periods the parents marked as fully
+  logged, with both phones synced. Otherwise they read "Not enough data".
 - A reassuring line names only the checks that were evaluated ("Diapers and
   weight are in the expected range"). Never a blanket "everything is fine".
 - Flags default to "Consider talking to your pediatrician". Stronger urgency

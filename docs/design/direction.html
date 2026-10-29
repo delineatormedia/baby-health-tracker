@@ -212,7 +212,7 @@ readingsFlag:()=>`${sb}${hdr('Readings','Day 12 · 24 h')}
 <div class="verdict flag"><div class="lab">! Call your pediatrician promptly</div><h3>Clay-colored stool</h3><p>Logged 4:10 PM by K</p><div class="more"><span>Why?</span><span>›</span></div></div>
 ${gauges()}`,
 readingsOk:()=>`${sb}${hdr('Readings','Day 12 · 24 h')}
-<div class="verdict"><div class="lab">3 checks · both phones synced 2:59 AM</div><h3>Diapers and weight are in the expected range</h3><p>Total intake is not assessed. See below.</p></div>
+<div class="verdict"><div class="lab">3 checks · fully logged · synced</div><h3>Diapers and weight are in the expected range</h3><p>Total intake is not assessed. See below.</p></div>
 ${gauges()}`,
 
 why:()=>`${sb}${hdr('‹ Readings','Why this flag')}
@@ -263,7 +263,7 @@ signin:()=>`${sb}
 <div class="go">Sign in with a passkey</div>`,
 };
 function gauges(){return [["Wet diapers","7",[50,100],72,"6+ from day 5"],["Dirty diapers","4",[38,100],55,"3+ in week 2"],["Weight vs birth","+3.1%",[40,80],58,"Back to birth weight by day 7–14"]].map(([k,v,[b1,b2],p,n])=>`<div class="gauge"><div class="r"><span class="k">${k}</span><span class="v">${v}</span></div><div class="track"><div class="base"></div><div class="band" style="left:${b1}%;right:${100-b2}%"></div><div class="pt" style="left:${p}%"></div></div><div class="lab" style="margin-top:6px;letter-spacing:.04em;text-transform:none;font-size:12px">${n}</div></div>`).join('')
-+`<div class="gauge"><div class="r"><span class="k">Total intake</span><span class="v">≈410 mL</span></div><div style="margin-top:10px;font-size:15px;font-weight:500">Not enough information to assess total intake</div><div class="lab" style="margin-top:4px;letter-spacing:.04em;text-transform:none;font-size:12px">≈410 mL recorded from bottles. 9 breastfeeds not measured.</div></div>`}
++`<div class="gauge"><div class="r"><span class="k">Recorded bottle intake</span><span class="v">≈410 mL</span></div><div style="margin-top:10px;font-size:15px;font-weight:500">Not enough information to assess total intake</div><div class="lab" style="margin-top:4px;letter-spacing:.04em;text-transform:none;font-size:12px">≈410 mL recorded from bottles. 9 breastfeeds not measured.</div></div>`}
 
 const BOARDS={
  core:{h:"Instrument · core screens",cols:[["Home · 24 h dial","home","home"],["Breastfeed timer","feed","feed"],["Diaper 1 · color","diaperColor","diaperColor"],["Diaper 2 · details","diaperDetails","diaperDetails"],["Bottle","bottle","bottle"],["Readings","readingsFlag","readingsOk"],["Why?","why","why"]]},
