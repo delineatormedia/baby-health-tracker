@@ -94,8 +94,17 @@ future encrypted-blob server possible without moving the insights.
   tombstone.
 - The server assigns a monotonically increasing sequence number. Clients pull
   everything after their last sequence and push their unsynced records.
-- Conflicts on the same event id resolve last-writer-wins by client timestamp,
-  with the server sequence as the tiebreak.
+- Conflicts on the same event id never use client clocks (a skewed phone must
+  not win). The highest version wins; on a tie, the version the server accepted
+  first (lowest sequence) wins, and an unsynced version loses to a synced one.
+  Losing versions stay in the log and can be restored. The rule is
+  `resolveCurrent` in `packages/schema`, shared by server and client.
+- Timestamps never outrank version or sequence. Two unsynced versions with the
+  same number (two offline tabs) are ordered by their canonical JSON, which
+  includes the timestamps; that order is provisional until the server
+  sequences both.
+- A sequence number names one stored version. Two different bodies under one
+  sequence are an integrity error, checked over the whole log.
 
 **Stack:**
 

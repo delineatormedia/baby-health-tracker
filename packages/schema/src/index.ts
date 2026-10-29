@@ -4,3 +4,4 @@ export const SCHEMA_VERSION = 1;
 export * from './events.ts';
 export * from './model.ts';
 export * from './units.ts';
+export * from './sync.ts';
