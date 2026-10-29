@@ -131,6 +131,7 @@ async function installed(page: Page) {
       timeout: 15_000,
     })
     .toBe(true);
+  await activated(page);
   await page.evaluate(() => {
     (window as unknown as { loadN: boolean }).loadN = true;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -149,6 +150,17 @@ async function update(page: Page, s: { switchTo: (dir: string) => void }, to = n
       timeout: 15_000,
     })
     .toBe(true);
+  await activated(page);
+}
+
+// controllerchange fires as the new worker starts activating, before its activate handler has
+// trimmed old caches; checking a page before then sees caches the worker is about to delete.
+async function activated(page: Page) {
+  await expect
+    .poll(() => page.evaluate(() => navigator.serviceWorker.controller?.state), {
+      timeout: 15_000,
+    })
+    .toBe('activated');
 }
 
 /** Still the page build N loaded: no reload has happened. */
