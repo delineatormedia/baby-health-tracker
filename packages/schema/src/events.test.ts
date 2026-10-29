@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { EVENT_TYPES, parseEvent, weightedFeedIntakeMl, type EventType } from './events.ts';
+import {
+  EVENT_TYPES,
+  nextVersion,
+  parseEvent,
+  weightedFeedIntakeMl,
+  type EventType,
+} from './events.ts';
 import { newId } from './model.ts';
 import { toMl } from './units.ts';
 
@@ -57,11 +63,25 @@ describe('envelope', () => {
     ['local timestamp', { occurredAt: '2026-10-29T03:00:00' }],
     ['version 0', { version: 0 }],
     ['fractional version', { version: 1.5 }],
+    ['version past MAX_SAFE_INTEGER', { version: Number.MAX_SAFE_INTEGER + 1 }],
+    ['version 1e100', { version: 1e100 }],
     ['deleted as string', { deleted: 'false' }],
     ['notes too long', { notes: 'x'.repeat(2001) }],
     ['unknown key', { extra: true }],
   ])('rejects %s', (_, overrides) => {
     expectInvalid(event('diaper', { kind: 'wet' }, overrides));
+  });
+
+  test('accepts the largest safe version', () => {
+    expectValid(event('diaper', { kind: 'wet' }, { version: Number.MAX_SAFE_INTEGER }));
+  });
+
+  test('nextVersion increments and refuses to overflow', () => {
+    expect(nextVersion(1)).toBe(2);
+    expect(nextVersion(Number.MAX_SAFE_INTEGER - 1)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(() => nextVersion(Number.MAX_SAFE_INTEGER)).toThrow(RangeError);
+    expect(() => nextVersion(0)).toThrow(RangeError);
+    expect(() => nextVersion(1.5)).toThrow(RangeError);
   });
 
   test('rejects non-objects', () => {

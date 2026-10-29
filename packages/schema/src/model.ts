@@ -1,8 +1,11 @@
 import * as v from 'valibot';
 import { monotonicFactory } from 'ulid';
 
-/** Crockford base32 ULID: 26 chars, sortable by creation time. Ids are created on the client. */
-export const Id = v.pipe(v.string(), v.regex(/^[0-9A-HJKMNP-TV-Z]{26}$/, 'Expected a ULID'));
+/**
+ * Crockford base32 ULID: 26 chars, sortable by creation time. Ids are created on the client.
+ * The first char is 0-7 because the 48-bit timestamp overflows above 7ZZZZZZZZZ.
+ */
+export const Id = v.pipe(v.string(), v.regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/, 'Expected a ULID'));
 export type Id = v.InferOutput<typeof Id>;
 
 // Monotonic so ids minted in the same millisecond still sort in creation order.

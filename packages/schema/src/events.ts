@@ -109,6 +109,17 @@ export function weightedFeedIntakeMl(data: v.InferOutput<typeof WeightedFeedData
   return data.afterGrams - data.beforeGrams;
 }
 
+/** Safe integers only: past 2^53 - 1, version + 1 === version and edits stop being ordered. */
+const EventVersion = v.pipe(v.number(), v.safeInteger(), v.minValue(1));
+
+/** The version for the next edit or delete of an event. Throws if versions are exhausted. */
+export function nextVersion(version: number): number {
+  if (!Number.isSafeInteger(version) || version < 1 || version >= Number.MAX_SAFE_INTEGER) {
+    throw new RangeError(`Cannot increment event version ${version}`);
+  }
+  return version + 1;
+}
+
 /**
  * Fields every event version carries. An edit is a new version with the same id; a delete
  * is a version with deleted = true. recordedAt is the client clock at write time and decides
@@ -120,7 +131,7 @@ const envelope = {
   authorId: Id,
   occurredAt: Timestamp,
   recordedAt: Timestamp,
-  version: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  version: EventVersion,
   deleted: v.boolean(),
   notes: v.nullable(v.pipe(v.string(), v.maxLength(2000))),
 };

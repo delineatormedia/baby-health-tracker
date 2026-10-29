@@ -1,3 +1,4 @@
+import { decodeTime } from 'ulid';
 import * as v from 'valibot';
 import { describe, expect, test } from 'vitest';
 import { Baby, Id, newId, Timestamp } from './model.ts';
@@ -7,6 +8,16 @@ describe('Id', () => {
     const ids = Array.from({ length: 1000 }, newId);
     expect(ids.every((id) => v.is(Id, id))).toBe(true);
     expect([...ids].sort()).toEqual(ids);
+  });
+
+  test('accepts the largest valid ULID', () => {
+    expect(v.is(Id, '7ZZZZZZZZZZZZZZZZZZZZZZZZZ')).toBe(true);
+    expect(decodeTime('7ZZZZZZZZZZZZZZZZZZZZZZZZZ')).toBe(2 ** 48 - 1);
+  });
+
+  test('rejects the first overflowing ULID', () => {
+    expect(v.is(Id, '80000000000000000000000000')).toBe(false);
+    expect(() => decodeTime('80000000000000000000000000')).toThrow();
   });
 
   test.each(['', 'abc', '01ARZ3NDEKTSV4RRFFQ69G5FA', '01ARZ3NDEKTSV4RRFFQ69G5FAI'])(
