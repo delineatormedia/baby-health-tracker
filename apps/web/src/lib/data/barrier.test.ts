@@ -197,6 +197,8 @@ describe('adopting the device list', () => {
       tSend: sentAt.wall,
       pSend: sentAt.mono,
       serverNow: serverAtFirstPage,
+      // The first page also came back five minutes after it left.
+      tRecv: sentAt.wall + 300_000,
     });
     expect(mom.adopted[0]!.devices.map((d) => d.deviceId)).toEqual([dad.store.authorId]);
     expect(await mom.store.devices('')).toEqual(mom.adopted[0]!.devices);

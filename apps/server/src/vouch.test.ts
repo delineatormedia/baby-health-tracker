@@ -13,7 +13,10 @@ const T0 = Date.parse('2026-10-29T03:00:00.000Z');
 function server() {
   const db = openDatabase(':memory:');
   const clock = { t: T0 };
-  const app = createApp(db, { auth: { rpId: RP_ID, origin: ORIGIN }, now: () => new Date(clock.t) });
+  const app = createApp(db, {
+    auth: { rpId: RP_ID, origin: ORIGIN },
+    now: () => new Date(clock.t),
+  });
   return { db, app, clock };
 }
 
@@ -118,8 +121,12 @@ describe('removing a phone', () => {
     const res = await dad.request('/api/sync', { schemaVersion: 5, events: [] });
     expect(res.status).toBe(401);
     expect(
-      (await dad.request('/api/sync', { schemaVersion: 5, events: [wet(home.baby.id, dad.deviceId)] }))
-        .status,
+      (
+        await dad.request('/api/sync', {
+          schemaVersion: 5,
+          events: [wet(home.baby.id, dad.deviceId)],
+        })
+      ).status,
     ).toBe(401);
     const login = await dad.ceremony('login', { deviceId: dad.deviceId });
     expect((await login.verify()).status).toBe(401);
@@ -146,6 +153,8 @@ describe('removing a phone', () => {
   test('needs a session', async () => {
     const { app, dad } = await household();
     const anon = new Phone(app, ORIGIN);
-    expect((await anon.request('/api/devices/remove', { deviceId: dad.deviceId })).status).toBe(401);
+    expect((await anon.request('/api/devices/remove', { deviceId: dad.deviceId })).status).toBe(
+      401,
+    );
   });
 });

@@ -224,11 +224,7 @@ export function feedEnd(e: Extract<BabyEvent, { type: 'breastfeed' }>, now: numb
 }
 
 /** Logged events in [start, end), oldest first. "We missed some" marks are not logs. */
-export function eventsIn(
-  events: readonly BabyEvent[],
-  start: number,
-  end: number,
-): LogEvent[] {
+export function eventsIn(events: readonly BabyEvent[], start: number, end: number): LogEvent[] {
   return events
     .filter((e): e is LogEvent => {
       if (isLogMark(e)) return false;
