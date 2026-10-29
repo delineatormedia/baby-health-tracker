@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- CAIRN icon — Three size-graded stones (slab, capsule, pebble), tonally flat; the top stone carries the accent.
+     night mode, Instrument direction #14 (docs/design/README.md). Canonical tokens: bg #0D0C0B · ink #ADA59A · accent #6F8F84.
+     Full-bleed bg; mark inside the Ø80% maskable safe zone (r 409.6 at 1024). -->
+  <rect width="1024" height="1024" fill="#0D0C0B"/><g>
+    <rect x="234" y="638" width="556" height="168" rx="58" fill="#ADA59A"/>
+    <rect x="314" y="444" width="440" height="150" rx="75" fill="#ADA59A"/>
+    <rect x="331" y="230" width="330" height="170" rx="85" fill="#6F8F84"/>
+  </g></svg>

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- FLEDGE icon — Growth line takes wing: one rising stroke, folded wing, head and beak in accent, baseline ticks in dim. Reads fully from ~96 px; at 48 px it reads as a rising trend with a reading point.
+     light mode, Instrument direction #14 (docs/design/README.md). Canonical tokens: bg #ECEFF1 · ink #1F2A33 · dim #77848E · accent #2E6A8E.
+     Full-bleed bg; mark inside the Ø80% maskable safe zone (r 409.6 at 1024). -->
+  <rect width="1024" height="1024" fill="#ECEFF1"/><g transform="translate(-20,35) scale(0.93)">
+    <g stroke="#77848E" stroke-width="10" opacity="0.55" stroke-linecap="round">
+      <line x1="250" y1="744" x2="470" y2="744"/>
+      <line x1="250" y1="744" x2="250" y2="716"/>
+      <line x1="323" y1="744" x2="323" y2="716"/>
+      <line x1="396" y1="744" x2="396" y2="716"/>
+      <line x1="470" y1="744" x2="470" y2="716"/>
+    </g>
+    <path d="M240 660 C 370 636 480 596 570 520 C 630 468 676 408 700 352"
+          fill="none" stroke="#1F2A33" stroke-width="92" stroke-linecap="round"/>
+    <path d="M640 442 C 628 512 580 570 498 610 C 524 528 544 482 560 430 Z" fill="#2E6A8E"/>
+    <circle cx="748" cy="300" r="92" fill="#2E6A8E"/>
+    <path d="M866 208 L823 271 L794 234 Z" fill="#2E6A8E"/>
+  </g></svg>
