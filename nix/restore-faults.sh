@@ -66,6 +66,9 @@ case " $FAULTS " in
   *" mv-previous-db "*) case $src in */previous/bht.db) exit 1 ;; esac ;;
 esac
 case " $FAULTS " in
+  *" mv-previous-wal "*) case $src in */previous/bht.db-wal) exit 1 ;; esac ;;
+esac
+case " $FAULTS " in
   *" mv-quarantine "*) case $src in "$BHT_DB") [ ! -d "$(dirname "$BHT_DB")"/restore-*/failed ] || exit 1 ;; esac ;;
 esac
 exec "$REAL_MV" "$@"
@@ -78,7 +81,8 @@ fail() {
   failures=$((failures + 1))
 }
 
-# run_case <name> <faults...>: live bht.db holds 7, the snapshot holds 42.
+# run_case <name> <faults...>: live bht.db holds 7, the snapshot holds 42. The
+# old-wal fault gives the live database a -wal too (a stand-in nothing opens).
 run_case() {
   CASE=$root/$1
   shift
@@ -87,6 +91,8 @@ run_case() {
   : >"$CASE/calls"
   sqlite3 "$CASE/state/bht.db" 'CREATE TABLE probe (n); INSERT INTO probe VALUES (7)'
   sqlite3 "$CASE/backup/snap.db" 'CREATE TABLE probe (n); INSERT INTO probe VALUES (42)'
+  case " $* " in *" old-wal "*) printf 'old wal' >"$CASE/state/bht.db-wal" ;; esac
+  cp "$CASE/state/bht.db" "$CASE/old.db"
   touch "$CASE/active"
   export CASE FAULTS
   export BHT_DB=$CASE/state/bht.db BHT_STATE_DIR=$CASE/state BHT_BACKUP_DIR=$CASE/backup
@@ -100,6 +106,7 @@ run_case() {
 
 rows() { sqlite3 "$1" 'SELECT n FROM probe ORDER BY n' 2>&1 | tr '\n' ' '; }
 says() { case $out in *"$1"*) ;; *) fail "output lacks '$1': $out" ;; esac; }
+lacks() { case $out in *"$1"*) fail "output has '$1': $out" ;; esac; }
 calls_after() { sed -n "/^$1\$/,\$p" "$CASE/calls" | tail -n +2; }
 no_start_after() {
   if calls_after "$1" | grep -q '^systemctl start'; then
@@ -134,6 +141,8 @@ says "the previous database is back, but the server did not answer"
 run_case rollback-stop-fails health stop2
 [ "$status" -ne 0 ] || fail "exit 0"
 says "ROLLBACK INCOMPLETE: could not stop bht.service"
+says "The server's state is unconfirmed"
+lacks "The server and the backup timer are stopped"
 says "To finish by hand"
 no_start_after "systemctl stop bht.service"
 calls_after "systemctl stop bht.service" | grep -q '^mv' && fail "moved files after the rollback stop failed"
@@ -155,6 +164,27 @@ no_start_after "systemctl stop bht.service"
 [ -e "$BHT_DB" ] && fail "a database exists at the live path: $(rows "$BHT_DB")"
 [ -e "$CASE/active" ] && fail "the server is running"
 [ "$(rows "$(prev)/bht.db")" = "7 " ] || fail "previous rows"
+[ "$(rows "$BHT_STATE_DIR"/restore-*/failed/bht.db)" = "42 " ] || fail "failed rows"
+
+# The old bht.db goes back, then its -wal won't: the set is split, so no move steps.
+run_case wal-back-fails start1 old-wal mv-previous-wal
+[ "$status" -ne 0 ] || fail "exit 0"
+says "ROLLBACK INCOMPLETE: could not move $(prev)/bht.db-wal back"
+says "The server and the backup timer are stopped."
+says "$BHT_DB  $(wc -c <"$CASE/old.db" | tr -d ' ') bytes, modified "
+says "$BHT_DB-wal  (none)"
+says "$(prev)/bht.db  (none)"
+says "$(prev)/bht.db-wal  7 bytes, modified "
+says "$(dirname "$(prev)")/failed/bht.db  "
+says "Do not move or delete anything"
+says "copy all of $BHT_STATE_DIR somewhere safe"
+lacks "To finish by hand"
+lacks "move bht.db"
+lacks "systemctl start"
+no_start_after "systemctl stop bht.service"
+[ -e "$CASE/active" ] && fail "the server is running"
+cmp -s "$BHT_DB" "$CASE/old.db" || fail "the old database is not at the live path"
+[ "$(cat "$(prev)/bht.db-wal")" = "old wal" ] || fail "the old -wal left previous/"
 [ "$(rows "$BHT_STATE_DIR"/restore-*/failed/bht.db)" = "42 " ] || fail "failed rows"
 
 if [ "$failures" -ne 0 ]; then

@@ -67,6 +67,7 @@ systemctl stop $BHT_STOP_UNITS || {
 }
 
 installed=0
+moved_back=0
 
 # Polls /api/health for up to 30 s.
 wait_healthy() {
@@ -95,26 +96,53 @@ install_snapshot() {
 
 # A rollback that cannot finish leaves writers stopped and every file where it is.
 # Restarting would let the server open, or create, the wrong database.
+# stranded <what failed> [unconfirmed]: the second argument means stopping
+# bht.service itself failed, so its state is not known.
 stranded() {
   {
     echo "bht-restore: ROLLBACK INCOMPLETE: $1"
-    echo "The server and the backup timer are stopped, and no file was deleted."
-    echo "At the live path now:"
-    ls -la -- "$BHT_DB" "$BHT_DB-wal" "$BHT_DB-shm" 2>/dev/null || true
-    echo "The database from before the restore: $work/previous/"
-    echo "The snapshot that failed: $work/failed/ (or still at the live path)"
-    echo "To finish by hand:"
-    echo "  1. systemctl stop bht.service, and check systemctl is-active bht.service says inactive or failed"
-    echo "  2. move anything left at $BHT_DB, $BHT_DB-wal and $BHT_DB-shm into $work/failed/"
-    echo "  3. move bht.db, bht.db-wal and bht.db-shm from $work/previous/ into $BHT_STATE_DIR/, all together"
-    echo "  4. systemctl reset-failed bht.service, then systemctl start $BHT_START_UNITS"
+    if [ "${2:-}" = unconfirmed ]; then
+      echo "The backup timer is stopped. The server's state is unconfirmed: stopping it failed."
+    else
+      echo "The server and the backup timer are stopped."
+    fi
+    echo "No file was deleted."
+    if [ "$installed" -eq 1 ] && [ "$moved_back" -eq 0 ]; then
+      # The old set is still whole in previous/, so the moves below are safe.
+      echo "At the live path now:"
+      ls -la -- "$BHT_DB" "$BHT_DB-wal" "$BHT_DB-shm" 2>/dev/null || true
+      echo "The database from before the restore: $work/previous/"
+      echo "The snapshot that failed: $work/failed/ (or still at the live path)"
+      echo "To finish by hand:"
+      echo "  1. systemctl stop bht.service, and check systemctl is-active bht.service says inactive or failed"
+      echo "  2. move anything left at $BHT_DB, $BHT_DB-wal and $BHT_DB-shm into $work/failed/"
+      echo "  3. move bht.db, bht.db-wal and bht.db-shm from $work/previous/ into $BHT_STATE_DIR/, all together"
+      echo "  4. systemctl reset-failed bht.service, then systemctl start $BHT_START_UNITS"
+    else
+      # The old set is split between previous/ and the live path. Any move recipe
+      # written in advance could split it further, so only report where things are.
+      echo "The database from before the restore may be split across locations. Where each file is:"
+      for dir in "$BHT_STATE_DIR" "$work/previous" "$work/failed"; do
+        for name in bht.db bht.db-wal bht.db-shm; do
+          f=$dir/$name
+          if [ -e "$f" ]; then
+            echo "  $f  $(wc -c <"$f" | tr -d ' ') bytes, modified $(date -u -r "$f" +%Y-%m-%dT%H:%M:%SZ)"
+          else
+            echo "  $f  (none)"
+          fi
+        done
+      done
+      echo "Do not move or delete anything. Keep bht.service stopped (systemctl is-active bht.service"
+      echo "must say inactive or failed), copy all of $BHT_STATE_DIR somewhere safe, and see"
+      echo "\"Reassembling a split set\" in docs/DEPLOY.md."
+    fi
   } >&2
   exit 1
 }
 
 rollback() {
   echo "bht-restore: restore failed, putting the previous database back" >&2
-  systemctl stop bht.service || stranded "could not stop bht.service, so nothing was moved back"
+  systemctl stop bht.service || stranded "could not stop bht.service, so nothing was moved back" unconfirmed
   # Before the snapshot is in place, files at $BHT_DB are still the old ones.
   if [ "$installed" -eq 1 ]; then
     mkdir -m 700 "$work/failed" || stranded "could not create $work/failed"
@@ -130,6 +158,7 @@ rollback() {
     [ -e "$f" ] || continue
     [ ! -e "$BHT_STATE_DIR/$name" ] || stranded "$BHT_STATE_DIR/$name is in the way"
     mv -- "$f" "$BHT_STATE_DIR/" || stranded "could not move $f back"
+    moved_back=1
   done
   # The failed start may have used up the unit's start limit.
   systemctl reset-failed bht.service || true

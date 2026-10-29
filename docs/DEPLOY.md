@@ -101,17 +101,58 @@ back automatically, the server and timer restart, and the command exits
 non-zero. It checks `/api/health` again after a rollback.
 
 If the rollback itself cannot finish (the server will not stop, or a file will
-not move), it prints `ROLLBACK INCOMPLETE` and leaves the server and the backup
-timer stopped, with every file kept. Restarting then could open the wrong
-database or create an empty one. The message lists what is at the live path
-and the steps to finish by hand: stop `bht.service`, move anything at the live
-path into `restore-<time>/failed/`, move `bht.db` and its `-wal`/`-shm` from
-`restore-<time>/previous/` back into `/var/lib/bht` together, then run
-`systemctl reset-failed bht.service` (failed starts can use up its start
-limit) and start `bht.service` and `bht-backup.timer`.
+not move), it prints `ROLLBACK INCOMPLETE` and the step that failed, and leaves
+the server and the backup timer stopped, with every file kept. Restarting then
+could open the wrong database or create an empty one. If stopping the server is
+what failed, the message says its state is unconfirmed.
+
+What it prints next depends on how far the rollback got:
+
+- **Nothing moved back yet.** The old set is still whole in
+  `restore-<time>/previous/`, and the message lists the steps to finish by hand:
+  stop `bht.service`, move anything at the live path into
+  `restore-<time>/failed/`, move `bht.db` and its `-wal`/`-shm` from
+  `previous/` back into `/var/lib/bht` together, then run
+  `systemctl reset-failed bht.service` (failed starts can use up its start
+  limit) and start `bht.service` and `bht-backup.timer`.
+- **Anything else**, such as some files already moved back. The old set may be
+  split between `previous/` and the live path, so the message gives no move steps. It prints an inventory of
+  `bht.db`, `bht.db-wal` and `bht.db-shm` in `/var/lib/bht`, `previous/` and
+  `failed/`, with each file's size and modification time. Don't move or delete
+  anything yet: keep the server stopped, copy all of `/var/lib/bht` somewhere
+  safe, then follow the next section.
 
 Don't copy files into `/var/lib/bht` by hand. The `-wal` file belongs to its
 database, so moving one without the other loses or corrupts recent writes.
+
+### Reassembling a split set
+
+Do this only after the inventory from `ROLLBACK INCOMPLETE` and a full copy of
+`/var/lib/bht`. Read the inventory this way:
+
+- Files at the live path and in `previous/` are all from the database you had
+  before the restore. Together they make one set.
+- Files in `failed/` are the snapshot that failed. Leave them where they are.
+
+Then:
+
+1. Check `systemctl is-active bht.service` says `inactive` or `failed`. If it
+   doesn't, run `systemctl stop bht.service` and check again.
+2. For each of `bht.db`, `bht.db-wal` and `bht.db-shm` in `previous/`,
+   check the inventory shows `(none)` for the same name at the live
+   path. If both places have a file with the same name, stop here: the two are
+   different files and only one belongs to the set. Keep both and compare sizes
+   and times against the inventory before choosing.
+3. Move each one back without overwriting, `bht.db` first:
+   `mv -n /var/lib/bht/restore-<time>/previous/bht.db /var/lib/bht/`, and so on.
+   `ls -la /var/lib/bht/restore-<time>/previous/` should then be empty.
+4. Check the set as the service user:
+   `sudo -u bht sqlite3 /var/lib/bht/bht.db 'PRAGMA integrity_check'` should say `ok`.
+5. `systemctl reset-failed bht.service`, then
+   `systemctl start bht.service bht-backup.timer`, and check
+   `curl -fsS http://127.0.0.1:8787/api/health` (use your `port` if you changed it).
+
+Keep the copy from before step 2 until the server is running on the right data.
 
 ### Rolling back a restore
 
