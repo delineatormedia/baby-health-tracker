@@ -125,7 +125,7 @@
         {#if r.status === 'not_enough_data'}
           <p class="why">{REASON_TEXT[r.reason]}.</p>
           {#if r.reason === 'not_fully_logged' && marksIn(app.events, r.window).length > 0}
-            <button class="mark" onclick={() => unmark(r)}>We logged everything</button>
+            <div><button class="mark" onclick={() => unmark(r)}>We logged everything</button></div>
           {/if}
         {/if}
         {@render sources(r)}
@@ -313,12 +313,13 @@
   .ask {
     margin-top: 14px;
   }
-  .q {
+  .verdict .q {
     font: 600 20px/1.3 var(--sans);
     color: var(--ink);
   }
   .mark {
     display: block;
+    box-sizing: border-box;
     width: 100%;
     min-height: 56px;
     margin-top: 10px;
