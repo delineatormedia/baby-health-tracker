@@ -528,3 +528,67 @@ test('a bottle entered after Back during a quiet edit stays and saves; the next 
   await ctx.close();
   s.server.close();
 });
+
+test('a bottle typed before a same-screen Back keeps its time and choices; the next screen updates', async ({
+  browser,
+}) => {
+  const { s, ctx, page, errors } = await armed(browser);
+  await page.getByRole('button', { name: /^Bottle/ }).tap();
+  await page.waitForURL((u) => u.pathname === '/bottle');
+  // Test fixture only: the app has no such link. A query navigation adds a history entry
+  // while Bottle stays mounted, so Back lands on the screen that holds the typed entry.
+  await page.evaluate(() => {
+    const a = document.createElement('a');
+    a.href = '/bottle?fixture=1';
+    a.textContent = 'Fixture query navigation';
+    document.body.append(a);
+  });
+  await page.getByRole('link', { name: 'Fixture query navigation' }).click();
+  await page.waitForURL((u) => u.search === '?fixture=1');
+  await update(page, s);
+  await page.getByRole('button', { name: 'Formula', exact: true }).tap();
+  const vessel = page.getByRole('slider').first();
+  const box = (await vessel.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const readout = await page.locator('.readout').textContent();
+  await page.locator('.trow > button').tap();
+  const earlier = await page.evaluate(() => {
+    const d = new Date(Date.now() - 60_000);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  });
+  await page.getByLabel('Pick a time').fill(earlier);
+  const time = await page.locator('.trow .val').textContent();
+  expect(time).not.toBe('Now');
+
+  await page.goBack();
+  await page.waitForURL((u) => u.pathname === '/bottle' && !u.search);
+  await page.waitForTimeout(500);
+  expect(await samePage(page)).toBe(true);
+  await expect(page.locator('.trow .val')).toHaveText(time!);
+  await expect(page.locator('.readout')).toHaveText(readout!);
+  await expect(page.getByRole('button', { name: 'Formula', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  await page.locator('button.go').tap();
+  await page.waitForURL((u) => u.pathname === '/');
+  const [bottle] = await until(
+    page,
+    () => current(page, 'bottle'),
+    (b) => b.length === 1,
+  );
+  expect(bottle!.data.contents).toBe('formula');
+  expect(bottle!.data.volumeMl).toBe(parseInt(readout!));
+  expect(bottle!.occurredAt).toBe(await page.evaluate((v) => new Date(v).toISOString(), earlier));
+
+  await screenIdle(page);
+  await page.getByRole('link', { name: 'History', exact: true }).tap();
+  await page.waitForURL((u) => u.pathname === '/history');
+  await onNext(page);
+  expect(await samePage(page)).toBe(false);
+  expect(errors).toEqual([]);
+  await ctx.close();
+  s.server.close();
+});
