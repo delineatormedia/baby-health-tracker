@@ -1,5 +1,6 @@
 import { evaluate, type CheckResult, type Observed } from '@bht/insights';
 import { newId, type BabyEvent } from '@bht/schema';
+import { syncedSpans, waitingOn, waitingOnWindow, type SyncView } from '../data/watermarks.ts';
 import { describe, expect, test } from 'vitest';
 import {
   COUNT_CHECKS,
@@ -12,6 +13,7 @@ import {
   lastSyncedTime,
   reasonText,
   statusText,
+  waitingOnPhones,
   waitingText,
 } from './readings.ts';
 
@@ -352,5 +354,78 @@ describe('waiting on other phones (#5 step 3b)', () => {
 
   test('the default time reads like "Tue 9:14 PM"', () => {
     expect(lastSyncedTime(sam.watermark!)).toMatch(/^[A-Z][a-z]{2} \d{1,2}:\d{2}\s[AP]M$/);
+  });
+});
+
+describe('the "not synced yet" line (#64)', () => {
+  const H = 3_600_000;
+  const NOW = Date.parse('2026-10-29T20:00:00.000Z');
+  const birth = NOW - 50 * H;
+  const iso = (t: number) => new Date(t).toISOString();
+  const self = newId();
+  const wet = (t: number): BabyEvent => ({
+    id: newId(),
+    babyId: newId(),
+    authorId: self,
+    occurredAt: iso(t),
+    recordedAt: iso(t),
+    version: 1,
+    deleted: false,
+    notes: null,
+    type: 'diaper',
+    data: { kind: 'wet' },
+  });
+  /** This phone and Sam's, Sam last synced `ago` ms before now; clocks agree. */
+  const view = (ago: number): SyncView => ({
+    devices: [
+      {
+        deviceId: self,
+        memberName: 'Ana',
+        watermark: NOW,
+        lastSeenAt: NOW,
+        removedAt: null,
+        signedOutAt: null,
+      },
+      {
+        deviceId: newId(),
+        memberName: 'Sam',
+        watermark: NOW - ago,
+        lastSeenAt: NOW,
+        removedAt: null,
+        signedOutAt: null,
+      },
+    ],
+    current: true,
+    self,
+    sample: { tSend: NOW, pSend: 0, serverNow: NOW, tRecv: NOW },
+    wall: NOW,
+    mono: 0,
+  });
+  const shown = (v: SyncView, lastWet: number) => {
+    const results = evaluate({
+      baby: { birthAt: iso(birth), sex: 'female' },
+      events: [wet(lastWet)],
+      now: iso(NOW),
+      fullyLogged: [{ start: iso(birth), end: iso(NOW) }],
+      synced: syncedSpans(v).map(([s, e]) => ({
+        start: Number.isFinite(s) ? iso(s) : null,
+        end: Number.isFinite(e) ? iso(e) : null,
+      })),
+    });
+    return waitingOnPhones(results, (r) =>
+      waitingOnWindow(v, Date.parse(r.window.start), Date.parse(r.window.end)),
+    );
+  };
+
+  test('two phones synced recently and no check waiting: no line', () => {
+    const v = view(60_000);
+    expect(shown(v, NOW - H)).toBe(false);
+    // The old rule: Sam's watermark trails now, so the line was on.
+    expect(waitingOn(v, NOW, NOW).length).toBeGreaterThan(0);
+  });
+
+  test('a check waiting on Sam’s phone shows the line', () => {
+    // No wet diaper in 9 h and Sam silent for 3 h: no_urine waits on Sam.
+    expect(shown(view(3 * H), NOW - 9 * H)).toBe(true);
   });
 });

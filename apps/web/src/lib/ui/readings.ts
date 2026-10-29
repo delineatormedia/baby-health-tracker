@@ -187,6 +187,20 @@ export function waitingText(
   return `Waiting for ${phones.length === 1 ? phones[0] : `${phones.slice(0, -1).join(', ')} and ${phones.at(-1)}`}`;
 }
 
+/**
+ * Whether Readings says "Some logs from the other phones are not synced yet": only while a
+ * displayed check is "Not assessed" waiting on a phone. A watermark trails now almost always
+ * with two phones, and a line that is always on teaches parents to ignore it.
+ */
+export function waitingOnPhones(
+  results: readonly CheckResult[],
+  waitingFor: (r: CheckResult) => readonly HouseholdDevice[],
+): boolean {
+  return results.some(
+    (r) => r.status === 'not_enough_data' && r.reason === 'not_synced' && waitingFor(r).length > 0,
+  );
+}
+
 /** "Tue 9:14 PM". */
 export function lastSyncedTime(ms: number): string {
   return new Date(ms).toLocaleString('en-US', {

@@ -14,6 +14,7 @@
     reasonText,
     statusText,
     vouchesIn,
+    waitingOnPhones,
     waitingText,
   } from '../../lib/ui/readings.ts';
 
@@ -57,9 +58,8 @@
   /** Why a check waits on the other phones, or its usual reason. */
   const why = (r: CheckResult) =>
     notSynced(r) ? waitingText(waitingFor(r)) : reasonText(r, start);
-  const waiting = $derived(
-    app.account && app.waitingOn(clock.wall, clock.wall, clock.wall, clock.mono).length > 0,
-  );
+  /** The intake note's "not synced yet" line: only while a check is waiting on a phone. */
+  const waiting = $derived(app.account !== null && waitingOnPhones(results, waitingFor));
 
   let busy = false;
   async function once(fn: () => Promise<unknown>) {
