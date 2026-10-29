@@ -58,7 +58,7 @@ describe('resolveCurrent', () => {
     expect(resolveCurrent([version(1, 10), v3, version(2, 11)])).toBe(v3);
   });
 
-  test('client clocks do not decide: a future-dated device cannot dominate', () => {
+  test('client clocks never outrank version: a future-dated device cannot dominate', () => {
     // Dad's phone thinks it is next year. Mom's later edit (v3) still wins.
     const dadV2 = version(2, 11, { author: dad, recordedAt: '2027-10-29T03:00:00.000Z' });
     const momV3 = version(3, 12, { author: mom, recordedAt: '2026-10-29T03:05:00.000Z' });
@@ -112,13 +112,14 @@ describe('resolveCurrent', () => {
     expect(resolveCurrent(log)?.seq).toBe(7);
   });
 
-  test('tied unsynced versions resolve by content, not clock or property order', () => {
+  test('tied unsynced versions resolve by canonical body, not arrival or property order', () => {
     const a = version(2, null, { notes: 'A', recordedAt: '2026-10-29T03:00:00.000Z' });
     const b = version(2, null, { notes: 'B', recordedAt: '2026-10-29T03:00:00.000Z' });
     const winner = resolveCurrent([a, b]);
     expect(resolveCurrent([b, a])).toBe(winner);
 
-    // An earlier or later client clock on either side changes nothing.
+    // notes sorts before recordedAt in canonical JSON, so when the notes differ, skewing
+    // either clock changes nothing. (Timestamp-only differences are ordered by the timestamp.)
     for (const recordedAt of ['2020-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']) {
       const loserId = winner === a ? b : a;
       const skewed = { ...loserId, event: { ...loserId.event, recordedAt } };

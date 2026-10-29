@@ -86,8 +86,8 @@ future encrypted-blob server possible without moving the insights.
   tombstone.
 - The server assigns a monotonically increasing sequence number. Clients pull
   everything after their last sequence and push their unsynced records.
-- Conflicts on the same event id never use client clocks (a skewed phone must
-  not win). The highest version wins; on a tie, the version the server accepted
+- Conflicts on the same event id are decided by version and sequence, not client
+  clocks (a skewed phone must not win). The highest version wins; on a tie, the version the server accepted
   first (lowest sequence) wins, and an unsynced version loses to a synced one.
   Losing versions stay in the log and can be restored. The rule is
   `resolveCurrent` in `packages/schema`, shared by server and client.
