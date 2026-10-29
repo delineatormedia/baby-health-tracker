@@ -227,7 +227,7 @@ arrived late". (Wording from the 3b plan, [SYNC_PLAN.md](SYNC_PLAN.md). Check it
 ## What to send back
 
 For each failed check, open a GitHub issue titled `Acceptance <check>.<step>: <what went
-wrong>` (for example `Acceptance 4.4: B's entry missing on A`) with:
+wrong>` (for example `Acceptance 6.4: B's entry missing on A`) with:
 
 - **Phone**: A or B, model, OS version, and whether you were in the Home Screen app or a
   Safari tab.
