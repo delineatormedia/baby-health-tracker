@@ -1,6 +1,7 @@
 # Sync and server plan (#5, #17, #8)
 
-Mapped on main `b5c1347`, 2026-10-29. Planning only; no code here.
+Mapped on main `b5c1347`, 2026-10-29. Planning only; no code here. Revised the
+same day for the Adversarial read of `9a16afe` and the PM's calls on it.
 
 ## What exists today
 
@@ -22,7 +23,10 @@ Mapped on main `b5c1347`, 2026-10-29. Planning only; no code here.
 - `sync.ts`: `compareVersions`, `resolveCurrent`, `resolveAll` and
   `assertSeqIntegrity`. This is the conflict rule from the PRD: highest
   `version` wins, then lowest server `seq`, and an unsynced version loses to a
-  synced one. Clocks never decide.
+  synced one. Clocks never outrank `version` or `seq`. Two unsynced versions
+  with the same number are ordered by their canonical JSON, which includes the
+  timestamps, and that order is provisional until the server's seq decides
+  (`sync.ts:15–27`).
 - `model.ts`: `Household`, `Member` and `Baby` records. No type exists for
   credentials, invites, sessions or devices.
 
@@ -38,6 +42,10 @@ Mapped on main `b5c1347`, 2026-10-29. Planning only; no code here.
   exponential backoff with jitter, and a pause on 401 until `resume()`.
 - `store.ts`: `EventStore` over IndexedDB, keyed `id:version:seq|local`.
   `applyPushResults` **deletes rejected versions** (store.ts:103–131).
+  `pending()` reads every pending row, for every baby (store.ts:93–100), and
+  `events(babyId)` filters rows by baby *before* resolving versions
+  (store.ts:46–51). Both matter once an event can change baby (step 2).
+- `vite.config.ts:18` already proxies `/api` to the dev server on 8787.
 - **Not wired in:** `SyncClient` and `httpTransport` are only imported by tests.
   Home still says "Saved on this phone · not synced" (`routes/+page.svelte:122`).
 - Identity is per phone: `Setup.svelte:17` mints the baby id and the
@@ -91,8 +99,8 @@ The real risk is **version skew**: a client newer than the server.
 Issue #5 said "Last-writer-wins per event id by client timestamp". The PM has
 posted the correction on #5. The `events.ts` envelope comment still says
 "recordedAt decides last-writer-wins", and step 1 rewrites it. The rule is the
-PRD's and `sync.ts`'s: version wins, then seq, and clocks never decide. The
-server uses `resolveCurrent`.
+PRD's and `sync.ts`'s: version wins, then seq, and clocks never outrank either.
+The server uses `resolveCurrent`.
 
 ## Decisions (PM, 2026-10-29)
 
@@ -104,6 +112,13 @@ server uses `resolveCurrent`.
    never dropped silently (step 2, below).
 4. #17 is needed for v1 and lands with step 3, not after it (see "Step 3b").
 5. Step 1 fixes the `events.ts` comment.
+6. **A silent phone is never assumed complete.** While a household phone is
+   behind, the windows it could still hold entries for read "Not assessed ·
+   Waiting for Sam's phone (last synced …)". A parent can vouch with **Count
+   without Sam's phone**, a reversible mark stored like "We missed some". A
+   timeout, sign-out or removal alone never turns checks on, and late or
+   backdated uploads reopen assessment (step 3b). This replaces the 24-hour
+   rule proposed at `9a16afe`.
 
 ## Steps, in dependency order
 
@@ -124,17 +139,39 @@ server uses `resolveCurrent`.
     `resolveCurrent` over that event's versions does not pick it.
   - Invalid versions are `rejected` with the parse errors.
   - Applies the `schemaVersion` 409 rule above.
-- `GET /api/sync?after=&limit=` returns the household's versions in seq order,
-  with `next` and `more`.
+- `GET /api/sync?after=&limit=&through=` returns the household's versions in
+  seq order, with `next`, `more` and `through`:
+  - Each page is read in one SQLite read transaction (WAL gives it a fixed
+    snapshot).
+  - The first page of a pull has no `through`. The server sets it to the
+    household's highest seq in that snapshot and returns it.
+  - Later pages pass the same `through` back and return only `seq <= through`,
+    so a push that lands mid-pull cannot stretch the pull.
+  - `more` is false once the page reaches `through`.
+  - Step 3b attaches device watermarks to the first page's snapshot, so this
+    contract is what makes them consistent with the data.
 - Move `protocol.ts` types into `@bht/schema`, and point web at them.
-- Web store: `applyPushResults` keeps a rejected version as a row marked
-  `rejected` with its error, and `pending()` skips it. `EventStore` exposes a
-  count, which Settings shows ("N entries the server refused"). The
-  IndexedDB version goes up to add the index.
-- `SCHEMA_VERSION` goes to 2. A test pins a fingerprint of the `BabyEvent`
-  shape (types, keys, picklists and bounds, from valibot's introspection)
-  next to the version, so changing the shape without bumping the version, or
-  the other way round, fails the test.
+- Web store:
+  - `applyPushResults` keeps a rejected version as a row marked `rejected`,
+    with its error. `pending()` skips it.
+  - `EventStore` exposes a count of rejected versions that no later accepted
+    version of the same event has replaced. Settings shows it ("N entries the
+    server refused").
+  - The IndexedDB version goes up to add the index.
+  - Step 3b reads that count too: an unresolved rejection blocks the phone's
+    watermark.
+- `SCHEMA_VERSION` goes to 2 and covers every wire schema: `BabyEvent` and the
+  protocol types that move into `@bht/schema` in this step. A test pins a
+  fingerprint of them next to the version, so changing a schema without
+  bumping the version, or the other way round, fails the test. The
+  fingerprint covers:
+  - shape, from valibot's introspection: types, keys, picklists, bounds, and
+    every pipe action with its requirement;
+  - refinements: each `v.check` contributes its message and its function's
+    source text (`fn.toString()`). Editing a refinement's logic changes what
+    the server accepts without changing a key, so it must change the
+    fingerprint too. A whitespace-only edit also trips it; bumping costs
+    nothing, so that is acceptable.
 - Fix the `events.ts` envelope comment.
 - Household scoping goes through one middleware that sets `c.var.householdId`.
   Until step 2 it only runs in tests (an injected session). No public route is
@@ -147,6 +184,9 @@ server uses `resolveCurrent`.
   - A tombstone syncs.
   - A duplicate push is idempotent.
   - A newer `schemaVersion` gets 409 and nothing is deleted.
+  - A pull with `limit=1` across several pages, with a push from another
+    client landing between pages, stops at the first page's `through`. The
+    next pull picks up the push.
   - A rejected version stays on the phone, is not uploaded again, and is
     counted. A later local edit of the same event is still uploaded.
   - Household A cannot pull B's versions or push into B's ids.
@@ -174,8 +214,43 @@ server uses `resolveCurrent`.
       cleaned up by a parent in History.
     - **Keep them off this household.** The local baby and its events are
       archived on the phone. Nothing is deleted, and nothing is uploaded.
-  - Test both paths, plus the count shown and that nothing is lost after a
-    reload.
+  - **One atomic boundary.** Both choices are a single dedicated `EventStore`
+    operation in one IndexedDB transaction: `moveBaby(from, to)` or
+    `archiveBaby(from)`. `EditFields` does not take `babyId`, and it stays that
+    way. The join is recorded (household prefs written) only after that
+    transaction commits.
+    - A reload before commit leaves nothing changed, and the join screen asks
+      again.
+    - A reload after commit but before the prefs write shows the join screen
+      with 0 entries left to move, so running it again does nothing.
+  - **Move, per event id.**
+    - Resolve the current version across *all* rows of that id, not just the
+      old baby's.
+    - Write version `current + 1` with the new `babyId`. A tombstone stays a
+      tombstone, and an edited entry moves its latest edit.
+    - Mark every earlier row of that id `localOnly`. They are the phone's
+      pre-join history: kept, never uploaded. The server would refuse them
+      anyway, because the old baby id is not in the household.
+  - **Archive:** every row of the old baby becomes `localOnly` with
+    `archived: true`. History can show them under the archived baby, read-only.
+  - **Upload eligibility:** `pending()` returns rows that are pending, not
+    rejected and not `localOnly`.
+  - **Current-version selection:** `events(babyId)` resolves each event id over
+    all its rows first, then keeps the ids whose *current* version has that
+    `babyId`. A moved entry can never resurface under the old baby from a stale
+    row.
+  - Only a phone that has never synced has local ids to move. A phone already
+    in a household on the server signs out first (v1). Its synced events stay
+    in that household, and its local copies are archived.
+  - Tests:
+    - both paths, the count shown, and nothing lost after a reload;
+    - an edited entry moves its latest edit, and a tombstoned one stays
+      deleted;
+    - an interrupted migration (abort inside the transaction) changes nothing;
+    - after a move, the old baby's view is empty and `pending()` holds only the
+      new versions;
+    - after an archive, `pending()` is empty;
+    - a pushed batch never contains an old-baby or archived row.
 - `authorId` stays the per-phone id and is recorded as a `devices` row for the
   member. Who logged an event is decided by the server stamping `member_id`
   from the session, not by trusting `authorId`.
@@ -190,45 +265,149 @@ server uses `resolveCurrent`.
 - Replace "Saved on this phone · not synced" with the real status.
 - Surface `onRejected`.
 - Load the baby from the server.
-- A Vite dev proxy for `/api`.
+- The Vite `/api` proxy already exists (`vite.config.ts:18`).
 - Browser test: two Chrome profiles against one dev server, each logging and
   seeing the other's events.
 
 ### Step 3b: minimal #17, lands with step 3
 
 Readings passes `syncedThrough: now` today
-(`routes/readings/+page.svelte:35`). Once sync is on, that is false: the other
+(`routes/readings/+page.svelte:35`). Once sync is on, that is false: another
 phone may hold writes the server has not seen. A null value would make the
 count checks go silent. This step makes `syncedThrough` true, and it merges
 before or together with step 3, never after.
 
-- **Server watermark per device.** A push request carries `drained: true` when
-  the batch is the device's last pending one (or an empty batch with nothing
-  pending). The server then sets `devices.synced_at` to its own clock at that
-  request. This means every write the device made before `synced_at` is on the
-  server.
-- **Pull returns** `serverNow` and the household's devices as
-  `{deviceId, memberName, syncedAt, lastSeenAt}`.
-- **Client:** `syncedThrough` is the minimum of:
-  - its own pull time, when it has nothing pending;
-  - every *counted* device's `syncedAt`.
-  Server times are shifted by `serverNow` minus the local time, so a skewed
-  phone clock does not move the line.
-- **Proposed rule for idle and lost devices** (for the owner):
-  - A device counts while it was last seen within **24 hours**. A phone left
-    in a drawer overnight still holds Readings back, which is correct, because
-    it may hold entries from the night.
-  - After 24 hours of silence it stops counting, and Readings says so in one
-    line: "Not waiting for Sam's phone (last synced Tue 9:14 PM)". The
-    parent's fully-logged mark remains the vouch for that phone, as in v1
-    today.
-  - Signing out removes the device. Settings lists the household's devices
-    with "Remove", for a lost phone.
-  - A removed phone that comes back is a new device on its next sign-in. Its
-    pending writes still upload, because nothing on the phone is deleted.
-- Tests: two devices where one holds a pending write, so `syncedThrough` stops
-  at its watermark; the 24 h cutoff and its Readings line; clock-skew
-  correction; removal.
+**What a watermark means.** Device D's watermark `W(D)` is a server time such
+that every entry D *recorded* before `W(D)` is on the server. A phone's own
+entries are already on that phone, so it only waits on the others.
+
+#### Setting a watermark: an acknowledged write barrier
+
+A batch that merely empties the queue proves nothing. A write made while the
+request is in flight, or in another tab, would be covered by the server's
+receipt time without being on the server. Instead:
+
+1. **Write generation.** IndexedDB `meta` holds a counter `gen`. Every local
+   write (log, edit, remove, undo, move) bumps it in the same transaction as
+   the row. All tabs share one IndexedDB, so all tabs share the counter.
+2. **Time bound.** Every sync response carries `serverNow`. Before a barrier,
+   the client must already hold a `serverNow` value `s0` from a response it
+   received earlier. That puts `s0` before the next step, in real time.
+3. **Snapshot.** In one read transaction the client reads `G = gen` and the
+   pending rows. Every write made before `s0` has `gen <= G` and is in this
+   snapshot or already acknowledged.
+4. **Push** the snapshot, in as many batches as it takes. A rejected version
+   is kept and marked (step 1).
+5. **Barrier.** When every version in the snapshot is acknowledged
+   (accepted, duplicate or superseded), the client sends
+   `POST /api/sync/barrier {deviceId, gen: G, at: s0}`. It sends nothing if:
+   - any version in the snapshot is still unacknowledged (a timeout, a 409, a
+     5xx); or
+   - the phone holds an **unresolved rejected version** (step 1's count is
+     above 0). A refused entry is an entry the other phones cannot see. It
+     stays blocking until a later accepted version of the same event replaces
+     it, or a parent vouches for the window (below).
+6. **Server.** It sets `W(D) = max(W(D), min(at, now))` and stores `G`. It
+   clamps to its own clock and never moves the watermark back, so a delayed
+   or replayed barrier is harmless. The device's events were committed in
+   earlier requests, so they are on disk before the barrier row is.
+
+Writes after the snapshot have `gen > G` and happened after `s0`, so they are
+outside the claim and wait for the next barrier. The watermark trusts the
+signed-in device's own claim, as the household already trusts its entries.
+
+#### Reading watermarks: bound to the pulled data
+
+- The **first page** of a pull (step 1's `through` contract) also returns
+  `serverNow` and the household's devices as
+  `{deviceId, memberName, watermark, lastSeenAt, removedAt}`. All of it is read
+  in the same SQLite snapshot as `through`.
+- A barrier is written only after its events are committed. So if that
+  snapshot shows `W(D)`, every entry it covers has `seq <= through`.
+- The client keeps that device list as *pending* and adopts it in the same
+  IndexedDB transaction that applies the page reaching `through`. Until then
+  it keeps the previous list. An interrupted pull adopts nothing.
+- A device with no barrier yet (a new device, or one that just joined with
+  moved entries) has watermark null and holds back every window until its
+  first barrier. That is normally seconds after it joins.
+
+#### Readings
+
+A window is assessed only if it is fully logged as today (`readings.ts:99–121`,
+minus "We missed some" marks) **and**, for every other household device D,
+either:
+
+- the window ends at or before `W(D)`, shifted to local time by `serverNow`
+  minus the local clock at pull; or
+- a **Count without D** mark covers the part of the window after `W(D)`.
+
+Otherwise the check reads **"Not assessed · Waiting for Sam's phone (last
+synced Tue 9:14 PM)"**, with a **Count without Sam's phone** action.
+
+#### Count without Sam's phone
+
+- It is a household event, `type: 'count_without'`,
+  `data: {deviceId, start, end}`. `start` is D's watermark when the parent
+  taps it, and `end` is the tap time. This is a schema change, so
+  `SCHEMA_VERSION` goes up and the server ships first.
+- It is stored, synced, edited and removed like "We missed some": a
+  reversible, explicit parent statement, with Undo, listed in History.
+- It never hides data. Entries from D that arrive later and fall inside the
+  span are counted, and the window is reassessed on arrival.
+
+#### Idle, signed-out and removed phones
+
+None of these turns checks on by itself:
+
+- **Idle.** No timeout. A silent phone holds its windows back, however long it
+  is silent, until it syncs or a parent vouches.
+- **Signing out** first runs a barrier. If it succeeds, `W(D)` is just before
+  sign-out, D is marked signed out, and later windows do not wait for it. If the phone is offline,
+  the sign-out is local only and D still holds windows back from its last
+  watermark.
+- **Removing** a lost phone in Settings revokes its sessions and sets
+  `removedAt`. Windows before `removedAt` that end after `W(D)` still wait for
+  a vouch. Windows after `removedAt` do not depend on D, because a removed
+  phone can no longer upload as that device.
+- **A returning phone** signs in as a new device. Its kept pending writes
+  upload then. Entries backdated into windows that were already assessed or
+  vouched reopen them: Readings recomputes, and the window says "Updated:
+  entries from Sam's phone arrived late".
+
+Removal is the one place where windows stop depending on a device without a
+parent tapping "Count without". The parent has said the phone is gone, but
+entries it recorded after `removedAt` would then count as late. **PM call:**
+accept that, or require a vouch from `removedAt` too.
+
+#### Tests
+
+- **Delayed request:** a write lands after the snapshot while the batch is in
+  flight. The barrier's `at` is before that write, and the next barrier covers
+  it.
+- **Another tab:** it writes between the snapshot and the barrier. Its row has
+  `gen > G`, and the watermark does not cover it.
+- **Rejected only:** the queue is empty but one rejected version remains. No
+  barrier is sent, and Readings waits on that phone. A later accepted edit
+  clears it.
+- **Out of order:** a replayed or late barrier with an older `at` leaves
+  `W(D)` where it is.
+- **Pull race:** a push and its barrier land between page 1 and page 2. The
+  device list from page 1 does not include that watermark, and nothing is
+  adopted until the page at `through` is applied.
+- **Pagination and interrupts:** `limit=1` over many pages, with an interrupt
+  between pages, adopts no watermark.
+- **New device:** watermark null holds every window back.
+- **Two devices**, one with a pending write: `syncedThrough` stops at its
+  watermark.
+- **Silent phone:** after 48 h with entries still on it, windows stay "Waiting
+  for Sam's phone".
+- **Count without:** a vouch assesses the window, Undo restores waiting, and
+  it syncs to the other phone.
+- **Removal** while the phone holds entries: windows before `removedAt` still
+  wait.
+- **Late return:** backdated entries from the returning phone reopen an
+  assessed window and change its result.
+- **Clock skew:** shifting a phone's clock by hours does not move the line.
 
 ### Step 4: NixOS module (#8, part 1). Can start in parallel after step 1.
 
@@ -256,5 +435,6 @@ before or together with step 3, never after.
 1. The schema change and the server change land in the same PR, or the server
    ships first.
 2. New fields are optional.
-3. Every schema change bumps `SCHEMA_VERSION`. The shape-fingerprint test from
-   step 1 enforces it.
+3. Every change to a wire schema bumps `SCHEMA_VERSION`. That covers
+   `BabyEvent` and the protocol types, and it includes refinements, not only
+   keys. The fingerprint test from step 1 enforces it.
