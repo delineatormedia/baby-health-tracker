@@ -2,7 +2,7 @@
   import { resolve } from '$app/paths';
   import { app } from './app.svelte.ts';
 
-  /** Home keeps it to one 44 px row so the dial stays in view; Settings explains why. */
+  /** Home keeps it to one row so the dial stays in view; Settings explains why. */
   let { compact = false }: { compact?: boolean } = $props();
 </script>
 
@@ -10,11 +10,11 @@
 {#if app.showHomeNote}
   {#if compact}
     <aside class="home-note row" aria-label="Keep your logs">
-      <!-- The whole message is the "How" link: a separate word doesn't fit at 390 px. -->
+      <!-- The whole message is the "How" link: a separate word doesn't fit at 20 px. -->
       <a href="{resolve('/settings')}#storage"
-        ><span class="msg">Add to Home Screen to keep your logs</span><span aria-hidden="true"
-          >›</span
-        ><span class="sr">, how</span></a
+        ><span class="msg">Keep logs on this phone</span><span aria-hidden="true">›</span><span
+          class="sr">, how</span
+        ></a
       >
       <button aria-label="Dismiss" onclick={() => app.dismissHomeNote()}>✕</button>
     </aside>
@@ -33,6 +33,7 @@
 <style>
   .home-note {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
     gap: 12px;
     margin: 14px 16px 0;
@@ -41,9 +42,10 @@
     border-radius: 12px;
     background: var(--panel);
   }
+  /* On a narrow phone Dismiss goes under the text instead of squeezing it. */
   .home-note p {
-    flex: 1;
-    font-size: 15px;
+    flex: 1 1 200px;
+    font-size: 17px;
     color: var(--text-dim);
   }
   .home-note b {
@@ -56,16 +58,17 @@
     flex: none;
     min-height: 44px;
     padding: 0 16px;
-    font: 600 15px var(--sans);
+    font: 600 20px var(--sans);
     color: var(--ink);
   }
+  /* The border sits outside the 44 px hit targets, so the row is 46 px. */
   .row {
-    align-items: center;
+    flex-wrap: nowrap;
+    align-items: stretch;
     gap: 0;
-    height: 44px;
     margin: 10px 12px 0;
     padding: 0 0 0 14px;
-    font-size: 15px;
+    font-size: 20px;
   }
   .row .msg {
     min-width: 0;
@@ -80,7 +83,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    align-self: stretch;
+    min-height: 44px;
     padding-left: 14px;
     margin-left: -14px;
     font-weight: 500;
@@ -96,11 +99,10 @@
     white-space: nowrap;
   }
   .row button {
-    align-self: stretch;
-    min-height: 0;
+    min-height: 44px;
     width: 44px;
     padding: 0;
-    font-size: 15px;
+    font-size: 20px;
     color: var(--text-dim);
   }
 </style>
