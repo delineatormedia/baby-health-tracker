@@ -50,6 +50,7 @@
   .msg {
     flex: 1 1 9em;
     padding: 8px 0;
+    font-size: 17px;
   }
   .acts {
     display: flex;
