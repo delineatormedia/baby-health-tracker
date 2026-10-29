@@ -13,12 +13,15 @@ import {
   loadBaby,
   loadSetupAt,
   markSetup,
+  loadHomeNoteDismissed,
   loadPrefs,
   saveBaby,
+  saveHomeNoteDismissed,
   savePrefs,
   type Prefs,
 } from './prefs.ts';
 import { editLink, saveFailure, type EditPath } from './logic.ts';
+import { ensurePersisted, isStandalone, showHomeScreenNote, type Persistence } from './storage.ts';
 import { time, when } from './time.ts';
 
 export { time };
@@ -57,6 +60,11 @@ class AppState {
   prefs = $state<Prefs>(DEFAULT_PREFS);
   toast = $state.raw<Toast | null>(null);
   saveError = $state.raw<SaveError | null>(null);
+  /** Opened from the Home Screen, where Safari's 7-day storage cap doesn't apply (#42). */
+  standalone = $state(false);
+  /** Whether the browser has promised to keep this phone's logs; Settings shows it. */
+  persistence = $state<Persistence>('unknown');
+  homeNoteDismissed = $state(false);
   /** Wall clock for elapsed-time displays, ticking once a second. */
   now = $state(Date.now());
 
@@ -77,6 +85,13 @@ class AppState {
       this.#store = new EventStore(await openDatabase(), authorId(kv));
       this.baby = loadBaby(kv);
       this.setupAt = loadSetupAt(kv);
+      this.standalone = isStandalone({
+        matchMedia: globalThis.matchMedia?.bind(globalThis),
+        // iOS Safari only; not in the DOM typings.
+        navigator: globalThis.navigator as { standalone?: boolean } | undefined,
+      });
+      this.homeNoteDismissed = loadHomeNoteDismissed(kv);
+      if (this.baby) void this.#persist();
       this.#store.subscribe(() => void this.#reload());
       await this.#reload();
     } catch (e) {
@@ -107,6 +122,29 @@ class AppState {
     }
     this.baby = baby;
     void this.#reload();
+    void this.#persist();
+  }
+
+  get showHomeNote(): boolean {
+    return showHomeScreenNote({
+      hasBaby: this.baby !== null,
+      standalone: this.standalone,
+      dismissed: this.homeNoteDismissed,
+    });
+  }
+
+  /** Hides the Add to Home Screen note; for this session only if the phone can't store that. */
+  dismissHomeNote(): void {
+    this.homeNoteDismissed = true;
+    try {
+      saveHomeNoteDismissed(this.#storage);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async #persist(): Promise<void> {
+    this.persistence = await ensurePersisted(globalThis.navigator?.storage, this.standalone);
   }
 
   /** Applies for this session even if the phone cannot store it, and says so. */

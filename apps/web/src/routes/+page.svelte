@@ -9,6 +9,7 @@
   import PumpKey from '../lib/ui/PumpKey.svelte';
   import { keyLines } from '../lib/ui/keys.ts';
   import Toast from '../lib/ui/Toast.svelte';
+  import HomeScreenNote from '../lib/ui/HomeScreenNote.svelte';
   import {
     ageDays,
     clock,
@@ -83,6 +84,8 @@
     <!-- The #20 board has no place for Settings; it left the chip row for Weight and History. -->
     <a class="act" href={resolve('/settings')}>Settings</a>
   </header>
+
+  <HomeScreenNote compact />
 
   <!-- The dial is the last 24 hours, so tapping it opens Reports (#21). While a feed runs it
        stays the way back to the timer, where the parent switches sides. -->
