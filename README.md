@@ -39,7 +39,9 @@ pnpm --filter @bht/web dev      # PWA, proxies /api to the server
 | `packages/insights` | Rules engine and cited threshold tables        |
 
 `nix build .#bht-server` and `nix build .#bht-web` produce the server and the
-static web bundle.
+static web bundle. Set `BHT_WEB_ROOT` to the bundle and the server serves the
+app too. To run it on a NixOS machine behind Tailscale, see
+[docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## License
 
