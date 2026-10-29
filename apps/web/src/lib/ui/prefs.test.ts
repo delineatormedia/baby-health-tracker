@@ -6,10 +6,12 @@ import {
   KEYS,
   loadAccount,
   loadBaby,
+  loadJoining,
   loadPrefs,
   mintAuthorId,
   saveAccount,
   saveBaby,
+  saveJoining,
   savePrefs,
 } from './prefs.ts';
 import { fromLocalInput, toLocalInput } from './time.ts';
@@ -92,5 +94,34 @@ describe('datetime-local', () => {
     for (const bad of ['not json', '{"householdId":"x","memberId":"y"}', '[]', 'null']) {
       expect(loadAccount(kv({ [KEYS.account]: bad }))).toBeNull();
     }
+  });
+
+  test('an unplaced account keeps its flag; a placed one has none', () => {
+    const s = kv();
+    const ids = { householdId: newId(), memberId: newId() };
+    saveAccount(s, { ...ids, placed: false });
+    expect(loadAccount(s)).toEqual({ ...ids, placed: false });
+    saveAccount(s, ids);
+    expect(loadAccount(s)).toEqual(ids);
+    expect(loadAccount(kv({ [KEYS.account]: JSON.stringify({ ...ids, placed: true }) }))).toEqual(
+      ids,
+    );
+  });
+
+  test('the household baby waiting on the join choice round-trips and clears', () => {
+    const s = kv();
+    expect(loadJoining(s)).toBeNull();
+    const baby = {
+      id: newId(),
+      householdId: newId(),
+      name: 'Ada',
+      birthAt: '2026-10-01T08:00:00.000Z',
+      sex: 'female' as const,
+    };
+    saveJoining(s, baby);
+    expect(loadJoining(s)).toEqual(baby);
+    saveJoining(s, null);
+    expect(s.m.has(KEYS.joining)).toBe(false);
+    expect(() => saveJoining(s, { ...baby, name: '' })).toThrow('Invalid baby');
   });
 });

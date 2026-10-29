@@ -227,6 +227,20 @@ export class EventStore {
     return (await this.db.get('meta', CURSOR)) ?? 0;
   }
 
+  /**
+   * Forgets how far this phone has pulled. Called at sign-out: the cursor is a server-wide seq,
+   * so keeping it would skip another household's earlier entries at the next sign-in.
+   */
+  async resetCursor(): Promise<void> {
+    await this.db.delete('meta', CURSOR);
+  }
+
+  /** Whether any entry of `babyId` reached a server, by this phone's push or a pull. */
+  async hasSynced(babyId: string): Promise<boolean> {
+    const rows = await this.db.getAllFromIndex('versions', 'byBaby', babyId);
+    return rows.some((r) => r.seq !== null);
+  }
+
   /** Called after every local write or sync change. Returns an unsubscribe function. */
   subscribe(listener: () => void): () => void {
     this.#listeners.add(listener);

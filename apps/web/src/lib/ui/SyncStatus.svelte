@@ -9,8 +9,8 @@
 </p>
 {#if rejected > 0}
   <p class="note refused" role="status">
-    <b>{rejected} {rejected === 1 ? 'entry' : 'entries'} the server refused.</b> They are still on
-    this phone and were not shared.
+    <b>{rejected} {rejected === 1 ? 'entry' : 'entries'} the server refused.</b> They are still on this
+    phone and were not shared.
   </p>
 {/if}
 

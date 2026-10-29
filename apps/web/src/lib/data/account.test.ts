@@ -2,7 +2,7 @@ import { DEVICE_ELSEWHERE, DEVICE_REMOVED, newId, type SignedIn } from '@bht/sch
 import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
-} from '@simplewebauthn/server';
+} from '@simplewebauthn/browser';
 import type { DatabaseSync } from 'node:sqlite';
 import { beforeEach, describe, expect, test } from 'vitest';
 // The real server (#5), in process, with the server tests' software passkey authenticator.
@@ -152,7 +152,7 @@ describe('Account against the real server', () => {
     await p.account.logout();
     db.prepare('UPDATE devices SET removed_at = ? WHERE id = ?').run(
       '2026-10-29T04:00:00.000Z',
-      p.ids[0],
+      p.ids[0]!,
     );
 
     expect(await p.account.login()).toEqual(signedIn);
@@ -163,7 +163,7 @@ describe('Account against the real server', () => {
     expect(verifies).toHaveLength(2);
     const options = p.sent.filter((s) => s.path === '/api/auth/login/options');
     expect(options.map((s) => s.body)).toEqual([{ deviceId: p.ids[0] }, { deviceId: p.ids[1] }]);
-    const device = db.prepare('SELECT member_id FROM devices WHERE id = ?').get(p.ids[1]);
+    const device = db.prepare('SELECT member_id FROM devices WHERE id = ?').get(p.ids[1]!);
     expect(device).toEqual({ member_id: signedIn.memberId });
   });
 
@@ -180,7 +180,7 @@ describe('Account against the real server', () => {
     expect(ids).toHaveLength(2);
     expect(prompts.create).toBe(1);
     // Maya's phone is untouched.
-    const row = db.prepare('SELECT member_id FROM devices WHERE id = ?').get(maya.ids[0]);
+    const row = db.prepare('SELECT member_id FROM devices WHERE id = ?').get(maya.ids[0]!);
     expect(row).toEqual({ member_id: (await maya.account.household()).members[0]!.id });
   });
 
@@ -205,9 +205,8 @@ describe('Account against the real server', () => {
     const p = phone(shared);
     p.ids[0] = first.p.ids[0]!;
     p.usePasskey(
-      db
-        .prepare('SELECT id FROM credentials WHERE member_id = ?')
-        .get(second.signedIn.memberId)!.id as string,
+      db.prepare('SELECT id FROM credentials WHERE member_id = ?').get(second.signedIn.memberId)!
+        .id as string,
     );
     const signedIn: SignedIn = await p.account.login();
     expect(signedIn).toEqual(second.signedIn);

@@ -5,7 +5,9 @@ import { homeLine } from './sync.ts';
 
 // Component test (#46 release gate): Settings shows SyncClient.error while sync is offline.
 const text = (props: Parameters<typeof render<typeof SyncStatus>>[1]) =>
-  render(SyncStatus, props).body.replace(/<!--.*?-->/g, '').replace(/\s+/g, ' ');
+  render(SyncStatus, props)
+    .body.replace(/<!--.*?-->/g, '')
+    .replace(/\s+/g, ' ');
 
 describe('Settings sync status', () => {
   test('offline shows the client error, e.g. a proxy upload cap', () => {

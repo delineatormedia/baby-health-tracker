@@ -9,6 +9,7 @@ import {
   type RegisterRequest,
   type SignedIn,
 } from '@bht/schema';
+import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { HttpError } from './protocol.ts';
 
 /** A refused account request, with the server's reason ("Invite not found or expired"). */
@@ -54,6 +55,14 @@ export function httpAccount(base = ''): AccountTransport {
 export interface Passkeys {
   create(options: CeremonyOptions['options']): Promise<unknown>;
   get(options: CeremonyOptions['options']): Promise<unknown>;
+}
+
+/** The browser's passkey prompts. The server's options are WebAuthn JSON already. */
+export function browserPasskeys(): Passkeys {
+  return {
+    create: (options) => startRegistration({ optionsJSON: options as never }),
+    get: (options) => startAuthentication({ optionsJSON: options as never }),
+  };
 }
 
 /** This phone's device id (its authorId), and a way to replace it with a fresh one. */

@@ -4,22 +4,33 @@ import {
   type BabyEvent,
   type EventData,
   type EventType,
+  type SignedIn,
 } from '@bht/schema';
+import { Account, AccountError, browserPasskeys, httpAccount } from '../data/account.ts';
 import { openDatabase } from '../data/db.ts';
+import { httpTransport } from '../data/protocol.ts';
 import { EventStore, type Change } from '../data/store.ts';
+import { failureReason, SyncClient, type SyncStatus } from '../data/sync.ts';
 import {
   authorId,
   DEFAULT_PREFS,
+  loadAccount,
   loadBaby,
+  loadJoining,
   loadSetupAt,
   markSetup,
   loadHomeNoteDismissed,
   loadPrefs,
+  mintAuthorId,
+  saveAccount,
   saveBaby,
   saveHomeNoteDismissed,
+  saveJoining,
   savePrefs,
   type Prefs,
+  type StoredAccount,
 } from './prefs.ts';
+import { babyPreparer, placeBaby } from './session.ts';
 import { editLink, saveFailure, type EditPath } from './logic.ts';
 import { ensurePersisted, isStandalone, showHomeScreenNote, type Persistence } from './storage.ts';
 import { time, when } from './time.ts';
@@ -67,12 +78,27 @@ class AppState {
   homeNoteDismissed = $state(false);
   /** Wall clock for elapsed-time displays, ticking once a second. */
   now = $state(Date.now());
+  /** The household this phone signed in to (#5 step 3); null while logs stay on this phone. */
+  account = $state.raw<StoredAccount | null>(null);
+  /**
+   * The household baby this phone signed in next to its own: its entries are moved or kept
+   * off before sync starts. Null otherwise.
+   */
+  joining = $state.raw<Baby | null>(null);
+  syncStatus = $state<SyncStatus>('idle');
+  /** SyncClient.error, or why the household could not be loaded after sign-in. */
+  syncError = $state<string | null>(null);
 
   #store: EventStore | null = null;
   #kv: Storage | null = null;
   #toastTimer: ReturnType<typeof setTimeout> | undefined;
   #loading: Promise<void> | null = null;
   #reloadAgain = false;
+  #account: Account | null = null;
+  #sync: SyncClient | null = null;
+  #stopSync: (() => void) | null = null;
+  /** Baby ids the server has, from the last household load. */
+  readonly #knownBabies = new Set<string>();
 
   async init(): Promise<void> {
     if (this.#store) return;
@@ -92,8 +118,16 @@ class AppState {
       });
       this.homeNoteDismissed = loadHomeNoteDismissed(kv);
       if (this.baby) void this.#persist();
+      this.account = loadAccount(kv);
+      this.joining = loadJoining(kv);
+      this.#account = new Account(httpAccount(), browserPasskeys(), {
+        get: () => authorId(kv),
+        mint: () => (this.store.authorId = mintAuthorId(kv)),
+      });
       this.#store.subscribe(() => void this.#reload());
       await this.#reload();
+      if (this.account?.placed === false) this.place().catch(() => {});
+      else if (this.account && !this.joining) this.#startSync();
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);
     }
@@ -110,6 +144,135 @@ class AppState {
   get #storage(): Storage {
     if (!this.#kv) throw new Error('App not initialised');
     return this.#kv;
+  }
+
+  get #api(): Account {
+    if (!this.#account) throw new Error('App not initialised');
+    return this.#account;
+  }
+
+  /**
+   * Runs a sign-in ceremony (register, join or login), then places this phone's baby. The
+   * account is stored before the household loads, marked unplaced, so a failed load retries
+   * later instead of leaving a session nobody knows about. Sync waits for placement.
+   */
+  async signIn(ceremony: (account: Account) => Promise<SignedIn>): Promise<void> {
+    const { householdId, memberId } = await ceremony(this.#api);
+    this.#setAccount({ householdId, memberId, placed: false });
+    await this.place();
+  }
+
+  /**
+   * Loads the household and decides about this phone's baby (see placeBaby). A phone with no
+   * entries for its own baby just takes the household's. Throws, with syncError set, if the
+   * household cannot be loaded; Settings offers a retry.
+   */
+  async place(): Promise<void> {
+    const account = this.account;
+    if (!account) return;
+    let household;
+    try {
+      household = await this.#api.household();
+    } catch (e) {
+      if (e instanceof AccountError && e.status === 401) {
+        this.syncStatus = 'signed_out';
+        this.syncError = null;
+      } else {
+        this.syncStatus = 'offline';
+        this.syncError = `Could not load your household: ${failureReason(e)}`;
+      }
+      throw e;
+    }
+    this.#knownBabies.clear();
+    for (const b of household.babies) this.#knownBabies.add(b.id);
+    const placement = placeBaby(this.baby, household);
+    if (placement.kind === 'choose' && this.events.length > 0) {
+      saveJoining(this.#storage, placement.baby);
+      this.joining = placement.baby;
+    } else if (placement.kind !== 'keep' && placement.kind !== 'none') {
+      this.#adopt(placement.baby);
+    }
+    this.#setAccount({ householdId: account.householdId, memberId: account.memberId });
+    if (!this.joining) this.#startSync();
+  }
+
+  /**
+   * The joining phone's choice about its own baby's entries: move them into the household
+   * baby, or keep them on this phone only. One store transaction either way; the choice is
+   * recorded only after it commits, so a reload before then asks again.
+   */
+  async settleJoin(move: boolean): Promise<void> {
+    const from = this.baby;
+    const to = this.joining;
+    if (!from || !to) return;
+    if (move) await this.store.moveBaby(from.id, to.id);
+    else await this.store.archiveBaby(from.id);
+    this.#adopt(to);
+    saveJoining(this.#storage, null);
+    this.joining = null;
+    this.#startSync();
+  }
+
+  /** Revokes this phone's session. Logs stay here; the next sign-in pulls from the start. */
+  async signOut(): Promise<void> {
+    try {
+      await this.#api.logout();
+    } catch (e) {
+      // An expired session is signed out already.
+      if (!(e instanceof AccountError && e.status === 401)) throw e;
+    }
+    this.#stopSync?.();
+    this.#stopSync = null;
+    this.#sync = null;
+    await this.store.resetCursor();
+    this.#knownBabies.clear();
+    saveJoining(this.#storage, null);
+    this.joining = null;
+    this.#setAccount(null);
+    this.syncStatus = 'idle';
+    this.syncError = null;
+  }
+
+  /** An invite code for the other parent. */
+  invite() {
+    return this.#api.invite();
+  }
+
+  #setAccount(account: StoredAccount | null) {
+    saveAccount(this.#storage, account);
+    this.account = account;
+  }
+
+  #adopt(baby: Baby) {
+    saveBaby(this.#storage, baby);
+    this.setupAt = markSetup(this.#storage, Date.now());
+    this.baby = baby;
+    void this.#reload();
+  }
+
+  /** Starts syncing, or resumes after a sign-in lifted the 401 pause. */
+  #startSync() {
+    if (this.#sync) {
+      void this.#sync.resume();
+      return;
+    }
+    const sync = new SyncClient(this.store, httpTransport(), {
+      prepare: babyPreparer(
+        (b) => this.#api.addBaby(b),
+        this.#knownBabies,
+        () => this.baby,
+      ),
+      onRejected: (refused) =>
+        this.#showToast({
+          text: `The server refused ${refused.length === 1 ? 'an entry' : `${refused.length} entries`}. See Settings.`,
+        }),
+    });
+    sync.onStatus((s) => {
+      this.syncStatus = s;
+      this.syncError = sync.error;
+    });
+    this.#sync = sync;
+    this.#stopSync = sync.start();
   }
 
   setBaby(baby: Baby): void {

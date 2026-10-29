@@ -1,7 +1,11 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import type { VolumeDisplay } from '@bht/schema';
+  import type { Invite } from '@bht/schema';
+  import { signInFailure } from '../../lib/data/account.ts';
   import { app } from '../../lib/ui/app.svelte.ts';
+  import SignIn from '../../lib/ui/SignIn.svelte';
+  import SyncStatus from '../../lib/ui/SyncStatus.svelte';
   import type { Theme } from '../../lib/ui/prefs.ts';
   import { dayStartText } from '../../lib/ui/reports.ts';
   import HomeScreenNote from '../../lib/ui/HomeScreenNote.svelte';
@@ -19,6 +23,29 @@
   /** Day starts at (#21), minutes after midnight. Other opens the phone's time wheel. */
   const DAY_STARTS = [0, 360, 420, 480, 540];
   const other = $derived(!DAY_STARTS.includes(app.prefs.dayStart));
+  let signIn = $state<'register' | 'join' | 'login' | null>(null);
+  let invite = $state.raw<Invite | null>(null);
+  let busy = $state(false);
+  let syncError = $state<string | null>(null);
+
+  /** Runs a sync-section action; its failure shows under the section. */
+  async function act(run: () => Promise<unknown>) {
+    busy = true;
+    syncError = null;
+    try {
+      await run();
+    } catch (e) {
+      syncError = signInFailure(e);
+    } finally {
+      busy = false;
+    }
+  }
+  const expires = (iso: string) =>
+    new Date(iso).toLocaleString(undefined, {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
   const hhmm = (m: number) =>
     `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 </script>
@@ -94,15 +121,55 @@
   <HomeScreenNote />
 
   <div class="sec lab">Sync</div>
-  <p class="note">
-    Logs are saved on this phone. Sign-in and sharing with the other parent come next.
-  </p>
-  {#if app.rejected > 0}
-    <p class="note refused" role="status">
-      <b>{app.rejected} {app.rejected === 1 ? 'entry' : 'entries'} the server refused.</b> They are still
-      on this phone and were not shared.
-    </p>
+  <SyncStatus
+    signedIn={app.account !== null}
+    status={app.syncStatus}
+    error={app.syncError}
+    rejected={app.rejected}
+  />
+  {#if !app.account}
+    {#if signIn}
+      <SignIn mode={signIn} onDone={() => (signIn = null)} />
+      <button class="go2 gap" onclick={() => (signIn = null)}>Cancel</button>
+    {:else}
+      <div class="acts">
+        <button class="go2" onclick={() => (signIn = 'register')}
+          >Share with the other parent</button
+        >
+        <button class="go2" onclick={() => (signIn = 'join')}>Join the other parent</button>
+        <button class="go2" onclick={() => (signIn = 'login')}>Sign in</button>
+      </div>
+      <p class="note">
+        Share makes a household for {app.baby?.name ?? 'the baby'} with a passkey on this phone.
+      </p>
+    {/if}
+  {:else}
+    <div class="acts">
+      {#if app.syncStatus === 'signed_out'}
+        <SignIn mode="login" />
+      {:else if app.account.placed === false}
+        <button class="go2" disabled={busy} onclick={() => act(() => app.place())}>Try again</button
+        >
+      {:else}
+        <button
+          class="go2"
+          disabled={busy}
+          onclick={() => act(async () => (invite = await app.invite()))}
+        >
+          Invite the other parent
+        </button>
+      {/if}
+      {#if invite}
+        <p class="note invite" role="status">
+          Code <b class="num">{invite.code.slice(0, 5)} {invite.code.slice(5)}</b>. Enter it on
+          their phone under Join the other parent. Works once, until {expires(invite.expiresAt)}.
+        </p>
+      {/if}
+      <button class="go2" disabled={busy} onclick={() => act(() => app.signOut())}>Sign out</button>
+    </div>
+    <p class="note">Signing out keeps this phone's logs here.</p>
   {/if}
+  {#if syncError}<p class="note err" role="alert">{syncError}</p>{/if}
 </main>
 
 <style>
@@ -129,13 +196,21 @@
     color: var(--ink);
     font-weight: 500;
   }
-  .note.refused {
-    font-size: 15px;
-    color: var(--text-dim);
+  .acts {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
   }
-  .note.refused b {
+  .gap {
+    margin-top: 8px;
+  }
+  .note.invite b {
     color: var(--ink);
-    font-weight: 500;
+    font: 600 20px var(--mono);
+    letter-spacing: 0.06em;
+  }
+  .note.err {
+    color: var(--flag);
   }
   .other {
     position: relative;

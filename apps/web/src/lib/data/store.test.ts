@@ -172,4 +172,24 @@ describe('EventStore', () => {
     await store.applyPushResults([], [{ id: event.id, version: 1, seq: 1, status: 'accepted' }]);
     expect(await store.pending(10)).toEqual([event]);
   });
+
+  test('hasSynced is false until a version of the baby has a seq', async () => {
+    const store = await makeStore();
+    const { event } = await store.log(babyId, 'diaper', { kind: 'wet' });
+    expect(await store.hasSynced(babyId)).toBe(false);
+    await store.applyPushResults(
+      [event],
+      [{ id: event.id, version: event.version, status: 'accepted', seq: 7 }],
+    );
+    expect(await store.hasSynced(babyId)).toBe(true);
+    expect(await store.hasSynced(newId())).toBe(false);
+  });
+
+  test('resetCursor pulls from the start next time', async () => {
+    const store = await makeStore();
+    await store.applyPull({ versions: [], next: 42, more: false, through: 42 });
+    expect(await store.cursor()).toBe(42);
+    await store.resetCursor();
+    expect(await store.cursor()).toBe(0);
+  });
 });
