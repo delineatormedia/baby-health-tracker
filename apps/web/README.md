@@ -2,6 +2,17 @@
 
 The SvelteKit PWA. See the [root README](../../README.md) for setup and `pnpm check`.
 
+## Browser checks
+
+```sh
+pnpm --filter @bht/web e2e
+```
+
+Runs `e2e/` in Chromium and WebKit against a fresh production build of this worktree. The
+port is `E2E_PORT` in `e2e/port.ts`; set `BHT_E2E_PORT` to run two worktrees at once. The run
+never reuses a server already on that port: if the port is taken, it stops with "already
+used" instead of testing someone else's build.
+
 ## Test data (dev only)
 
 To see the app full of data without touching a real family's log, start the dev server
