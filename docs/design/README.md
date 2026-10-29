@@ -199,6 +199,10 @@ pumps showed a notch where the owner expected their length.
 The feed and pump rings are separated by the r=140 outline, so a feed and a
 pump at the same time never cover each other.
 
+The burst window (`BURST_MS`), side-switch gap (`SIDE_GAP`), ring radii
+(`RING`), arc widths and casing are named constants at the top of
+`apps/web/src/lib/ui/dial.ts`, so each is a one-line change.
+
 ### Bursts become one mark with a count (#51)
 
 - **The cause.** `innerMarks()` spreads any two wet or dirty marks less than 16
