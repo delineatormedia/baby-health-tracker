@@ -36,7 +36,12 @@ export function watchForUpdates(guard: UpdateGuard): void {
   let controlled = sw.controller !== null;
   let replaced = false;
   sw.addEventListener('controllerchange', () => {
-    if (controlled) replaced = true;
+    if (controlled) {
+      replaced = true;
+      // This build's next screen is about to be swapped for a page load; preloading it on
+      // touch only starts requests that load aborts.
+      document.body.dataset.sveltekitPreloadData = 'false';
+    }
     controlled = true;
   });
 
