@@ -146,14 +146,26 @@ export function midnightIn(w: DayWindow, tz: string): number | null {
   return m > w.start && m < w.end ? m : null;
 }
 
-/** When the clocks changed inside a window, and which way. Changes happen on the hour. */
+/**
+ * When the clocks changed inside a window, and which way. Found by bisecting the UTC offset,
+ * so a day start like 7:30 AM still finds a change made on the hour.
+ */
 export function clockChange(w: DayWindow, tz: string): { at: number; back: boolean } | null {
+  const MIN = 60_000;
   const o = offset(w.start, tz);
-  for (let t = w.start + HOUR; t < w.end; t += HOUR) {
-    const o2 = offset(t, tz);
-    if (o2 !== o) return { at: t, back: o2 < o };
+  // offset() is constant within a UTC minute, so bisect whole minutes: lo keeps the start's
+  // offset, hi has the new one. Assumes at most one change a day.
+  let lo = Math.floor(w.start / MIN);
+  let hi = Math.ceil(w.end / MIN) - 1;
+  const o2 = offset(hi * MIN, tz);
+  if (o2 === o) return null;
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (offset(mid * MIN, tz) === o) lo = mid;
+    else hi = mid;
   }
-  return null;
+  const at = hi * MIN;
+  return at > w.start && at < w.end ? { at, back: o2 < o } : null;
 }
 
 /** True for a time in the repeated hour after clocks go back: the second 1:30 AM. */
@@ -162,13 +174,34 @@ export function isSecondOccurrence(t: number, tz: string): boolean {
   return zoned(w, w.h * 60 + w.min, tz) !== Math.floor(t / 60_000) * 60_000;
 }
 
-/** Axis ticks: the day start and every 6 wall-clock hours after it, then the end. */
+/**
+ * Axis ticks: the day start, every 6 wall-clock hours after it, then the end. With a day start
+ * off the hour (7:30 AM), the middle ticks round up to the hour (2 PM) so the labels fit.
+ */
 export function ticks(w: DayWindow, dayStart: number, tz: string): number[] {
   const out = [0, 6, 12, 18].map((k) => {
-    const minutes = dayStart + k * 60;
+    const minutes = k ? Math.ceil((dayStart + k * 60) / 60) * 60 : dayStart;
     return zoned(addDays(w.date, Math.floor(minutes / 1440)), minutes % 1440, tz);
   });
   return [...out, w.end];
+}
+
+/**
+ * A feed bar's left and right edges, clipped to the window on both sides and at least `min`
+ * wide, pulled inside the edge if needed. The list row keeps the feed's true duration.
+ */
+export function feedBar(
+  start: number,
+  end: number,
+  w: DayWindow,
+  x: (t: number) => number,
+  min: number,
+): [number, number] {
+  const lo = x(w.start);
+  const hi = x(w.end);
+  const a = x(Math.max(start, w.start));
+  const right = Math.min(hi, Math.max(x(Math.min(end, w.end)), a + min));
+  return [Math.max(lo, Math.min(a, right - min)), right];
 }
 
 /** Logged events in [start, end), oldest first. "We missed some" marks are not logs. */
@@ -244,9 +277,20 @@ export function dayState(w: DayWindow, now: number): DayState {
   return w.start <= now ? 'today' : 'future';
 }
 
-/** Per-day averages over finished days, rounded to one decimal. Null with no finished day. */
-export function averages(days: readonly { tally: Tally; state: DayState }[]) {
-  const done = days.filter((x) => x.state === 'done');
+/**
+ * A full day: it began at or after birth and has ended. The birth day is partial unless birth
+ * falls exactly on the day start. Only full days go into averages.
+ */
+export const fullDay = (w: DayWindow, birthAt: number, now: number) =>
+  w.start >= birthAt && w.end <= now;
+
+/** Per-day averages over full days, rounded to one decimal. Null with no full day. */
+export function averages(
+  days: readonly { tally: Tally; win: DayWindow }[],
+  birthAt: number,
+  now: number,
+) {
+  const done = days.filter((x) => fullDay(x.win, birthAt, now));
   if (done.length === 0) return null;
   const per = (k: (t: Tally) => number) =>
     Math.round((done.reduce((s, x) => s + k(x.tally), 0) / done.length) * 10) / 10;
@@ -275,8 +319,9 @@ export function clockText(t: number, tz: string): string {
   return isSecondOccurrence(t, tz) ? `${s} (2nd)` : s;
 }
 
-/** "8 AM", for axis ticks and the window subtitle. */
-export const hourText = (t: number, tz: string) => fmt(tz, { hour: 'numeric' }).format(t);
+/** "8 AM", or "7:30 AM" off the hour, for axis ticks and the window subtitle. */
+export const hourText = (t: number, tz: string) =>
+  fmt(tz, { hour: 'numeric', minute: wall(t, tz).min ? '2-digit' : undefined }).format(t);
 
 /** "Monday, Oct 26". */
 export const dayTitle = (a: Ymd) =>
@@ -304,7 +349,7 @@ export function dayStartText(minutes: number): string {
   );
 }
 
-/** "8 AM to 8 AM Tue · 25 h", or "Midnight to midnight". */
+/** "8 AM to 8 AM Tue · 25 h", "7:30 AM to 7:30 AM Tue", or "Midnight to midnight". */
 export function windowText(w: DayWindow, dayStart: number, tz: string): string {
   const hours = windowHours(w);
   const span =

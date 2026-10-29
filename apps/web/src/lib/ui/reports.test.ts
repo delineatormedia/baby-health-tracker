@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { evaluate } from '@bht/insights';
 import { newId, parseEvent, type BabyEvent } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
+import { minutes } from './logic.ts';
 import {
   addDays,
   averages,
@@ -10,6 +11,9 @@ import {
   dayState,
   dayWindow,
   eventsIn,
+  feedBar,
+  hourText,
+  fullDay,
   isSecondOccurrence,
   markedMissing,
   midnightIn,
@@ -21,6 +25,7 @@ import {
   ticks,
   wall,
   windowHours,
+  windowText,
   zoned,
   type Ymd,
 } from './reports.ts';
@@ -267,13 +272,153 @@ describe('counts', () => {
 
   test('averages count finished days only', () => {
     const now = Date.parse('2026-10-29T07:00:00Z'); // 3 AM Thu: Wed is still under way at 8 AM
+    const birth = Date.parse('2026-10-20T08:00:00-04:00');
     const days = [0, 1, 2, 3].map((i) => {
-      const w = dayWindow(addDays(MON, i), EIGHT, NY);
-      return { tally: tally(eventsIn(MONDAY, w.start, w.end)), state: dayState(w, now) };
+      const win = dayWindow(addDays(MON, i), EIGHT, NY);
+      return { tally: tally(eventsIn(MONDAY, win.start, win.end)), win, state: dayState(win, now) };
     });
     expect(days.map((x) => x.state)).toEqual(['done', 'done', 'today', 'future']);
-    expect(averages(days)).toEqual({ days: 2, diapers: 4, feeds: 4.5, bottleMl: 90 });
-    expect(averages(days.slice(2))).toBeNull();
+    expect(averages(days, birth, now)).toEqual({ days: 2, diapers: 4, feeds: 4.5, bottleMl: 90 });
+    expect(averages(days.slice(2), birth, now)).toBeNull();
+  });
+});
+
+describe('averages around birth', () => {
+  const WED: Ymd = { y: 2026, m: 10, d: 28 };
+  const sixFeeds = [9, 11, 13, 15, 17, 19].map((h) =>
+    feed(`2026-10-28T${String(h).padStart(2, '0')}:00:00-04:00`),
+  );
+  const days = (dates: Ymd[], events: BabyEvent[]) =>
+    dates.map((d) => {
+      const win = dayWindow(d, EIGHT, NY);
+      return { tally: tally(eventsIn(events, win.start, win.end)), win };
+    });
+  const week = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(MON, i));
+
+  test('Week and Month agree when birth falls on the day start', () => {
+    const birth = Date.parse('2026-10-28T08:00:00-04:00');
+    const now = Date.parse('2026-10-29T12:00:00-04:00');
+    // Week passes all seven days; Month passes birth day to today. Mon and Tue are before birth.
+    const w = averages(days(week, sixFeeds), birth, now);
+    const m = averages(days([WED, addDays(WED, 1)], sixFeeds), birth, now);
+    expect(w).toMatchObject({ days: 1, feeds: 6 });
+    expect(m).toEqual(w);
+  });
+
+  test('a birth after the day start makes the birth day partial: shown, not averaged', () => {
+    const birth = Date.parse('2026-10-28T14:00:00-04:00');
+    const now = Date.parse('2026-10-30T12:00:00-04:00'); // Fri noon: Thu is the one full day
+    const thu = [10, 14].map((h) => feed(`2026-10-29T${h}:00:00-04:00`));
+    const wed = dayWindow(WED, EIGHT, NY);
+    expect(fullDay(wed, birth, now)).toBe(false);
+    expect(fullDay(dayWindow(addDays(WED, 1), EIGHT, NY), birth, now)).toBe(true);
+    expect(averages(days(week, [...sixFeeds, ...thu]), birth, now)).toMatchObject({
+      days: 1,
+      feeds: 2,
+    });
+    // Only the partial birth day so far: no average at all.
+    expect(averages(days(week, sixFeeds), birth, Date.parse('2026-10-29T09:00:00-04:00'))).toBe(
+      null,
+    );
+  });
+
+  test('a week with today in it averages the ended days only', () => {
+    const birth = Date.parse('2026-10-01T08:00:00-04:00');
+    const now = Date.parse('2026-10-28T12:00:00-04:00'); // Wed noon
+    const avg = averages(days(week, [...MONDAY, ...sixFeeds]), birth, now)!;
+    expect(avg.days).toBe(2); // Mon, Tue; Wed is today, Thu to Sun are to come
+    expect(avg).toEqual(averages(days([MON, TUE], MONDAY), birth, now));
+  });
+});
+
+describe('timeline bars', () => {
+  // The Day timeline's x scale: 332 wide with 4 px either side.
+  const mon = dayWindow(MON, EIGHT, NY);
+  const x = (t: number) => 4 + ((t - mon.start) / (mon.end - mon.start)) * 324;
+  const long = ev('breastfeed', '2026-10-27T07:59:00-04:00', {
+    side: 'left',
+    durationSeconds: 4 * 3600,
+  });
+
+  test('a four-hour feed from 7:59 AM stops at the window edge, at minimum width', () => {
+    const t = Date.parse(long.occurredAt);
+    const [left, right] = feedBar(t, t + 4 * H, mon, x, 3);
+    expect(right).toBe(x(mon.end));
+    expect(right - left).toBeCloseTo(3);
+    // Week's mini strip: 326 wide, minimum 3 × 0.62.
+    const xm = (u: number) => 4 + ((u - mon.start) / (mon.end - mon.start)) * 318;
+    const [l2, r2] = feedBar(t, t + 4 * H, mon, xm, 3 * 0.62);
+    expect(r2).toBe(xm(mon.end));
+    expect(r2 - l2).toBeCloseTo(1.86);
+  });
+
+  test('it counts once, on the day it starts, and its row keeps the true duration', () => {
+    const tue = dayWindow(TUE, EIGHT, NY);
+    expect(tally(eventsIn([long], mon.start, mon.end)).breast).toBe(1);
+    expect(tally(eventsIn([long], tue.start, tue.end)).breast).toBe(0);
+    const [row] = eventsIn([long], mon.start, mon.end);
+    expect(rowText(row!, String).detail).toBe(`Left · ${minutes(4 * 3600)}`);
+  });
+
+  test('bars are clipped on the left edge too, and short feeds keep minimum width', () => {
+    const [l, r] = feedBar(mon.start - H, mon.start + H, mon, x, 3);
+    expect(l).toBe(x(mon.start));
+    expect(r).toBeCloseTo(x(mon.start + H));
+    const noon = Date.parse('2026-10-26T12:00:00-04:00');
+    expect(feedBar(noon, noon + 60_000, mon, x, 3)).toEqual([x(noon), x(noon) + 3]);
+    expect(feedBar(noon, noon + H, mon, x, 3)).toEqual([x(noon), x(noon + H)]);
+  });
+});
+
+describe('day starts off the hour', () => {
+  const HALF = 7 * 60 + 30;
+  const text = (s: string) => s.replace(/\s/g, ' ');
+
+  test('7:30 AM, 25 h: the shaded hour starts when the clocks went back, at 06:00Z', () => {
+    const w = dayWindow({ y: 2026, m: 10, d: 31 }, HALF, NY);
+    expect(windowHours(w)).toBe(25);
+    const c = clockChange(w, NY)!;
+    expect(c.back).toBe(true);
+    expect(new Date(c.at).toISOString()).toBe('2026-11-01T06:00:00.000Z');
+    expect(text(windowText(w, HALF, NY))).toBe('7:30 AM to 7:30 AM Sun · 25 h');
+    // The middle ticks round up to the hour, so the labels fit; the ends keep the minutes.
+    expect(ticks(w, HALF, NY).map((t) => text(hourText(t, NY)))).toEqual([
+      '7:30 AM',
+      '2 PM',
+      '8 PM',
+      '2 AM',
+      '7:30 AM',
+    ]);
+  });
+
+  test('7:30 AM, 23 h: the divider is at 07:00Z, when 2 AM became 3 AM', () => {
+    const w = dayWindow({ y: 2027, m: 3, d: 13 }, HALF, NY);
+    expect(windowHours(w)).toBe(23);
+    const c = clockChange(w, NY)!;
+    expect(c.back).toBe(false);
+    expect(new Date(c.at).toISOString()).toBe('2027-03-14T07:00:00.000Z');
+    expect(wall(c.at, NY)).toMatchObject({ h: 3, min: 0 });
+    expect(text(windowText(w, HALF, NY))).toBe('7:30 AM to 7:30 AM Sun · 23 h');
+  });
+
+  test('an ordinary 7:30 AM day keeps its minutes and has no change', () => {
+    const w = dayWindow(MON, HALF, NY);
+    expect(clockChange(w, NY)).toBeNull();
+    expect(text(windowText(w, HALF, NY))).toBe('7:30 AM to 7:30 AM Tue');
+  });
+
+  test('a 2:30 AM start inside the skipped hour: the change is in the day before', () => {
+    const START = 150;
+    // Sat: 2:30 AM EST to 3:30 AM EDT is 24 real hours, and the clocks go forward inside it.
+    const sat = dayWindow({ y: 2027, m: 3, d: 13 }, START, NY);
+    expect(windowHours(sat)).toBe(24);
+    expect(new Date(clockChange(sat, NY)!.at).toISOString()).toBe('2027-03-14T07:00:00.000Z');
+    expect(text(windowText(sat, START, NY))).toBe('2:30 AM to 3:30 AM Sun');
+    // Sun starts when the clocks reach 2:30, at 3:30 AM EDT, and is 23 h with no change in it.
+    const sun = dayWindow({ y: 2027, m: 3, d: 14 }, START, NY);
+    expect(windowHours(sun)).toBe(23);
+    expect(clockChange(sun, NY)).toBeNull();
+    expect(text(windowText(sun, START, NY))).toBe('3:30 AM to 2:30 AM Mon · 23 h');
   });
 });
 

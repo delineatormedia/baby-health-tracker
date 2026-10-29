@@ -48,9 +48,10 @@
   const tz = localZone();
   const dayStart = $derived(app.prefs.dayStart);
   const today = $derived(reportDay(app.now, dayStart, tz));
-  const birthDay = $derived(reportDay(Date.parse(app.baby!.birthAt), dayStart, tz));
+  const birthAt = $derived(Date.parse(app.baby!.birthAt));
+  const birthDay = $derived(reportDay(birthAt, dayStart, tz));
   /** The calendar date of birth, for "Since birth, Oct 17" (its report day can be the 16th). */
-  const birthDate = $derived(wall(Date.parse(app.baby!.birthAt), tz));
+  const birthDate = $derived(wall(birthAt, tz));
 
   const view = $derived<View>(
     (['day', 'week', 'month'] as const).find((v) => v === page.url.searchParams.get('view')) ??
@@ -119,7 +120,7 @@
   // Week -----------------------------------------------------------------------------------
   const monday = $derived(mondayOf(date));
   const week = $derived([0, 1, 2, 3, 4, 5, 6].map((i) => day(addDays(monday, i))));
-  const weekAvg = $derived(averages(week));
+  const weekAvg = $derived(averages(week, birthAt, app.now));
 
   // Month ----------------------------------------------------------------------------------
   const first = $derived({ y: date.y, m: date.m, d: 1 });
@@ -131,7 +132,13 @@
   const month = $derived(
     monthDays.map((d) => (compareDay(d, birthDay) < 0 || compareDay(d, today) > 0 ? null : day(d))),
   );
-  const monthAvg = $derived(averages(month.filter((x) => x !== null)));
+  const monthAvg = $derived(
+    averages(
+      month.filter((x) => x !== null),
+      birthAt,
+      app.now,
+    ),
+  );
   const lead = $derived((new Date(Date.UTC(first.y, first.m - 1, 1)).getUTCDay() + 6) % 7);
 
   // Stepper --------------------------------------------------------------------------------
@@ -212,7 +219,12 @@
     <!-- A transparent native picker over the period, like TimeRow: one tap opens the wheel. -->
     <label class="period">
       <b>{step.title}</b>
-      {#if step.sub}<span class="rl">{step.sub}</span>{/if}
+      <!-- "7:30 AM to 7:30 AM Sun · 25 h" wraps before the hours, never inside a time. -->
+      {#if step.sub}<span class="rl"
+          >{#each step.sub.split(' · ') as part, i (i)}{i ? ' ' : ''}<span class="nw"
+              >{i ? '· ' : ''}{part}</span
+            >{/each}</span
+        >{/if}
       <input
         type="date"
         aria-label="Pick a date"
@@ -479,6 +491,9 @@
   .n {
     font: 300 36px/1.1 var(--sans);
     margin: 4px 0;
+  }
+  .nw {
+    white-space: nowrap;
   }
   .sub {
     font: 400 15px/1.35 var(--sans);
