@@ -102,44 +102,45 @@ pkgs.testers.runNixOSTest {
         server.succeed(f"sqlite3 /var/backup/bht/{newest} 'SELECT n FROM vm_probe' | grep -Fx 42")
         server.succeed("systemctl list-timers bht-backup.timer | grep -F bht-backup.timer")
 
-    with subtest("a backup killed mid-run leaves nothing a restore or the next run trips on"):
-        # 128 MiB of filler keeps the copy and its integrity check running long enough
-        # to SIGKILL the unit once its .partial exists.
-        server.succeed(
-            "runuser -u bht -- sqlite3 -cmd '.timeout 5000' /var/lib/bht/bht.db "
-            "'CREATE TABLE vm_filler (b BLOB); "
-            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 128) "
-            "INSERT INTO vm_filler SELECT randomblob(1048576) FROM n;'"
-        )
-        server.succeed(
-            "systemctl start --no-block bht-backup.service; "
-            "for _ in $(seq 3000); do "
-            "  ls /var/backup/bht/.bht-*.db.partial >/dev/null 2>&1 && break; sleep 0.01; "
-            "done; "
-            "systemctl kill --signal=SIGKILL bht-backup.service"
-        )
-        server.wait_until_fails("systemctl is-active bht-backup.service")
-        # The kill must have landed mid-run, or the rest of this subtest proves nothing.
-        server.succeed("systemctl is-failed bht-backup.service")
-        stale = server.succeed("ls /var/backup/bht/.bht-*.db.partial").strip()
-        out = server.fail(f"bht-restore {stale} 2>&1")
-        assert "unfinished backup" in out, out
-        out = server.fail(f"bht-restore $(basename {stale}) 2>&1")
-        assert "unfinished backup" in out, out
+    for loop59 in range(40):  # TEMP #59 loop, not for merge
+        with subtest("a backup killed mid-run leaves nothing a restore or the next run trips on"):
+            # 128 MiB of filler keeps the copy and its integrity check running long enough
+            # to SIGKILL the unit once its .partial exists.
+            server.succeed(
+                "runuser -u bht -- sqlite3 -cmd '.timeout 5000' /var/lib/bht/bht.db "
+                "'CREATE TABLE vm_filler (b BLOB); "
+                "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 128) "
+                "INSERT INTO vm_filler SELECT randomblob(1048576) FROM n;'"
+            )
+            server.succeed(
+                "systemctl start --no-block bht-backup.service; "
+                "for _ in $(seq 3000); do "
+                "  ls /var/backup/bht/.bht-*.db.partial >/dev/null 2>&1 && break; sleep 0.01; "
+                "done; "
+                "systemctl kill --signal=SIGKILL bht-backup.service"
+            )
+            server.wait_until_fails("systemctl is-active bht-backup.service")
+            # The kill must have landed mid-run, or the rest of this subtest proves nothing.
+            server.succeed("systemctl is-failed bht-backup.service")
+            stale = server.succeed("ls /var/backup/bht/.bht-*.db.partial").strip()
+            out = server.fail(f"bht-restore {stale} 2>&1")
+            assert "unfinished backup" in out, out
+            out = server.fail(f"bht-restore $(basename {stale}) 2>&1")
+            assert "unfinished backup" in out, out
 
-        server.succeed(
-            "runuser -u bht -- sqlite3 -cmd '.timeout 5000' /var/lib/bht/bht.db "
-            "'DROP TABLE vm_filler; VACUUM;'"
-        )
-        server.succeed("systemctl reset-failed bht-backup.service")
-        server.succeed("systemctl start bht-backup.service")
-        server.fail("ls -a /var/backup/bht | grep -F .partial")
-        journal = server.succeed("journalctl -u bht-backup.service -o cat")
-        assert f"removing stale {stale.split('/')[-1]}" in journal, journal
-        snapshots = server.succeed("ls -1 /var/backup/bht").split()
-        assert len(snapshots) == 2, f"keep = 2, found {snapshots}"
-        newest = sorted(snapshots)[-1]
-        server.succeed(f"sqlite3 /var/backup/bht/{newest} 'SELECT n FROM vm_probe' | grep -Fx 42")
+            server.succeed(
+                "runuser -u bht -- sqlite3 -cmd '.timeout 5000' /var/lib/bht/bht.db "
+                "'DROP TABLE vm_filler; VACUUM;'"
+            )
+            server.succeed("systemctl reset-failed bht-backup.service")
+            server.succeed("systemctl start bht-backup.service")
+            server.fail("ls -a /var/backup/bht | grep -F .partial")
+            journal = server.succeed("journalctl -u bht-backup.service -o cat")
+            assert f"removing stale {stale.split('/')[-1]}" in journal, journal
+            snapshots = server.succeed("ls -1 /var/backup/bht").split()
+            assert len(snapshots) == 2, f"keep = 2, found {snapshots}"
+            newest = sorted(snapshots)[-1]
+            server.succeed(f"sqlite3 /var/backup/bht/{newest} 'SELECT n FROM vm_probe' | grep -Fx 42")
 
     with subtest("the database survives a restart"):
         server.systemctl("restart bht.service")
