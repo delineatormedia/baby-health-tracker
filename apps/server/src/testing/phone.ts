@@ -22,7 +22,6 @@ type App = ReturnType<typeof createApp>;
  */
 export class Phone {
   readonly passkeys: SoftAuthenticator;
-  readonly deviceId = newId();
   /** The session cookie as `bht_session=<token>`, or null when signed out. */
   cookie: string | null = null;
   /** The last Set-Cookie line for the session. */
@@ -32,8 +31,10 @@ export class Phone {
   constructor(
     readonly app: App,
     readonly origin: string,
+    passkeys?: SoftAuthenticator,
+    readonly deviceId = newId(),
   ) {
-    this.passkeys = new SoftAuthenticator(origin);
+    this.passkeys = passkeys ?? new SoftAuthenticator(origin);
   }
 
   async request(path: string, body?: unknown) {
