@@ -2,6 +2,8 @@ import { newId, parseEvent, toMl, type BabyEvent } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
 import {
   ageDays,
+  CAPTION_RADIUS,
+  chordWidth,
   cappedStart,
   clock,
   countMarks,
@@ -453,6 +455,38 @@ describe('dial', () => {
     expect(polar(0, 100)).toEqual([150, 50]);
     expect(polar(6, 100)).toEqual([250, 150]);
     expect(polar(12, 100)).toEqual([150, 250]);
+  });
+});
+
+describe('caption fit (#34)', () => {
+  test('the caption radius stays clear of every inner mark, square corners included', () => {
+    // Inner marks sit on r=99: wet dots of r 5.5, dirty squares 11 wide (corner at 5.5√2).
+    const nearestMark = 99 - 5.5 * Math.SQRT2;
+    expect(CAPTION_RADIUS).toBeLessThan(nearestMark);
+    expect(nearestMark - CAPTION_RADIUS).toBeCloseTo(4);
+  });
+
+  test('a row is bounded by its corner farthest from the centre', () => {
+    // A 3-4-5 triangle: an edge 3 from the centre of a radius-5 circle leaves a chord of 8.
+    expect(chordWidth(5, -3, -1)).toBeCloseTo(8);
+    expect(chordWidth(5, 1, 3)).toBeCloseTo(8);
+    // A row straddling the centre gets the full diameter.
+    expect(chordWidth(5, -1, 1)).toBeCloseTo(2 * Math.sqrt(24));
+    // Every corner of a row exactly as wide as its chord lies on or inside the circle.
+    const rows: [number, number][] = [
+      [-60, -40],
+      [-10, 12],
+      [30, 70],
+    ];
+    for (const [top, bottom] of rows) {
+      const half = chordWidth(80, top, bottom) / 2;
+      for (const y of [top, bottom]) expect(Math.hypot(half, y)).toBeLessThanOrEqual(80 + 1e-9);
+    }
+  });
+
+  test('a row touching or past the circle gets no width', () => {
+    expect(chordWidth(5, 2, 5)).toBe(0);
+    expect(chordWidth(5, -7, -6)).toBe(0);
   });
 });
 

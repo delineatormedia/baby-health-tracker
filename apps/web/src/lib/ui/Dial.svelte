@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { innerMarks, polar, type Mark } from './logic.ts';
+  import { CAPTION_RADIUS, chordWidth, innerMarks, polar, type Mark } from './logic.ts';
 
   let {
     marks,
@@ -29,9 +29,59 @@
   // Wet and dirty marks spread side by side where they would overlap (a mixed diaper is both).
   const inner = $derived(innerMarks(marks));
   const hand = $derived(polar(hourOf(now), 146));
+
+  let dial: HTMLDivElement;
+  let center: HTMLDivElement;
+
+  /**
+   * Keeps every caption row inside the inner ring: each row may be as wide as the ring's chord
+   * at its farthest edge. A row of `.alt` spans shows the first that fits (fullest first), a
+   * `data-fit="shrink"` row scales its type down to fit, and anything still too wide
+   * ellipsizes. Rows never wrap and only ever get shorter, so every row stays where it was
+   * measured or moves toward the centre, where the chord is wider.
+   */
+  function fit() {
+    const box = dial.getBoundingClientRect();
+    const radius = (CAPTION_RADIUS / 300) * box.width;
+    const cy = box.top + box.height / 2;
+    for (const row of center.children) {
+      if (!(row instanceof HTMLElement)) continue;
+      row.style.fontSize = '';
+      const alts = [...row.children].filter((c) => c instanceof HTMLElement && c.matches('.alt'));
+      alts.forEach((alt, i) => ((alt as HTMLElement).style.display = i === 0 ? 'inline' : 'none'));
+      const { top, bottom } = row.getBoundingClientRect();
+      // Whole pixels, so the comparisons below agree with scrollWidth.
+      const width = Math.floor(chordWidth(radius, top - cy, bottom - cy));
+      row.style.maxWidth = `${width}px`;
+      for (let i = 1; i < alts.length && row.scrollWidth > width; i++) {
+        (alts[i - 1] as HTMLElement).style.display = 'none';
+        (alts[i] as HTMLElement).style.display = 'inline';
+      }
+      if (row.dataset.fit === 'shrink' && row.scrollWidth > width) {
+        let size = parseFloat(getComputedStyle(row).fontSize);
+        size = Math.floor(((size * width) / row.scrollWidth) * 2) / 2;
+        row.style.fontSize = `${size}px`;
+        // Glyph widths do not scale exactly with the size; step down until it fits.
+        while (row.scrollWidth > width && size > 15) row.style.fontSize = `${(size -= 0.5)}px`;
+      }
+    }
+  }
+
+  $effect(() => {
+    const resize = new ResizeObserver(fit);
+    resize.observe(dial);
+    // The running timer rewrites its caption every second; only text changes refit.
+    const text = new MutationObserver(fit);
+    text.observe(center, { childList: true, subtree: true, characterData: true });
+    fit();
+    return () => {
+      resize.disconnect();
+      text.disconnect();
+    };
+  });
 </script>
 
-<div class="dial">
+<div class="dial" bind:this={dial}>
   <svg viewBox="0 0 300 300" aria-hidden="true">
     <circle cx="150" cy="150" r="140" fill="none" stroke="var(--line)" stroke-width="1.5" />
     <circle
@@ -91,7 +141,7 @@
     {/each}
     <circle cx={hand[0]} cy={hand[1]} r="3.5" fill="var(--dim)" />
   </svg>
-  <div class="center">{@render children()}</div>
+  <div class="center" bind:this={center}>{@render children()}</div>
 </div>
 
 <style>
@@ -120,5 +170,13 @@
     align-items: center;
     justify-content: center;
     text-align: center;
+  }
+  .center > :global(*) {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .center :global(.alt + .alt) {
+    display: none;
   }
 </style>

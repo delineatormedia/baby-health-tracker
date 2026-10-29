@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { minutesBefore, readPick, time, toLocalInput, when } from './time.ts';
+import { minutesBefore, readPick, shortTime, time, toLocalInput, when } from './time.ts';
 
 // Local wall times, so the expectations hold in any zone the suite runs in.
 const NOW = new Date(2026, 9, 29, 1, 40, 30).getTime();
@@ -57,5 +57,14 @@ describe('readPick', () => {
     expect(readPick(toLocalInput(local(29, 1, 0)), NOW, latest)).toBe(
       new Date(local(29, 1, 0)).toISOString(),
     );
+  });
+});
+
+describe('shortTime', () => {
+  test('is the clock time without the day period', () => {
+    const at = local(29, 22, 8);
+    expect(shortTime(at)).not.toMatch(/AM|PM|am|pm/);
+    expect(shortTime(at)).toMatch(/\b(10|22):08\b/);
+    expect(time(at)).toContain(shortTime(at).replace(/^0/, ''));
   });
 });

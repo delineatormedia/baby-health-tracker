@@ -318,6 +318,22 @@ export function innerMarks(marks: readonly Mark[]): (Mark & { at: number })[] {
   );
 }
 
+/**
+ * How far from the dial centre caption text may reach, in dial units: inside the r=99 ring by a
+ * dirty square's corner (5.5√2) and a 4-unit gap, so no caption touches a wet or dirty mark.
+ */
+export const CAPTION_RADIUS = 99 - 5.5 * Math.SQRT2 - 4;
+
+/**
+ * Widest a caption row may be, centred, when its top and bottom edges sit `top` and `bottom`
+ * (signed, y down) from the centre of a circle of `radius`. The corner farthest from the centre
+ * bounds it; a row reaching the circle gets no width.
+ */
+export function chordWidth(radius: number, top: number, bottom: number): number {
+  const far = Math.max(Math.abs(top), Math.abs(bottom));
+  return far >= radius ? 0 : 2 * Math.sqrt(radius ** 2 - far ** 2);
+}
+
 export function countMarks(marks: readonly Mark[]): Record<Mark['kind'], number> {
   const n = { feed: 0, bottle: 0, wet: 0, dirty: 0 };
   for (const m of marks) n[m.kind] += 1;

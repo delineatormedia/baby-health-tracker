@@ -2,6 +2,7 @@
   import { resolve } from '$app/paths';
   import { goto } from '$app/navigation';
   import { app, time } from '../lib/ui/app.svelte.ts';
+  import { shortTime } from '../lib/ui/time.ts';
   import Dial from '../lib/ui/Dial.svelte';
   import FeedKey from '../lib/ui/FeedKey.svelte';
   import LogKey from '../lib/ui/LogKey.svelte';
@@ -62,6 +63,16 @@
   const wet = () => once(() => app.log('diaper', { kind: 'wet' }, 'Wet logged'));
 </script>
 
+<!-- "since 10:58 AM", then "since 10:58", then "10:58": the Dial shows the fullest that fits. -->
+{#snippet at(iso: string, verb = '')}
+  <span class="lab num"
+    >{#if verb}<span class="alt">{verb} {time(iso)}</span><span class="alt"
+        >{verb} {shortTime(iso)}</span
+      >{:else}<span class="alt">{time(iso)}</span>{/if}<span class="alt">{shortTime(iso)}</span
+    ></span
+  >
+{/snippet}
+
 <!-- The page scrolls clear of the dock, however tall wrapped key lines make it. -->
 <main class="screen fade" style:--dock-h="{dockHeight}px">
   <header class="top">
@@ -80,24 +91,29 @@
     class="dial-link"
     aria-label={running ? 'Open the breastfeed timer' : 'Open Reports'}
   >
+    <!-- Every caption row stays inside the inner ring of marks (Dial fits them, #34): one fact
+         per row, the clock time on its own row, shorter forms where the ring is narrow. -->
     <Dial {marks} running={running?.occurredAt ?? null} now={app.now}>
       {#if running}
-        <span class="lab"
-          >{isPaused(running) ? 'Paused' : 'Feeding'} · {currentSide(running) ??
-            running.data.side}</span
-        >
-        <span class="v num" class:held={isPaused(running)}
+        <span class="lab">{isPaused(running) ? 'Paused' : 'Feeding'}</span>
+        <span class="v num" class:held={isPaused(running)} data-fit="shrink"
           >{clock(feedElapsed(running, app.now))}</span
         >
+        {#if isPaused(running) && running.data.pausedAt}
+          {@render at(running.data.pausedAt, 'paused at')}
+        {:else}
+          {@render at(running.occurredAt, 'since')}
+        {/if}
         <span class="lab"
-          >{isPaused(running) && running.data.pausedAt
-            ? `paused at ${time(running.data.pausedAt)}`
-            : `since ${time(running.occurredAt)}`}</span
+          ><span class="alt">{currentSide(running) ?? running.data.side} side</span><span
+            class="alt">{currentSide(running) ?? running.data.side}</span
+          ></span
         >
       {:else if lastFeed}
         <span class="lab">Last feed</span>
-        <span class="v num">{hm(app.now - Date.parse(lastFeed.occurredAt))}</span>
-        <span class="lab">h:mm ago · {time(lastFeed.occurredAt)}</span>
+        <span class="v num" data-fit="shrink">{hm(app.now - Date.parse(lastFeed.occurredAt))}</span>
+        <span class="lab">h:mm ago</span>
+        {@render at(lastFeed.occurredAt)}
       {:else}
         <span class="lab">No feeds yet</span>
       {/if}
@@ -180,7 +196,7 @@
   .v {
     font: 300 clamp(44px, 15vw, 60px) / 1 var(--sans);
     letter-spacing: -0.02em;
-    margin: 8px 0;
+    margin: 4px 0;
   }
   .held {
     color: var(--text-dim);
@@ -191,6 +207,10 @@
     font-size: 15px;
     letter-spacing: 0.04em;
     color: var(--text-dim);
+  }
+  /* Caption rows packed close, so the rows near the ring keep more of its chord. */
+  .dial-link .lab {
+    line-height: 1.2;
   }
   .legend {
     display: flex;
