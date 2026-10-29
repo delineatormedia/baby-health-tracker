@@ -9,6 +9,7 @@ This folder holds the merged direction. It is the reference for the #6 UI.
 - `board-core.png`, `board-rest.png`: renders of the two boards.
 - `board-home.png`, `board-home-deut.png`: the glanceable Home (#20), and the
   same board through a deuteranopia simulation (`?board=home&cvd=deut`).
+- `board-reports.png`: Reports (#21), from `?board=reports`.
 - `explorations/`: the three original directions (A Ledger, B Nest, C Darkroom),
   kept for the record.
 
@@ -176,6 +177,48 @@ are grouped under "Consider talking to your pediatrician".
   right after a log and right after Undo (the undone event no longer counts),
   and the elapsed time ticks at least once a minute.
 
+## Reports (#21)
+
+Reports are for looking back. History is for editing. Reports are read-only:
+nothing on them opens an editor, and a parent who wants to change an event uses
+History.
+
+- **Way in.** "Reports ›" in the History header, and a tap on the Home dial
+  (the dial is already the last 24 hours). The Home chips stay as they are,
+  because a fourth chip at 20 px doesn't fit.
+- **Day, Week, Month.** A segmented control, then a stepper: ‹, the period
+  ("Monday, Oct 26", "Oct 19 – 25", "October 2026"), ›. Tapping the period opens
+  a date picker. › is disabled on the current period.
+- **Day.** Three summary cards: Diapers (wet and dirty), Feeds (breast and
+  bottle) and Bottle (mL total and oz). Then a timeline from day start to day
+  start, in the dial's shapes: feed bars (as long as the feed) and bottle rings
+  on the top lane, wet dots and dirty squares on the next, pump diamonds on the
+  last. A dotted line marks midnight. Then the list, oldest first, with an
+  "After midnight · Tue Oct 27" divider. List rows are 17 px because they are
+  not tappable.
+- **Week.** One line of daily averages, then a row for each day: the day
+  (20 px, opens the Day view), its counts, and a mini timeline.
+- **Month.** Daily averages, then a calendar. Each day shows feeds (bar) and
+  diapers (dot and square) and opens the Day view. Days before birth and future
+  days are blank. Today is outlined and counts only so far.
+- **Counts match the timeline.** Every count is computed from the same events
+  the timeline draws. In the mockup, the Monday in the Day view is the same
+  Monday in the Week and Month data.
+- **Units** follow the mL/oz setting. "Both" shows mL first.
+
+### Day starts at
+
+- A Household setting: Midnight, 6 AM, 7 AM, 8 AM, 9 AM or Other (the
+  phone's time wheel). The default is Midnight.
+- It moves the day boundary in Reports and in History's day headings. With
+  8 AM, a 3 AM feed belongs to the night before.
+- It never changes Readings. Those count day-of-life windows from the birth
+  time (#11), and the screen says so under the setting.
+- The Day view says what its window is: "8 AM to 8 AM Tue". On a daylight-
+  saving day the window is 23 or 25 hours, and the subtitle adds it:
+  "8 AM to 8 AM Mon · 25 h".
+- Until household sync (#5) lands, the setting is per phone (issue #21).
+
 ## Flows
 
 | Log | Taps from home |
@@ -192,6 +235,8 @@ Core: home (24-hour dial), breastfeed timer, diaper color, diaper details,
 bottle, readings (flag and all-clear states), why.
 
 Remaining: pump, weight, history, add a baby, household settings, sign in.
+
+Reports: day, week, month, Day starts at, and History's "Reports ›" header.
 
 ## Readings and flag copy
 
