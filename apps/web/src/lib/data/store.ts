@@ -35,6 +35,8 @@ const CURSOR = 'cursor';
 export class EventStore {
   readonly #listeners = new Set<() => void>();
   readonly #localListeners = new Set<() => void>();
+  /** Writes started and not yet settled; a page load now would lose them (#74). */
+  #writes = 0;
 
   constructor(
     readonly db: Database,
@@ -66,11 +68,20 @@ export class EventStore {
     return resolveCurrent((await this.#rows(id)).map(toStored))?.event;
   }
 
-  async log<T extends EventType>(
+  log<T extends EventType>(
     babyId: string,
     type: T,
     data: EventData<T>,
     opts: { occurredAt?: string; notes?: string | null } = {},
+  ): Promise<Change> {
+    return this.track(() => this.#log(babyId, type, data, opts));
+  }
+
+  async #log<T extends EventType>(
+    babyId: string,
+    type: T,
+    data: EventData<T>,
+    opts: { occurredAt?: string; notes?: string | null },
   ): Promise<Change> {
     const recordedAt = this.now().toISOString();
     const event = await this.#write({
@@ -88,14 +99,41 @@ export class EventStore {
     return { event, undo: () => this.remove(event.id) };
   }
 
-  async edit(id: string, fields: EditFields): Promise<Change> {
-    const { prev, event } = await this.#next(id, { ...fields, deleted: false });
-    return { event, undo: () => this.#restore(prev) };
+  edit(id: string, fields: EditFields): Promise<Change> {
+    return this.track(async () => {
+      const { prev, event } = await this.#next(id, { ...fields, deleted: false });
+      return { event, undo: () => this.#restore(prev) };
+    });
   }
 
-  async remove(id: string): Promise<Change> {
-    const { prev, event } = await this.#next(id, { deleted: true });
-    return { event, undo: () => this.#restore(prev) };
+  remove(id: string): Promise<Change> {
+    return this.track(async () => {
+      const { prev, event } = await this.#next(id, { deleted: true });
+      return { event, undo: () => this.#restore(prev) };
+    });
+  }
+
+  /** Whether a write has started and not yet settled. */
+  get writing(): boolean {
+    return this.#writes > 0;
+  }
+
+  /**
+   * Counts `run` as a write in flight from this call until it settles. The count goes up before
+   * `run` starts, so a caller can clear whatever showed the work as pending (a Retry banner)
+   * inside `run` with no moment where neither shows (#74).
+   */
+  track<T>(run: () => Promise<T>): Promise<T> {
+    this.#writes++;
+    const done = () => void this.#writes--;
+    let p: Promise<T>;
+    try {
+      p = run();
+    } catch (e) {
+      p = Promise.reject(e);
+    }
+    p.then(done, done);
+    return p;
   }
 
   /** Versions waiting to be pushed, oldest first: never a rejected or local-only row. */
@@ -115,7 +153,11 @@ export class EventStore {
    * cannot fix it) and is returned so the caller can surface it. A pending row is retired or
    * marked only if it still holds the submitted body; anything else stays pending.
    */
-  async applyPushResults(submitted: BabyEvent[], results: PushResult[]): Promise<PushResult[]> {
+  applyPushResults(submitted: BabyEvent[], results: PushResult[]): Promise<PushResult[]> {
+    return this.track(() => this.#applyPushResults(submitted, results));
+  }
+
+  async #applyPushResults(submitted: BabyEvent[], results: PushResult[]): Promise<PushResult[]> {
     const sent = new Map(submitted.map((e) => [`${e.id}:${e.version}`, e]));
     const rejected: PushResult[] = [];
     const tx = this.db.transaction('versions', 'readwrite');
@@ -141,7 +183,11 @@ export class EventStore {
   }
 
   /** Stores pulled versions and advances the cursor in one transaction. */
-  async applyPull(page: PullResponse): Promise<void> {
+  applyPull(page: PullResponse): Promise<void> {
+    return this.track(() => this.#applyPull(page));
+  }
+
+  async #applyPull(page: PullResponse): Promise<void> {
     const tx = this.db.transaction(['versions', 'meta'], 'readwrite');
     const versions = tx.objectStore('versions');
     for (const { seq, event } of page.versions) await versions.put(toRow(event, seq));
@@ -176,7 +222,11 @@ export class EventStore {
    * alone, so running it again after a commit moves nothing. Resolves to the number moved.
    * Any failure aborts the whole move.
    */
-  async moveBaby(from: string, to: string): Promise<number> {
+  moveBaby(from: string, to: string): Promise<number> {
+    return this.track(() => this.#moveBaby(from, to));
+  }
+
+  async #moveBaby(from: string, to: string): Promise<number> {
     const tx = this.db.transaction('versions', 'readwrite');
     const recordedAt = this.now().toISOString();
     let moved = 0;
@@ -213,7 +263,11 @@ export class EventStore {
    * archived, in one transaction. Nothing is deleted and nothing is uploaded; History can
    * still show the archived baby read-only.
    */
-  async archiveBaby(from: string): Promise<void> {
+  archiveBaby(from: string): Promise<void> {
+    return this.track(() => this.#archiveBaby(from));
+  }
+
+  async #archiveBaby(from: string): Promise<void> {
     const tx = this.db.transaction('versions', 'readwrite');
     for (const r of await tx.store.index('byBaby').getAll(from)) {
       await tx.store.put({ ...r, pending: 0, localOnly: 1, archived: 1 });
@@ -275,10 +329,17 @@ export class EventStore {
     return { prev, event };
   }
 
-  async #restore(prev: BabyEvent): Promise<Change> {
-    const { data, occurredAt, notes, deleted } = prev;
-    const { prev: before, event } = await this.#next(prev.id, { data, occurredAt, notes, deleted });
-    return { event, undo: () => this.#restore(before) };
+  #restore(prev: BabyEvent): Promise<Change> {
+    return this.track(async () => {
+      const { data, occurredAt, notes, deleted } = prev;
+      const { prev: before, event } = await this.#next(prev.id, {
+        data,
+        occurredAt,
+        notes,
+        deleted,
+      });
+      return { event, undo: () => this.#restore(before) };
+    });
   }
 
   #write(candidate: unknown): Promise<BabyEvent> {

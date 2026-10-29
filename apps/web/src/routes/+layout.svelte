@@ -3,10 +3,15 @@
   import type { Snippet } from 'svelte';
   import { app } from '../lib/ui/app.svelte.ts';
   import Setup from '../lib/ui/Setup.svelte';
+  import { watchForUpdates } from '../lib/ui/update.ts';
 
   let { children }: { children: Snippet } = $props();
 
   void app.init();
+  watchForUpdates({
+    idle: () => !!app.baby && !app.toast && !app.saveError && !app.error,
+    writing: () => app.writing,
+  });
 
   $effect(() => {
     document.documentElement.dataset.theme = app.prefs.theme;
