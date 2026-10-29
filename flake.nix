@@ -115,6 +115,13 @@
         system:
         {
           inherit (self.packages.${system}) bht-web bht-server;
+          restore-faults =
+            nixpkgs.legacyPackages.${system}.runCommand "bht-restore-faults"
+              { nativeBuildInputs = [ nixpkgs.legacyPackages.${system}.sqlite ]; }
+              ''
+                bash ${./nix/restore-faults.sh} ${./nix/bht-restore.sh}
+                touch $out
+              '';
         }
         # The VM test needs a Linux builder with KVM.
         // lib.optionalAttrs (lib.hasSuffix "-linux" system) {

@@ -97,7 +97,17 @@ the old `bht.db`, `bht.db-wal` and `bht.db-shm` together into
 `/var/lib/bht/restore-<time>/previous/`; it never deletes them. Finally it
 installs the snapshot, checks it again and restarts everything. If the server
 does not answer `/api/health` within 30 s, or any step fails, the old files go
-back automatically and the command exits non-zero.
+back automatically, the server and timer restart, and the command exits
+non-zero. It checks `/api/health` again after a rollback.
+
+If the rollback itself cannot finish (the server will not stop, or a file will
+not move), it prints `ROLLBACK INCOMPLETE` and leaves the server and the backup
+timer stopped, with every file kept. Restarting then could open the wrong
+database or create an empty one. The message lists what is at the live path
+and the steps to finish by hand: stop `bht.service`, move anything at the live
+path into `restore-<time>/failed/`, move `bht.db` and its `-wal`/`-shm` from
+`restore-<time>/previous/` back into `/var/lib/bht` together, then start
+`bht.service` and `bht-backup.timer`.
 
 Don't copy files into `/var/lib/bht` by hand. The `-wal` file belongs to its
 database, so moving one without the other loses or corrupts recent writes.

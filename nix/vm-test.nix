@@ -1,8 +1,9 @@
 # Boots services.bht in a NixOS VM: the API and the web bundle answer on loopback,
 # the database lives in the state dir, backups hold real rows, and another machine
 # on the network cannot reach the port. bht-restore brings a snapshot back, refuses
-# a missing or corrupt one without touching live data, and rolls back on its own
-# when the restored database will not run.
+# a missing or corrupt one without touching live data, rolls back on its own when
+# the restored database will not run, and leaves writers stopped when the rollback
+# itself fails. nix/restore-faults.sh injects the remaining failures.
 #
 # One boot per VM and the default 9p-shared store (no useNixStoreImage), so the
 # erofs store-image initrd race and per-boot store.img leaks don't apply here.
@@ -17,14 +18,23 @@ pkgs.testers.runNixOSTest {
       origin = "https://bht.example.ts.net";
       backup.keep = 2;
     };
-    # Test-only: the server refuses to start on a database holding a vm_poison
-    # table, standing in for a snapshot that passes integrity_check but will not run.
-    systemd.services.bht.serviceConfig.ExecStartPre = pkgs.writeShellScript "bht-vm-poison" ''
-      [ -z "$(${pkgs.sqlite}/bin/sqlite3 /var/lib/bht/bht.db \
-        "SELECT name FROM sqlite_master WHERE name = 'vm_poison'")" ]
-    '';
+    # Test-only, run as root ("+"): the server refuses to start on a database holding
+    # a vm_poison table, standing in for a snapshot that passes integrity_check but
+    # will not run. A vm_jam table also makes the old database immovable, so the
+    # rollback itself fails.
+    systemd.services.bht.serviceConfig.ExecStartPre = "+${pkgs.writeShellScript "bht-vm-poison" ''
+      has() {
+        [ -n "$(${pkgs.sqlite}/bin/sqlite3 /var/lib/bht/bht.db \
+          "SELECT name FROM sqlite_master WHERE name = '$1'")" ]
+      }
+      if has vm_jam; then
+        ${pkgs.e2fsprogs}/bin/chattr +i /var/lib/bht/restore-*/previous/bht.db
+      fi
+      ! has vm_poison
+    ''}";
     environment.systemPackages = [
       pkgs.curl
+      pkgs.e2fsprogs
       pkgs.sqlite
     ];
   };
@@ -151,5 +161,30 @@ pkgs.testers.runNixOSTest {
             "sqlite3 /var/lib/bht/restore-*/failed/bht.db "
             "\"SELECT name FROM sqlite_master WHERE name = 'vm_poison'\" | grep -Fx vm_poison"
         )
+        server.succeed("rm -rf /var/lib/bht/restore-*")
+
+    with subtest("a rollback that cannot finish leaves the server and timer stopped"):
+        server.succeed(
+            "cp /var/backup/bht/$(ls /var/backup/bht | tail -n 1) /root/jam.db && "
+            "sqlite3 /root/jam.db 'CREATE TABLE vm_poison (x); CREATE TABLE vm_jam (x)'"
+        )
+        before = rows()
+        out = server.fail("bht-restore /root/jam.db 2>&1")
+        assert "ROLLBACK INCOMPLETE: could not move" in out, out
+        assert "To finish by hand" in out, out
+        server.fail("systemctl is-active bht.service")
+        server.fail("systemctl is-active bht-backup.timer")
+        server.fail("test -e /var/lib/bht/bht.db")
+        work = server.succeed("ls -d /var/lib/bht/restore-*").strip()
+        kept = server.succeed(f"sqlite3 {work}/previous/bht.db 'SELECT n FROM vm_probe ORDER BY n'").split()
+        assert kept == before, (kept, before)
+        server.succeed(f"sqlite3 {work}/failed/bht.db \"SELECT name FROM sqlite_master WHERE name = 'vm_jam'\"")
+        # The printed steps finish the job once the cause is fixed.
+        server.succeed(f"chattr -i {work}/previous/bht.db")
+        server.succeed(f"mv {work}/previous/bht.db* /var/lib/bht/")
+        server.succeed("systemctl start bht.service bht-backup.timer")
+        server.wait_for_open_port(8787)
+        server.succeed("curl -fsS http://127.0.0.1:8787/api/health")
+        assert rows() == before, (rows(), before)
   '';
 }

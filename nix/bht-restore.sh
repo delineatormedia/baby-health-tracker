@@ -5,7 +5,9 @@
 # Nothing live is touched until the snapshot passes PRAGMA integrity_check in a
 # staging copy. The old bht.db and its -wal/-shm are moved, never deleted, into
 # restore-<time>/previous/. If the restored database fails to verify or the server
-# does not come back, the old files go back automatically.
+# does not come back, the old files go back automatically. Writers restart only once
+# the whole old file set is back; if the rollback itself fails, the server and the
+# backup timer stay stopped and the script prints how to finish by hand.
 
 die() {
   echo "bht-restore: $*" >&2
@@ -65,6 +67,16 @@ systemctl stop $BHT_STOP_UNITS || {
 }
 
 installed=0
+
+# Polls /api/health for up to 30 s.
+wait_healthy() {
+  for _ in $(seq 30); do
+    if curl -fsS --max-time 2 "$BHT_HEALTH_URL" >/dev/null 2>&1; then return 0; fi
+    sleep 1
+  done
+  return 1
+}
+
 # Runs with the services stopped. Any failing step returns 1 and triggers rollback.
 install_snapshot() {
   mkdir -m 700 "$work/previous" || return 1
@@ -76,39 +88,57 @@ install_snapshot() {
   installed=1
   [ "$(as_bht sqlite3 "$BHT_DB" 'PRAGMA integrity_check' 2>&1)" = ok ] || return 1
   systemctl start bht.service || return 1
-  for _ in $(seq 30); do
-    if curl -fsS --max-time 2 "$BHT_HEALTH_URL" >/dev/null 2>&1; then return 0; fi
-    sleep 1
-  done
+  wait_healthy && return 0
   echo "bht-restore: the server did not answer $BHT_HEALTH_URL within 30 s" >&2
   return 1
 }
 
+# A rollback that cannot finish leaves writers stopped and every file where it is.
+# Restarting would let the server open, or create, the wrong database.
+stranded() {
+  {
+    echo "bht-restore: ROLLBACK INCOMPLETE: $1"
+    echo "The server and the backup timer are stopped, and no file was deleted."
+    echo "At the live path now:"
+    ls -la -- "$BHT_DB" "$BHT_DB-wal" "$BHT_DB-shm" 2>/dev/null || true
+    echo "The database from before the restore: $work/previous/"
+    echo "The snapshot that failed: $work/failed/ (or still at the live path)"
+    echo "To finish by hand:"
+    echo "  1. systemctl stop bht.service, and check systemctl is-active bht.service says inactive or failed"
+    echo "  2. move anything left at $BHT_DB, $BHT_DB-wal and $BHT_DB-shm into $work/failed/"
+    echo "  3. move bht.db, bht.db-wal and bht.db-shm from $work/previous/ into $BHT_STATE_DIR/, all together"
+    echo "  4. systemctl start $BHT_START_UNITS"
+  } >&2
+  exit 1
+}
+
 rollback() {
   echo "bht-restore: restore failed, putting the previous database back" >&2
-  systemctl stop bht.service || true
-  # Keep going past a failed step: the server must come back either way.
-  ok=1
+  systemctl stop bht.service || stranded "could not stop bht.service, so nothing was moved back"
   # Before the snapshot is in place, files at $BHT_DB are still the old ones.
   if [ "$installed" -eq 1 ]; then
-    mkdir -m 700 "$work/failed" || ok=0
+    mkdir -m 700 "$work/failed" || stranded "could not create $work/failed"
     for f in "$BHT_DB" "$BHT_DB-wal" "$BHT_DB-shm"; do
-      if [ -e "$f" ]; then mv -- "$f" "$work/failed/" || ok=0; fi
+      if [ -e "$f" ]; then
+        mv -- "$f" "$work/failed/" || stranded "could not move $f out of the way"
+      fi
     done
   fi
-  for f in "$work"/previous/*; do
-    if [ -e "$f" ]; then mv -- "$f" "$BHT_STATE_DIR/" || ok=0; fi
+  # The database goes first: a -wal back at the live path without it is worse than none.
+  for name in bht.db bht.db-wal bht.db-shm; do
+    f=$work/previous/$name
+    [ -e "$f" ] || continue
+    [ ! -e "$BHT_STATE_DIR/$name" ] || stranded "$BHT_STATE_DIR/$name is in the way"
+    mv -- "$f" "$BHT_STATE_DIR/" || stranded "could not move $f back"
   done
   # shellcheck disable=SC2086
-  systemctl start $BHT_START_UNITS || ok=0
-  if [ "$ok" -ne 1 ]; then
-    die "ROLLBACK INCOMPLETE. Check $BHT_STATE_DIR by hand: the previous database is in $work/previous or already back, the attempted copy in $work/failed"
-  fi
+  systemctl start $BHT_START_UNITS || die "the previous database is back, but $BHT_START_UNITS did not start. See journalctl -u bht.service. Leftovers are in $work"
+  wait_healthy || die "the previous database is back, but the server did not answer $BHT_HEALTH_URL within 30 s. See journalctl -u bht.service. Leftovers are in $work"
   die "rolled back; the live database is the one from before. Leftovers are in $work"
 }
 
 if ! install_snapshot; then rollback; fi
 # shellcheck disable=SC2086
-systemctl start $BHT_START_UNITS
+systemctl start $BHT_START_UNITS || die "restored $src, but $BHT_START_UNITS did not all start"
 echo "restored $src"
 echo "the previous database is in $work/previous; delete $work once you are happy"
