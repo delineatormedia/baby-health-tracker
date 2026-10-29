@@ -45,7 +45,7 @@
       await app.log(
         'bottle',
         { contents, volumeMl: ml },
-        `Bottle ${formatVolume(ml, app.prefs.volume)}`,
+        `Bottle ${formatVolume(ml, app.prefs.volume)} logged`,
         {
           occurredAt: at ?? undefined,
         },

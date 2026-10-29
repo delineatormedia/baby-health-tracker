@@ -83,7 +83,7 @@
         await app.log(
           'breastfeed',
           { side: manualSide, durationSeconds: seconds },
-          `Breastfeed · ${Math.round(minutes)} min`,
+          `Breastfeed · ${Math.round(minutes)} min logged`,
           {
             occurredAt: new Date(Date.now() - seconds * 1000).toISOString(),
           },

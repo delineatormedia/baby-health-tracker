@@ -83,13 +83,14 @@ class AppState {
   async log<T extends EventType>(
     type: T,
     data: EventData<T>,
+    /** Toast text, e.g. "Wet logged"; the time is appended. */
     label: string,
     opts: { occurredAt?: string } = {},
   ): Promise<Change> {
     const baby = this.baby;
     if (!baby) throw new Error('No baby');
     const change = await this.store.log(baby.id, type, data, opts);
-    this.showUndo(`${label} logged · ${time(change.event.occurredAt)}`, change);
+    this.showUndo(`${label} · ${time(change.event.occurredAt)}`, change);
     return change;
   }
 

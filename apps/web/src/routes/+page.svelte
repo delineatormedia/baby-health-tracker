@@ -59,7 +59,7 @@
       app.showUndo(`Breastfeed · ${Math.max(1, Math.round(seconds / 60))} min logged`, change);
     });
 
-  const wet = () => once(() => app.log('diaper', { kind: 'wet' }, 'Wet'));
+  const wet = () => once(() => app.log('diaper', { kind: 'wet' }, 'Wet logged'));
 </script>
 
 <main class="screen fade">
