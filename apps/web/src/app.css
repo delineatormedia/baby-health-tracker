@@ -219,51 +219,45 @@ button:disabled {
   font-weight: 600;
 }
 
-/* Event shapes, the same on the dial, its legend and the Home keys: feed bar, bottle ring,
-   wet dot, dirty square, pump diamond. Every shape sits centred in the same 12 px box, so the
-   text after it lines up whichever shape it is (#50). */
+/* Event icons (#53, lib/ui/Glyph.svelte), the same on the Home keys and legend, History
+   and Reports. Every icon sits centred in the same box, 16 px (20 px on the Home
+   keys), so the text after it lines up whichever kind it is (#50). Each draws in its kind's
+   colour through currentColor. */
 .g {
-  display: inline-grid;
-  place-items: center;
-  width: 12px;
-  height: 12px;
+  --g: 16px;
+  display: inline-block;
+  width: var(--g);
+  height: var(--g);
   flex: none;
-  vertical-align: -1px;
+  vertical-align: -3px;
 }
-.g::before {
-  content: '';
-  width: 12px;
-  height: 12px;
-  box-sizing: border-box;
+.g-feed {
+  color: var(--feed);
 }
-.g-feed::before {
-  background: var(--feed);
-  border-radius: 2px;
-  width: 5px;
-  height: 12px;
+.g-bottle {
+  color: var(--bottle);
 }
-.g-bottle::before {
-  border: 2.5px solid var(--bottle);
-  border-radius: 50%;
+.g-wet {
+  color: var(--wet);
 }
-.g-wet::before {
-  background: var(--wet);
-  border-radius: 50%;
+.g-dirty {
+  color: var(--dirty);
 }
-.g-dirty::before {
-  background: var(--dirty);
-  width: 11px;
-  height: 11px;
-}
-.g-pump::before {
-  background: var(--pump);
-  width: 9px;
-  height: 9px;
-  transform: rotate(45deg);
+.g-pump {
+  color: var(--pump);
 }
 /* "We missed some": hatched, the usual mark for a gap in the record. --text-dim stripes
    reach 4.5:1 on --panel and --bg in both themes. */
+.g-miss {
+  display: inline-grid;
+  place-items: center;
+}
+/* The size the icons draw at: 20 of their 24 grid units. */
 .g-miss::before {
+  content: '';
+  width: calc(var(--g) * 5 / 6);
+  height: calc(var(--g) * 5 / 6);
+  box-sizing: border-box;
   border: 1.5px solid var(--text-dim);
   border-radius: 2px;
   background: repeating-linear-gradient(135deg, var(--text-dim) 0 1.5px, transparent 1.5px 4px);

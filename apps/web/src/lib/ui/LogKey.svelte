@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { keyName, type KeyKind, type KeyLine } from './keys.ts';
+  import Glyph from './Glyph.svelte';
 
   // One Home quick-log key (#20): a 2 px outline in the event colour, the label with the event's
   // shape, and its last-logged lines. Running, it gets a 3 px outline, the 16% tint, and
@@ -42,7 +43,7 @@
   aria-label={name ?? keyName(label, lines)}
   {onclick}
 >
-  <b><i class="g g-{kind}" aria-hidden="true"></i>{label}</b>
+  <b><Glyph {kind} />{label}</b>
   {#if children}
     {@render children()}
   {:else}
@@ -76,6 +77,9 @@
   }
   .tall {
     grid-row: span 2;
+  }
+  b :global(.g) {
+    --g: 20px;
   }
   b {
     display: flex;
