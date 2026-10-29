@@ -156,7 +156,8 @@ function sessions(events: readonly BabyEvent[], now: number): Session[] {
  */
 function toArc(s: Session, count: number, now: number): Arc {
   const cut = s.start <= now - DAY;
-  const start = wall(cut ? now - DAY : s.start);
+  const at = cut ? now - DAY : s.start;
+  const start = wall(at);
   const from = clock(start);
   const r = s.kind === 'feed' ? RING.feed : RING.pump;
   const span = Math.min(
@@ -168,7 +169,10 @@ function toArc(s: Session, count: number, now: number): Arc {
     kind: s.kind,
     from,
     to,
+    // Filter on real time first: across fall back a switch before the cut can share a clock
+    // hour with the retained part of the arc.
     switches: s.switches
+      .filter((t) => t > at)
       .map((t) => from + (wall(t) - start) / HOUR)
       .filter((h) => h > from && h < to),
     cut,

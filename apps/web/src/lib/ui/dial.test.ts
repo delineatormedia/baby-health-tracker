@@ -363,6 +363,30 @@ describe('arcs across a DST change (America/New_York)', () => {
     expect(back!.to - back!.from).toBeCloseTo(minWidth);
   });
 
+  test('fall back: a switch before the 24-hour cut stays clipped, one after it stays', () => {
+    // 00:30 EDT for 150 min, ending 02:00 EST. Now 01:15 EST next day: the cut is 01:15 EST.
+    const feed = (left: number) => ({
+      side: 'both',
+      durationSeconds: 150 * 60,
+      segments: [
+        { side: 'left', seconds: left * 60 },
+        { side: 'right', seconds: (150 - left) * 60 },
+      ],
+    });
+    const start = t('2026-11-01T00:30:00-04:00');
+    const now = t('2026-11-02T01:15:00-05:00');
+    // Switch 01:20 EDT: 55 min before the cut, though its clock time is inside the kept arc.
+    const [before] = dialFace([at('breastfeed', feed(50), start)], now).arcs;
+    expect(before!.cut).toBe(true);
+    expect(before!.from).toBeCloseTo(1.25);
+    expect(before!.to).toBeCloseTo(2);
+    expect(before!.switches).toEqual([]);
+    // Switch 01:20 EST: 5 min after the cut.
+    const [after] = dialFace([at('breastfeed', feed(110), start)], now).arcs;
+    expect(after!.switches).toHaveLength(1);
+    expect(after!.switches[0]!).toBeCloseTo(1 + 20 / 60);
+  });
+
   test('the 24-hour cut is elapsed time, drawn at its own clock time', () => {
     // 24 hours before 12:00 EDT is 11:00 EST: the window holds 23 clock hours.
     const spring = dialFace(
