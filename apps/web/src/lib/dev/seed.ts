@@ -1,6 +1,6 @@
 import type { Database } from '../data/db.ts';
 import { EventStore } from '../data/store.ts';
-import { authorId, KEYS, saveBaby } from '../ui/prefs.ts';
+import { authorId, KEYS, markSeeded, saveBaby } from '../ui/prefs.ts';
 import {
   isScenario,
   scenario,
@@ -47,9 +47,10 @@ export async function writeScenario(db: Database, author: string, s: Scenario): 
 
 /**
  * Replaces this browser's local data with a scenario: every stored version, the sync cursor,
- * the baby, setup time and anything else under `bht.`, except display prefs and this phone's
- * author id. Nothing is pushed: the seeded entries wait as pending like any offline log, and
- * leave this browser only if it later signs in to a sync server.
+ * the baby, setup time and anything else under `bht.`, except display prefs, this phone's
+ * author id and the seeded marker. The marker is set first, so even a seed that fails part
+ * way leaves the browser marked. Nothing is pushed: the seeded entries wait as pending like
+ * any offline log, and sync refuses non-local servers while the marker is set (#55).
  */
 export async function loadScenario(
   db: Database,
@@ -57,11 +58,14 @@ export async function loadScenario(
   name: ScenarioName,
   now: number,
 ): Promise<number> {
+  markSeeded(kv);
   const tx = db.transaction(['versions', 'meta'], 'readwrite');
   await Promise.all([tx.objectStore('versions').clear(), tx.objectStore('meta').clear(), tx.done]);
-  const keep = new Set<string>([KEYS.prefs, KEYS.author]);
-  for (const key of Object.keys(kv))
-    if (key.startsWith('bht.') && !keep.has(key)) kv.removeItem(key);
+  const keep = new Set<string>([KEYS.prefs, KEYS.author, KEYS.seeded]);
+  const keys = Array.from({ length: kv.length }, (_, i) => kv.key(i)).filter(
+    (k): k is string => k !== null && k.startsWith('bht.') && !keep.has(k),
+  );
+  for (const key of keys) kv.removeItem(key);
   const s = scenario(name, now);
   if (s.baby) {
     saveBaby(kv, s.baby);

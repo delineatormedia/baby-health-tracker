@@ -30,9 +30,10 @@ again.
   a parent would have logged them: timers started, switched, paused and stopped, details
   added after a diaper, night diapers logged the next morning, a few corrected amounts, an
   undone tap, and repeat-tap bursts. Two phones in the household log them.
-- **Never pushed on its own.** Seeded entries wait as pending, like any log made offline.
-  They leave the browser only if it later signs in to a sync server, so use a local test
-  server.
+- **Marked as test data.** Seeding sets `bht.seeded` in local storage, and a "Test data"
+  strip shows at the top of every screen while it is set. Nothing in the app clears it, not
+  even seeding `empty`; only clearing the site's data does. Sync must refuse any server but
+  localhost while it is set (#55). Until then the seeded entries just wait as pending.
 - **Dev builds only.** The seed module is imported only behind `import.meta.env.DEV`.
   `pnpm build` runs `scripts/no-dev-seed.mjs`, which fails if seed data reaches the
   production bundle.

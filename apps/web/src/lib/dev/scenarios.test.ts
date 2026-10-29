@@ -7,7 +7,8 @@ import { EventStore } from '../data/store.ts';
 import { fullyLogged, loggingStart } from '../ui/readings.ts';
 import { runningFeed } from '../ui/logic.ts';
 import { scenario, type ScenarioName } from './scenarios.ts';
-import { writeScenario } from './seed.ts';
+import { KEYS, loadSeeded } from '../ui/prefs.ts';
+import { loadScenario, writeScenario } from './seed.ts';
 
 const NOW = Date.parse('2026-10-29T15:42:00.000Z');
 /** Loads at different times of day shift the day-of-life windows against the clock. */
@@ -114,5 +115,57 @@ describe('dev seed scenarios (#58)', () => {
         .map((i) => i.check)
         .sort(),
     );
+  });
+});
+
+/** A localStorage stand-in with the Storage key enumeration loadScenario uses. */
+function storage(init: Record<string, string>): Storage {
+  const m = new Map(Object.entries(init));
+  return {
+    get length() {
+      return m.size;
+    },
+    key: (i: number) => [...m.keys()][i] ?? null,
+    getItem: (k: string) => m.get(k) ?? null,
+    setItem: (k: string, v: string) => void m.set(k, v),
+    removeItem: (k: string) => void m.delete(k),
+    clear: () => m.clear(),
+  };
+}
+
+describe('loading a scenario (#58)', () => {
+  const PREFS = JSON.stringify({ volume: 'oz', theme: 'night', dayStart: 300 });
+  const AUTHOR = newId();
+
+  test('marks the browser seeded, keeps prefs and author, and the mark survives a reload', async () => {
+    const kv = storage({
+      [KEYS.prefs]: PREFS,
+      [KEYS.author]: AUTHOR,
+      [KEYS.homeNoteDismissed]: '1',
+      'other.app': 'kept',
+    });
+    expect(loadSeeded(kv)).toBe(false);
+    const db = await openDatabase(`seed-${newId()}`);
+    await loadScenario(db, kv, 'healthy-month', NOW);
+    expect(loadSeeded(kv)).toBe(true);
+    expect(kv.getItem(KEYS.prefs)).toBe(PREFS);
+    expect(kv.getItem(KEYS.author)).toBe(AUTHOR);
+    expect(kv.getItem(KEYS.homeNoteDismissed)).toBeNull();
+    expect(kv.getItem('other.app')).toBe('kept');
+    const baby = JSON.parse(kv.getItem(KEYS.baby)!) as { id: string };
+    const events = await new EventStore(db, newId()).events(baby.id);
+    // This phone's own author id logs one parent's entries.
+    expect(events.some((e) => e.authorId === AUTHOR)).toBe(true);
+    db.close();
+
+    // A reload reads the same storage; seeding again, even to empty, keeps the mark.
+    const again = await openDatabase(db.name);
+    expect(loadSeeded(kv)).toBe(true);
+    await loadScenario(again, kv, 'empty', NOW);
+    expect(loadSeeded(kv)).toBe(true);
+    expect(kv.getItem(KEYS.baby)).toBeNull();
+    expect(await again.count('versions')).toBe(0);
+    expect(kv.getItem(KEYS.prefs)).toBe(PREFS);
+    expect(kv.getItem(KEYS.author)).toBe(AUTHOR);
   });
 });
