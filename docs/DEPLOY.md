@@ -81,14 +81,35 @@ systemctl list-timers bht-backup.timer
 
 ## Restore
 
-Stop the server and remove the old write-ahead log **before** copying the
-snapshot in. A leftover `-wal` from the old database would be replayed onto
-the restored one.
+Use `bht-restore`. Give it a snapshot file name from `backup.directory`, or a
+full path:
 
 ```sh
-sudo systemctl stop bht.service
-sudo rm -f /var/lib/bht/bht.db-wal /var/lib/bht/bht.db-shm
-sudo install -o bht -g bht -m 600 /var/backup/bht/bht-20261029T120000Z.db /var/lib/bht/bht.db
-sudo systemctl start bht.service
-curl -fsS http://127.0.0.1:8787/api/health
+ls /var/backup/bht
+sudo bht-restore bht-20261029T120000Z.db
 ```
+
+It checks a staged copy of the snapshot with `PRAGMA integrity_check` before it
+touches anything. A missing, empty or corrupt snapshot is refused, and the
+live database and running services are left as they were. If the check passes,
+it stops the server, the backup timer and any backup in progress. It then moves
+the old `bht.db`, `bht.db-wal` and `bht.db-shm` together into
+`/var/lib/bht/restore-<time>/previous/`; it never deletes them. Finally it
+installs the snapshot, checks it again and restarts everything. If the server
+does not answer `/api/health` within 30 s, or any step fails, the old files go
+back automatically and the command exits non-zero.
+
+Don't copy files into `/var/lib/bht` by hand. The `-wal` file belongs to its
+database, so moving one without the other loses or corrupts recent writes.
+
+### Rolling back a restore
+
+`bht-restore` prints the `restore-<time>` directory it used. To go back to
+the database you had before, restore from its `previous/` copy:
+
+```sh
+sudo bht-restore /var/lib/bht/restore-20261029T130000Z/previous/bht.db
+```
+
+The `-wal` beside it comes along and is folded in. Once you are happy with the
+result, delete the `restore-*` directories.

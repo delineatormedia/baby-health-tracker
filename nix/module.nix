@@ -14,6 +14,36 @@ let
   stateDir = "/var/lib/bht";
   dbPath = "${stateDir}/bht.db";
   originHost = builtins.match "https://([^/:]+)(:[0-9]+)?" cfg.origin;
+  urlHost = if lib.hasInfix ":" cfg.host then "[${cfg.host}]" else cfg.host;
+  backupUnits = lib.optionals cfg.backup.enable [
+    "bht-backup.timer"
+    "bht-backup.service"
+  ];
+
+  # See docs/DEPLOY.md, "Restore".
+  bht-restore = pkgs.writeShellApplication {
+    name = "bht-restore";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.curl
+      pkgs.sqlite
+      pkgs.util-linux
+      config.systemd.package
+    ];
+    text = ''
+      BHT_DB=${lib.escapeShellArg dbPath}
+      BHT_STATE_DIR=${lib.escapeShellArg stateDir}
+      BHT_BACKUP_DIR=${lib.escapeShellArg cfg.backup.directory}
+      BHT_HEALTH_URL=${lib.escapeShellArg "http://${urlHost}:${toString cfg.port}/api/health"}
+      BHT_STOP_UNITS=${lib.escapeShellArg (lib.concatStringsSep " " (backupUnits ++ [ "bht.service" ]))}
+      BHT_START_UNITS=${
+        lib.escapeShellArg (
+          lib.concatStringsSep " " ([ "bht.service" ] ++ lib.optional cfg.backup.enable "bht-backup.timer")
+        )
+      }
+    ''
+    + builtins.readFile ./bht-restore.sh;
+  };
 in
 {
   options.services.bht = {
@@ -95,6 +125,8 @@ in
         message = "services.bht.origin must be an https:// origin with no path, like https://bht.tail1234.ts.net";
       }
     ];
+
+    environment.systemPackages = [ bht-restore ];
 
     users.users.bht = {
       isSystemUser = true;
