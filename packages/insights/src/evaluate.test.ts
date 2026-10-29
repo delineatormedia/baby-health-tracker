@@ -146,14 +146,18 @@ describe('wet diapers (day-of-life counts)', () => {
     const c = flag({ now: after(7), events: inDay(7, 3, wet) }, 'wet_diapers');
     expect(cited(c)).toContain('wet_diapers_min_aap_general');
     expect(c.citations.at(-1)?.confidence).toBe('low');
-    expect(c.observed.expected).toEqual({ min: 6 });
+    expect(c.observed.expected).toEqual({ min: 6, minStrict: false });
   });
 
   test('flag carries the counted diapers as evidence and the strictest minimum', () => {
     const events = inDay(4, 4, wet);
     const c = flag({ now: after(4), events }, 'wet_diapers');
     expect(c.evidence).toEqual(events.map((e) => e.id));
-    expect(c.observed).toEqual({ value: 4, unit: 'count', expected: { min: 6 } });
+    expect(c.observed).toEqual({
+      value: 4,
+      unit: 'count',
+      expected: { min: 6, minStrict: false },
+    });
     expect(c.window).toEqual({ start: iso(4 * D), end: iso(5 * D) });
   });
 });
@@ -541,6 +545,16 @@ describe('weight loss from birth weight', () => {
     expect(c.urgency).toBe('consider');
     expect(c.observed.unit).toBe('pct');
     expect(c.observed.value).toBeCloseTo(10.033, 3);
+  });
+
+  test('#26: the expected bound says whether it flags itself, whatever the observed value', () => {
+    // ABM is gte 8: an off-bound 9% still has a strict maximum, so it reads "below 8%".
+    const abm = flag({ now: 6 * D, events: [bw(), weight(120 * H, 2730)] }, 'weight_loss');
+    expect(abm.observed.value).toBeCloseTo(9, 5);
+    expect(abm.observed.expected).toEqual({ max: 8, maxStrict: true });
+    // Before day 5 only NICE/AAP gt 10 applies: 10% itself is fine, so "at most 10%".
+    const nice = flag({ now: 3 * D, events: [bw(), weight(3 * D - H, 2690)] }, 'weight_loss');
+    expect(nice.observed.expected).toEqual({ max: 10, maxStrict: false });
   });
 
   test('ABM: 8% or more from 120 h, judged at the age of the weigh-in', () => {

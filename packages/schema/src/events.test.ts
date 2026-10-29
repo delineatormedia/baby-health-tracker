@@ -44,6 +44,7 @@ const validData: Record<EventType, unknown> = {
   pump: { leftMl: 40, rightMl: 35, afterFeed: false },
   weight: { grams: 3450, source: 'clinic' },
   weighted_feed: { beforeGrams: 3450, afterGrams: 3512, side: 'right' },
+  missed_logs: { start: '2026-10-28T03:00:00.000Z', end: '2026-10-29T03:00:00.000Z' },
 };
 
 describe('envelope', () => {
@@ -333,5 +334,16 @@ describe('weighted feed', () => {
     { beforeGrams: 3450, afterGrams: 35120, side: null },
   ])('rejects %j', (data) => {
     expectInvalid(event('weighted_feed', data));
+  });
+});
+
+describe('missed_logs', () => {
+  test.each([
+    { start: '2026-10-29T03:00:00.000Z', end: '2026-10-29T03:00:00.000Z' },
+    { start: '2026-10-29T03:00:00.000Z', end: '2026-10-28T03:00:00.000Z' },
+    { start: 'yesterday', end: '2026-10-29T03:00:00.000Z' },
+    { start: '2026-10-28T03:00:00.000Z' },
+  ])('rejects %j', (data) => {
+    expectInvalid(event('missed_logs', data));
   });
 });

@@ -36,11 +36,15 @@ were decided by PM on #7 and #16 (2026-10-29).
   (`NONE_LOGGED_CHECKS`) means no such stool was logged, not that there was none. Show it as
   "None logged". `inExpectedRange()` leaves these checks out of the "in the expected range"
   line.
+- **Strict bounds (#26).** `observed.expected.minStrict` / `maxStrict` are true when an `lte` /
+  `gte` entry sits on the bound, so the bound value itself flags. Word it "above" / "below";
+  otherwise "at least" / "at most". A `gte 8` rule with 9 observed reads "expected below 8".
 
 ## Inputs
 
 - `fullyLogged`: the periods the parents marked as fully logged. Count and absence checks run
   only inside them. The mark is the only thing that vouches for writes still offline on the
-  other phone.
+  other phone. The web app passes birth to now minus the days marked "We missed some" (#24,
+  owner decision B: fully logged by default).
 - `syncedThrough`: this device has no pending writes and last pulled at this time, or null. It
   says nothing about the other phone. Absence checks are judged at this time, never later.

@@ -816,19 +816,22 @@ function cite(active: ThresholdEntry[], firing: ThresholdEntry[]): Citation[] {
 
 /**
  * The scale bound from the entry that would flag first: the highest minimum, or the lowest
- * maximum, among entries that can flag.
+ * maximum, among entries that can flag. A bound is strict when any entry on it is lte / gte:
+ * then the bound value itself flags.
  */
 function observe(value: number, unit: ObservedUnit, active: ThresholdEntry[]): Observed {
   const flaggable = active.filter(canFlag);
-  const mins = flaggable
-    .filter((e) => e.op === 'lt' || e.op === 'lte')
-    .map((e) => e.value as number);
-  const maxes = flaggable
-    .filter((e) => e.op === 'gt' || e.op === 'gte')
-    .map((e) => e.value as number);
+  const lows = flaggable.filter((e) => e.op === 'lt' || e.op === 'lte');
+  const highs = flaggable.filter((e) => e.op === 'gt' || e.op === 'gte');
+  const min = lows.length ? Math.max(...lows.map((e) => e.value as number)) : undefined;
+  const max = highs.length ? Math.min(...highs.map((e) => e.value as number)) : undefined;
   return observeExpected(value, unit, {
-    ...(mins.length ? { min: Math.max(...mins) } : {}),
-    ...(maxes.length ? { max: Math.min(...maxes) } : {}),
+    ...(min !== undefined
+      ? { min, minStrict: lows.some((e) => e.value === min && e.op === 'lte') }
+      : {}),
+    ...(max !== undefined
+      ? { max, maxStrict: highs.some((e) => e.value === max && e.op === 'gte') }
+      : {}),
   });
 }
 
