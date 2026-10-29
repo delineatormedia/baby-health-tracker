@@ -6,20 +6,25 @@ import {
   type PullResponse,
   type PushResponse,
 } from '@bht/schema';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, test } from 'vitest';
 import { createApp } from './app.ts';
-import { ensureHousehold, openDatabase } from './db.ts';
+import { ensureHousehold, MIGRATIONS, openDatabase } from './db.ts';
 
 const A = newId();
 const B = newId();
 const babyA = newId();
+const babyB = newId();
 const T = '2026-10-29T03:00:00.000Z';
 
 /** A server whose session is the household named in the x-test-household header. */
 function server() {
   const db = openDatabase(':memory:');
-  ensureHousehold(db, A);
-  ensureHousehold(db, B);
+  ensureHousehold(db, A, [babyA]);
+  ensureHousehold(db, B, [babyB]);
   const app = createApp(db, {
     session: (c) => {
       const id = c.req.header('x-test-household');
@@ -273,7 +278,7 @@ describe('POST and GET /api/sync', () => {
     // Another phone pushes between pages, and household B pushes too (seq is global).
     const late = wet();
     await pushOk(app, A, [late]);
-    await pushOk(app, B, [event({ type: 'diaper', data: { kind: 'wet' }, babyId: newId() })]);
+    await pushOk(app, B, [event({ type: 'diaper', data: { kind: 'wet' }, babyId: babyB })]);
     const two = await pullAll(app, A, one.next, 1, one.through);
     const three = await pullAll(app, A, two.next, 1, one.through);
     expect(two.more).toBe(true);
@@ -304,7 +309,7 @@ describe('POST and GET /api/sync', () => {
 describe('household isolation', () => {
   test('household A cannot read household B', async () => {
     const { app } = server();
-    const bEvent = event({ type: 'diaper', data: { kind: 'wet' }, babyId: newId() });
+    const bEvent = event({ type: 'diaper', data: { kind: 'wet' }, babyId: babyB });
     await pushOk(app, B, [bEvent]);
     const aEvent = event({ type: 'diaper', data: { kind: 'wet' } });
     await pushOk(app, A, [aEvent]);
@@ -314,7 +319,7 @@ describe('household isolation', () => {
 
   test('household A cannot write into an event B owns, and learns nothing about it', async () => {
     const { app } = server();
-    const bEvent = event({ type: 'diaper', data: { kind: 'wet' }, babyId: newId() });
+    const bEvent = event({ type: 'diaper', data: { kind: 'wet' }, babyId: babyB });
     await pushOk(app, B, [bEvent]);
     const [same] = await pushOk(app, A, [bEvent]);
     const [edit] = await pushOk(app, A, [{ ...bEvent, version: 2, deleted: true }]);
@@ -328,14 +333,11 @@ describe('household isolation', () => {
 
 describe('database', () => {
   test('migrations run once and the version survives a reopen', async () => {
-    const { mkdtempSync, rmSync } = await import('node:fs');
-    const { join } = await import('node:path');
-    const { tmpdir } = await import('node:os');
     const dir = mkdtempSync(join(tmpdir(), 'bht-'));
     try {
       const path = join(dir, 'bht.db');
       const db = openDatabase(path);
-      ensureHousehold(db, A);
+      ensureHousehold(db, A, [babyA]);
       const app = createApp(db, { session: () => ({ householdId: A }) });
       const wet = event({ type: 'diaper', data: { kind: 'wet' } });
       await app.request('/api/sync', {
@@ -344,7 +346,9 @@ describe('database', () => {
       });
       db.close();
       const again = openDatabase(path);
-      expect(again.prepare('PRAGMA user_version').get()).toEqual({ user_version: 1 });
+      expect(again.prepare('PRAGMA user_version').get()).toEqual({
+        user_version: MIGRATIONS.length,
+      });
       const res = await createApp(again, { session: () => ({ householdId: A }) }).request(
         '/api/sync',
       );
@@ -356,11 +360,33 @@ describe('database', () => {
     }
   });
 
+  test('a step 1 database upgrades with its versions kept and no member stamped', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bht-'));
+    try {
+      const path = join(dir, 'bht.db');
+      const old = new DatabaseSync(path);
+      old.exec(MIGRATIONS[0]!);
+      old.exec('PRAGMA user_version = 1');
+      old.exec(`INSERT INTO households VALUES ('${A}', '${T}')`);
+      old
+        .prepare(
+          `INSERT INTO event_versions (household_id, event_id, version, baby_id, body, received_at)
+           VALUES (?, 'e1', 1, ?, '{}', ?)`,
+        )
+        .run(A, babyA, T);
+      old.close();
+      const db = openDatabase(path);
+      expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
+      expect(db.prepare('SELECT event_id, member_id FROM event_versions').all()).toEqual([
+        { event_id: 'e1', member_id: null },
+      ]);
+      db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('a database from a newer server is refused, not downgraded', async () => {
-    const { mkdtempSync, rmSync } = await import('node:fs');
-    const { join } = await import('node:path');
-    const { tmpdir } = await import('node:os');
-    const { DatabaseSync } = await import('node:sqlite');
     const dir = mkdtempSync(join(tmpdir(), 'bht-'));
     try {
       const path = join(dir, 'bht.db');

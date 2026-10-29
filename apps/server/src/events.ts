@@ -7,27 +7,39 @@ import {
   type PushResult,
 } from '@bht/schema';
 import type { DatabaseSync } from 'node:sqlite';
+import type { Session } from './auth.ts';
 
 /**
  * Stores pushed versions for one household in a single transaction and returns a verdict
  * for each, in order. Each version is validated with the shared schema. An identical body
  * already held is a duplicate under its original seq; any other valid body gets the next seq,
  * and is superseded if resolveCurrent over that event's versions does not pick it. An event
- * id already held by another household is refused without saying so.
+ * id already held by another household is refused without saying so, and so is a babyId that
+ * is not one of this household's babies. Each stored version records the member who pushed it.
  */
 export function pushVersions(
   db: DatabaseSync,
-  householdId: string,
+  session: Session,
   inputs: readonly unknown[],
   now = new Date(),
 ): PushResult[] {
+  const { householdId } = session;
+  const memberId = session.memberId ?? null;
+  const babies = new Set(
+    (
+      db.prepare('SELECT id FROM babies WHERE household_id = ?').all(householdId) as {
+        id: string;
+      }[]
+    ).map((r) => r.id),
+  );
   const owner = db.prepare('SELECT household_id FROM event_versions WHERE event_id = ? LIMIT 1');
   const existing = db.prepare(
     'SELECT seq FROM event_versions WHERE event_id = ? AND version = ? AND body = ?',
   );
   const insert = db.prepare(
-    `INSERT INTO event_versions (household_id, event_id, version, baby_id, body, received_at)
-     VALUES (?, ?, ?, ?, ?, ?) RETURNING seq`,
+    `INSERT INTO event_versions
+       (household_id, event_id, version, baby_id, body, received_at, member_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING seq`,
   );
   const versions = db.prepare('SELECT seq, body FROM event_versions WHERE event_id = ?');
   const receivedAt = now.toISOString();
@@ -40,6 +52,7 @@ export function pushVersions(
       const event = parsed.value;
       const held = owner.get(event.id) as { household_id: string } | undefined;
       if (held && held.household_id !== householdId) return rejected(input, 'Unknown event');
+      if (!babies.has(event.babyId)) return rejected(input, 'Unknown baby');
       const body = canonicalJson(event);
       const dup = existing.get(event.id, event.version, body) as { seq: number } | undefined;
       if (dup) return verdict(event, dup.seq, 'duplicate');
@@ -50,6 +63,7 @@ export function pushVersions(
         event.babyId,
         body,
         receivedAt,
+        memberId,
       ) as { seq: number };
       const all = (versions.all(event.id) as { seq: number; body: string }[]).map((r) => ({
         seq: r.seq,

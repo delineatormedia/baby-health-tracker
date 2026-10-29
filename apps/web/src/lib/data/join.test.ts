@@ -77,7 +77,7 @@ describe('moveBaby', () => {
     const broken = {
       ...bad,
       type: 'bottle' as const,
-      data: { contents: 'formula', volumeMl: 1e6 },
+      data: { contents: 'formula' as const, volumeMl: 1e6 },
     };
     await store.db.add('versions', {
       key: rowKey(broken, null),

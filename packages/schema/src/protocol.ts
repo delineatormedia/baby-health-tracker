@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { ACCOUNT_SCHEMAS } from './account.ts';
 import { BabyEvent } from './events.ts';
 
 // Wire format for /api/sync (#5), shared by the server and the web sync client. These are
@@ -69,4 +70,10 @@ export const PullResponse = v.strictObject({
 export type PullResponse = v.InferOutput<typeof PullResponse>;
 
 /** Every wire schema SCHEMA_VERSION covers. */
-export const WIRE_SCHEMAS = { BabyEvent, PushRequest, PushResponse, PullResponse };
+export const WIRE_SCHEMAS = {
+  BabyEvent,
+  PushRequest,
+  PushResponse,
+  PullResponse,
+  ...ACCOUNT_SCHEMAS,
+};

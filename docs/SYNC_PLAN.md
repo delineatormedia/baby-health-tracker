@@ -261,6 +261,35 @@ The server uses `resolveCurrent`.
   invite that is single-use and expires, and the cross-household isolation from
   step 1, now through real sessions.
 
+#### As built (step 2)
+
+Request and response bodies are valibot schemas in `@bht/schema` (`account.ts`),
+covered by `SCHEMA_VERSION` 3.
+
+| Route | Body | Answer |
+|---|---|---|
+| `POST /api/auth/register/options` | `{householdId, displayName, deviceId, baby}`, the phone's local ids | `{flowId, options}`; 409 if the household or baby id exists |
+| `POST /api/auth/join/options` | `{code, displayName, deviceId}` | `{flowId, options}`; 404 for an unknown, used or expired code |
+| `POST /api/auth/login/options` | `{deviceId}` | `{flowId, options}` for a discoverable passkey |
+| `POST /api/auth/{register,join,login}/verify` | `{flowId, response}` | `{householdId, memberId}` and the session cookie; 401 if not verified |
+| `POST /api/auth/logout` | none | revokes the session, clears the cookie |
+| `GET /api/household` | signed in | `{id, members, babies}` |
+| `POST /api/invites` | signed in | `{code, expiresAt}` |
+
+- A flow (challenge) is single-use and lives 5 minutes. An invite is single-use
+  and lives 24 hours; it is consumed in the same transaction that creates the
+  member. A session lives 180 days and dies with sign-out or when its phone's
+  `devices` row is removed. A removed phone cannot sign back in under the same
+  device id.
+- Invite codes and session tokens are stored as SHA-256 hashes.
+- `deviceId` is the phone's `authorId`. A phone belongs to whoever last signed
+  in on it.
+- A push for a `babyId` outside the caller's household is `rejected` with
+  `Unknown baby`. Every stored version records the pushing member
+  (`event_versions.member_id`).
+- `bht-server` reads `BHT_RP_ID` and `BHT_ORIGIN`. Without both, sign-in
+  answers 503 and sync stays 401.
+
 ### Step 3: web sign-in and sync on (#5, part 3)
 
 - Sign-in, create-household and join-with-code screens.
