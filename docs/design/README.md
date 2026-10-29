@@ -7,6 +7,8 @@ This folder holds the merged direction. It is the reference for the #6 UI.
 - `direction.html`: static mockups of every v1 screen, light and night. Open
   `direction.html?board=core` or `?board=rest` in a browser.
 - `board-core.png`, `board-rest.png`: renders of the two boards.
+- `board-home.png`, `board-home-deut.png`: the glanceable Home (#20), and the
+  same board through a deuteranopia simulation (`?board=home&cvd=deut`).
 - `explorations/`: the three original directions (A Ledger, B Nest, C Darkroom),
   kept for the record.
 
@@ -15,13 +17,37 @@ These are mockups, not app code. All names and numbers are fake.
 ## Principles
 
 - **Instrument, not a diary.** Readings are drawn as ranges on a scale with a
-  pointer. Labels are small monospaced caps, and numbers use tabular figures.
+  pointer. Labels are monospaced caps, and numbers use tabular figures.
   Keep it subtle: no bevels, no fake chrome.
 - **One job per screen.** If a screen needs a second idea, it gets a second
   screen or an optional step.
 - **Thumb zone.** Primary actions sit at the bottom. Targets are at least 52 px
   tall, and the main action is 66 px.
 - **Undo, never confirm.** Every log shows a toast or a row with Undo.
+- **Readable at arm's length.** A tired parent holding a baby has to read it at
+  a glance (owner, #20). See Type sizes.
+
+## Type sizes
+
+This applies to every screen, not only Home (#20).
+
+| Text | Minimum |
+|---|---|
+| Anything tappable: quick-log keys, primary and secondary actions, segmented controls, options, stool swatches, Undo, the Home chips (Weight, History, Readings), Why?, header actions (the time edit, back), list rows that open something, form fields | 20 px |
+| Body text that is not a control: titles, toast messages, readings values | 17 px |
+| Non-interactive captions: monospaced labels, "last logged" lines, a row's second line, hints | 15 px |
+
+- If you can tap it, its label is 20 px. Only text that does nothing when
+  tapped may be smaller. A caption inside a tappable row (the "Clinic ·
+  3 610 g" line under "Weight") is a caption.
+- Nothing a parent has to read is smaller than 15 px. Phone OS chrome (the
+  status bar) is not ours.
+- All text meets WCAG AA (4.5:1) in both themes, measured after any opacity
+  is blended in. There are no exceptions, so text never uses opacity. De-emphasis
+  comes from the `dim` token, a lighter weight or a smaller size (see Text
+  contrast). That is also why `dim` changed in #20: the old values were 3.84:1
+  (light) and 3.03:1 (night) on the panel.
+- Long lines may wrap, but a line must never truncate a number or a side.
 
 ## Tokens
 
@@ -30,20 +56,125 @@ These are mockups, not app code. All names and numbers are fake.
 | bg | `#ECEFF1` | `#0D0C0B` |
 | panel | `#FFFFFF` | `#161513` |
 | ink | `#1F2A33` | `#ADA59A` |
-| dim | `#77848E` | `#68625A` |
+| dim | `#5B6670` | `#8A8378` |
 | line | `#D9DEE2` | `#252320` |
 | accent | `#2E6A8E` | `#6F8F84` |
 | band (expected range) | `#D6E4EC` | `#1E2925` |
-| flag | `#A8552F` | `#C29A62` |
+| flag | `#A0502B` | `#C29A62` |
 
 Night is "graphite": warm near-black, dim stone text and a muted sage accent.
 There is no red or amber tint, because red reads as an emergency in a medical
 app. Night text is a dim stone, never white, so the screen stays dim. The
 flag color is the only warm accent, and it appears only on a flag.
 
+### Event colours (#20)
+
+Each event type has its own colour and its own shape. The shape is the same on
+the dial, in the legend, on the quick-log key and in History, so the types stay
+apart without colour.
+
+| Event | Shape | Light | Night |
+|---|---|---|---|
+| Feed (breastfeed) | bar on the outer ring | `#6E2A9C` | `#B880D8` |
+| Bottle | hollow ring on the outer ring | `#08664C` | `#25876B` |
+| Wet | dot on the inner ring | `#1F6FD6` | `#4C8EF0` |
+| Dirty | square on the inner ring | `#7F7410` | `#ABA53A` |
+| Pump | diamond (keys and History; not on the dial) | `#C2367A` | `#DA7AA0` |
+
+- **Strokes, marks and outlines only.** Event colours are never used for text
+  and never fill a large area. The one exception is a running timer key, which
+  takes a 16% tint of its colour behind ink text.
+- **Night stays dim.** Every night event colour has a relative luminance at or
+  below 0.36, under the night ink (0.381). Nothing on Home is brighter than the
+  text already on it, and none of the colours is red.
+- **Contrast, computed by hand** (WCAG 2.x relative luminance; Lighthouse skips
+  gradients). Graphics need 3:1 (WCAG 1.4.11), and every pair passes on both
+  backgrounds:
+
+| Event | Light on bg | Light on panel | Night on bg | Night on panel |
+|---|---|---|---|---|
+| Feed | 7.35 | 8.49 | 6.62 | 6.18 |
+| Bottle | 6.03 | 6.96 | 4.43 | 4.13 |
+| Wet | 4.23 | 4.88 | 5.99 | 5.59 |
+| Dirty | 4.13 | 4.76 | 7.61 | 7.10 |
+| Pump | 4.43 | 5.12 | 6.77 | 6.32 |
+
+  Text contrast has its own table below.
+- **Text contrast** (measured, both themes). Every text node in
+  `direction.html` was measured in Chrome after blending opacity and stacked
+  backgrounds. The lowest is 4.75 (light) and 4.63 (night).
+
+| Text | On | Light | Night |
+|---|---|---|---|
+| ink | panel | 14.61 | 7.50 |
+| ink | bg | 12.65 | 8.03 |
+| dim | panel | 5.87 | 4.86 |
+| dim | bg | 5.08 | 5.21 |
+| dim | diaper well | 5.87 | 4.63 |
+| ink | running key (16% tint) | 11.15 | 5.95 |
+| accent (header actions) | bg | 5.10 | 5.53 |
+| button text (accInk) | accent | 5.89 | 5.53 |
+| flag | flag panel | 4.88 | 6.87 |
+| flag | bg (Why screen) | 4.95 | 7.53 |
+| Weight last digit (dim, weight 200) | bg | 5.08 | 5.21 |
+
+  Light `flag` moved from `#A8552F` to `#A0502B`: the old value was 4.48 on
+  the flag panel. The Weight screen used to fade the last digit to 35% ink
+  (2.03 light, 1.94 night). It is now `dim` at a lighter weight.
+
+- **Stool swatch labels** are solid black or white, whichever passes on that
+  swatch, never an opacity. They are the same in both themes because the
+  swatches are true colour.
+
+| Swatch | Label | Ratio |
+|---|---|---|
+| Yellow `#E6C24A` | black | 12.18 |
+| Mustard `#C9A227` | black | 8.68 |
+| Green `#6F7F2E` | black | 4.75 |
+| Brown `#7A5230` | white | 6.82 |
+| Black `#2A2420` | white | 15.31 |
+| Pale yellow `#EFE6B8` | black | 16.68 |
+| Clay `#BDB3A1` | black | 10.13 |
+| White `#F4F1EA` | black | 18.62 |
+| Red `#9E2A22` | white | 7.48 |
+
+  Green used 66% black (3.31). Ink (3.31) and white (4.42) also fail on it, so
+  it takes pure black.
+
+- **Colour vision.** The palette was checked under a deuteranopia simulation
+  (Machado et al. 2009, severity 1). The closest pair is 0.089 apart in OKLab
+  (night feed and wet), against 0.047 for an Okabe-Ito-style set. Feed and wet
+  both look blue to a deuteranope, so they differ in lightness and shape (bar on
+  the outer ring, dot on the inner ring). Bottle and pump both look grey, but
+  pump is not on the dial and every key is labelled.
+- **Dirty and the flag.** The night dirty mustard and the night flag tan are
+  close in hue. The flag never appears on Home, and a flag always carries "!"
+  and its text, so colour alone never signals a flag.
+
 **Stool swatches are true-color in every mode.** They sit in their own well and
 never take the theme tint. The red-flag colors (pale yellow, clay, white, red)
 are grouped under "Consider talking to your pediatrician".
+
+## Home quick-log keys (#20)
+
+- **Layout.** Feed is the tall key on the left. Wet, Dirty, Bottle and Pump
+  share the other two columns. Weight, History and Readings move to the row
+  above. Wet is still one tap.
+- **Outline.** Each key has a 2 px outline in its event colour, in both themes.
+  A running feed key has a 3 px outline, the 16% tint, the live timer and the
+  side.
+- **Last logged.** Line one is the time since the last event of that type,
+  compact: "Just now" under 1 minute, then "54m ago", then "3h 10m ago". Over
+  24 h it is the date ("Oct 27"). Line two is the clock time ("at 11:49 PM"),
+  except:
+  - Feed has three lines: the time since, the clock time, and the last side
+    ("Left side"). The side is the side of the last breastfeed.
+  - Bottle shows the last amount ("60 mL").
+  - Pump shows the last side ("Left side", "Right side" or "Both sides").
+  - Nothing logged yet: "Not logged yet".
+- **Freshness.** The lines come from the event store, not a cache. They change
+  right after a log and right after Undo (the undone event no longer counts),
+  and the elapsed time ticks at least once a minute.
 
 ## Flows
 
