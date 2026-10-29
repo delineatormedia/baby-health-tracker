@@ -86,15 +86,16 @@
     background: var(--panel);
     border: 1px solid var(--line);
   }
+  /* A status message (17 px) and a control (20 px), per the README's type sizes (#43). */
   .done div {
     flex: 1;
-    font-size: 15px;
+    font-size: 17px;
   }
   .done button {
     align-self: stretch;
     padding: 0 16px;
     font-weight: 600;
-    font-size: 15px;
+    font-size: 20px;
   }
   .gone {
     margin: 32px 24px;
