@@ -13,7 +13,14 @@ let
   system = pkgs.stdenv.hostPlatform.system;
   stateDir = "/var/lib/bht";
   dbPath = "${stateDir}/bht.db";
-  originHost = builtins.match "https://([^/:]+)(:[0-9]+)?" cfg.origin;
+  originHost = builtins.match "https://([^/:]+)(:([0-9]+))?" cfg.origin;
+  originName = if originHost == null then "" else builtins.head originHost;
+  # The port parents open: 443 unless origin names one.
+  originPort =
+    if originHost == null || builtins.elemAt originHost 2 == null then
+      "443"
+    else
+      builtins.elemAt originHost 2;
   urlHost = if lib.hasInfix ":" cfg.host then "[${cfg.host}]" else cfg.host;
   backupUnits = lib.optionals cfg.backup.enable [
     "bht-backup.timer"
@@ -86,9 +93,39 @@ in
 
     rpId = lib.mkOption {
       type = lib.types.str;
-      default = if originHost == null then "" else builtins.head originHost;
+      default = originName;
       defaultText = lib.literalMD "the hostname of `origin`";
       description = "The WebAuthn relying-party ID. Changing it breaks every passkey.";
+    };
+
+    registration = lib.mkOption {
+      type = lib.types.enum [
+        "first"
+        "open"
+      ];
+      default = "first";
+      description = ''
+        Who may create a household. `first` lets the first parent register one; after
+        that, the other parent joins with an invite and no other device on the tailnet can
+        start a household. `open` lets any phone that reaches the server register one.
+      '';
+    };
+
+    tailscaleServe = {
+      enable = lib.mkEnableOption ''
+        publishing the server with `tailscale serve` at `origin`. At boot it waits for
+        Tailscale, checks that this machine's Tailscale name is `origin`'s host, and only
+        then serves HTTPS on `origin`'s port. A different name fails the unit and serves
+        nothing, because passkeys are bound to the name. It replaces any other
+        `tailscale serve` handler on that port
+      '';
+
+      package = lib.mkOption {
+        type = lib.types.package;
+        default = config.services.tailscale.package;
+        defaultText = lib.literalExpression "config.services.tailscale.package";
+        description = "The tailscale CLI to call.";
+      };
     };
 
     backup = {
@@ -124,7 +161,16 @@ in
         assertion = originHost != null;
         message = "services.bht.origin must be an https:// origin with no path, like https://bht.tail1234.ts.net";
       }
+      {
+        # WebAuthn: the RP ID must be the origin's host or a domain it sits under.
+        assertion = cfg.rpId == originName || lib.hasSuffix ".${cfg.rpId}" originName;
+        message = "services.bht.rpId (${cfg.rpId}) must be the host of services.bht.origin (${originName}) or a parent domain of it";
+      }
     ];
+
+    warnings = lib.optional (cfg.tailscaleServe.enable && !config.services.tailscale.enable) ''
+      services.bht.tailscaleServe needs Tailscale on this machine: set services.tailscale.enable.
+    '';
 
     environment.systemPackages = [ bht-restore ];
 
@@ -147,6 +193,7 @@ in
         BHT_WEB_ROOT = "${cfg.webPackage}";
         BHT_ORIGIN = cfg.origin;
         BHT_RP_ID = cfg.rpId;
+        BHT_REGISTRATION = cfg.registration;
       };
       serviceConfig = {
         ExecStart = lib.getExe cfg.package;
@@ -191,6 +238,54 @@ in
           "~@privileged"
         ];
       };
+    };
+
+    # `tailscale serve` keeps its config in tailscaled's state; running this again only
+    # re-applies the same handler. As root: the CLI needs tailscaled's socket.
+    systemd.services.bht-tailscale-serve = lib.mkIf cfg.tailscaleServe.enable {
+      description = "Publish the Baby Health Tracker at its origin with tailscale serve";
+      wantedBy = [ "multi-user.target" ];
+      wants = [
+        "tailscaled.service"
+        "bht.service"
+      ];
+      after = [
+        "tailscaled.service"
+        "bht.service"
+      ];
+      path = [
+        cfg.tailscaleServe.package
+        pkgs.jq
+        pkgs.coreutils
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        set -euo pipefail
+        want=${lib.escapeShellArg originName}
+        # After boot tailscaled may still be connecting; give it two minutes.
+        state=
+        for _ in $(seq 60); do
+          state=$(tailscale status --json 2>/dev/null | jq -r '.BackendState') || state=
+          [ "$state" = Running ] && break
+          sleep 2
+        done
+        if [ "$state" != Running ]; then
+          echo "Tailscale is not up (state: ''${state:-unknown}). Run 'tailscale up', then 'systemctl restart bht-tailscale-serve'." >&2
+          exit 1
+        fi
+        name=$(tailscale status --json | jq -r '.Self.DNSName')
+        name=''${name%.}
+        if [ "$name" != "$want" ]; then
+          echo "This machine's Tailscale name is $name, but services.bht.origin is https://$want." >&2
+          echo "Passkeys are bound to that name. Not publishing: fix origin or the machine's name." >&2
+          exit 1
+        fi
+        tailscale serve --bg --https=${originPort} ${lib.escapeShellArg "http://${urlHost}:${toString cfg.port}"}
+        echo "serving https://$want${lib.optionalString (originPort != "443") ":${originPort}"}"
+      '';
     };
 
     systemd.tmpfiles.settings.bht-backup = lib.mkIf cfg.backup.enable {

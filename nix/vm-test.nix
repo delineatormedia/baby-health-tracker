@@ -9,6 +9,19 @@
 # One boot per VM and the default 9p-shared store (no useNixStoreImage), so the
 # erofs store-image initrd race and per-boot store.img leaks don't apply here.
 { pkgs, self }:
+let
+  # Stands in for the tailscale CLI: reports this machine's name from /run/fake-ts/name
+  # (default the test origin's host) and records what `serve` was asked to do.
+  fakeTailscale = pkgs.writeShellScriptBin "tailscale" ''
+    mkdir -p /run/fake-ts
+    name=$(cat /run/fake-ts/name 2>/dev/null || echo bht.example.ts.net)
+    case "$1 ''${2-}" in
+      "status --json") echo "{\"BackendState\":\"Running\",\"Self\":{\"DNSName\":\"$name.\"}}" ;;
+      serve*) echo "$*" > /run/fake-ts/serve ;;
+      *) echo "fake tailscale: $*" >&2; exit 2 ;;
+    esac
+  '';
+in
 pkgs.testers.runNixOSTest {
   name = "bht";
 
@@ -18,6 +31,10 @@ pkgs.testers.runNixOSTest {
       enable = true;
       origin = "https://bht.example.ts.net";
       backup.keep = 2;
+      tailscaleServe = {
+        enable = true;
+        package = fakeTailscale;
+      };
     };
     # Room for the killed-backup subtest's 128 MiB database, its WAL and the torn copy.
     virtualisation.diskSize = 2048;
@@ -73,6 +90,20 @@ pkgs.testers.runNixOSTest {
         env = server.succeed("systemctl show -p Environment bht.service")
         assert "BHT_ORIGIN=https://bht.example.ts.net" in env, env
         assert "BHT_RP_ID=bht.example.ts.net" in env, env
+        assert "BHT_REGISTRATION=first" in env, env
+
+    with subtest("tailscale serve publishes origin only under the matching machine name"):
+        server.wait_for_unit("bht-tailscale-serve.service")
+        served = server.succeed("cat /run/fake-ts/serve").strip()
+        assert served == "serve --bg --https=443 http://127.0.0.1:8787", served
+        server.succeed("rm /run/fake-ts/serve && echo renamed.example.ts.net > /run/fake-ts/name")
+        server.fail("systemctl restart bht-tailscale-serve.service")
+        log = server.succeed("journalctl -u bht-tailscale-serve.service -o cat")
+        assert "Tailscale name is renamed.example.ts.net" in log, log
+        assert "Not publishing" in log, log
+        server.fail("test -e /run/fake-ts/serve")
+        server.succeed("rm /run/fake-ts/name && systemctl restart bht-tailscale-serve.service")
+        server.succeed("test -e /run/fake-ts/serve")
 
     with subtest("database lives in the state dir, readable only by bht"):
         server.succeed("test -s /var/lib/bht/bht.db")

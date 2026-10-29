@@ -5,60 +5,144 @@ serves the web app, keeps the SQLite database in `/var/lib/bht`, and takes
 hourly snapshots into `/var/backup/bht`. The server listens on `127.0.0.1:8787`
 only and the module opens no firewall port. Phones reach it over Tailscale.
 
-## Configure
+## First deploy, step by step
 
-```nix
-# flake.nix of the family server
-{
-  inputs.bht.url = "github:delineatormedia/baby-health-tracker";
+Follow these in order, on the family server and the two phones. Each step ends with a
+check; don't go on until it passes. Steps 6 and 7 need the sign-in release (#5 step 3).
 
-  outputs = { nixpkgs, bht, ... }: {
-    nixosConfigurations.family-server = nixpkgs.lib.nixosSystem {
-      system = "x86_64-linux";
-      modules = [
-        ./configuration.nix
-        bht.nixosModules.default
-        {
-          services.bht = {
-            enable = true;
-            # This machine's Tailscale HTTPS name. Read the warning below first.
-            origin = "https://family-server.tail1234.ts.net";
-          };
-        }
-      ];
-    };
-  };
-}
-```
+**Before you start:** a NixOS server whose configuration is a flake, a Tailscale account,
+the Tailscale app signed in on both phones, and passkeys on both phones (iOS 16 or later,
+Android 9 or later, with a screen lock).
+
+1. **Turn on MagicDNS and HTTPS certificates** for the tailnet: admin console, DNS page.
+   *Check:* both switches show enabled.
+
+2. **Put the server on the tailnet and settle its name.** Run `sudo tailscale up`, then
+   rename the machine in the admin console if you want a different name. Its HTTPS name
+   is what both parents will open.
+   *Check:* `tailscale status --json | nix run nixpkgs#jq -- -r .Self.DNSName` prints the name, like
+   `family-server.tail1234.ts.net.` (with a trailing dot).
+
+   > **Warning: this name is final.** Every passkey is bound to it. Renaming the machine,
+   > renaming the tailnet or changing `origin` later makes both parents' passkeys stop
+   > working, and each has to register again.
+
+3. **Add the app to the server's flake.** Pin a release rather than following `main`:
+
+   ```nix
+   # flake.nix of the family server
+   {
+     inputs.bht.url = "github:delineatormedia/baby-health-tracker/<commit or tag>";
+
+     outputs = { nixpkgs, bht, ... }: {
+       nixosConfigurations.family-server = nixpkgs.lib.nixosSystem {
+         system = "x86_64-linux";
+         modules = [
+           ./configuration.nix
+           bht.nixosModules.default
+           ./bht.nix
+         ];
+       };
+     };
+   }
+   ```
+
+   For `bht.nix`, copy [`nix/example-host.nix`](../nix/example-host.nix) and set
+   `origin` to `https://` plus the name from step 2, without the trailing dot. CI builds a
+   whole system from that file, so its options are known to work.
+   *Check:* `nix flake check` on the server's flake passes. A wrong `origin`, or an `rpId`
+   that doesn't fit it, fails here with a message saying which.
+
+4. **Deploy.** `sudo nixos-rebuild switch --flake .#family-server`.
+   *Check:*
+
+   ```sh
+   systemctl is-active bht.service bht-tailscale-serve.service bht-backup.timer
+   curl -fsS http://127.0.0.1:8787/api/health
+   tailscale serve status
+   ```
+
+   All three units say `active`, health answers `{"ok":true,…}`, and `tailscale serve status`
+   shows `https://<name>` proxying to `http://127.0.0.1:8787`. If
+   `bht-tailscale-serve` failed, `journalctl -u bht-tailscale-serve` says why: Tailscale
+   not up yet (run `tailscale up`, then `sudo systemctl restart bht-tailscale-serve`), or a
+   machine name that doesn't match `origin`. It publishes nothing until the name matches.
+
+5. **Open it on a phone.** On the tailnet, open `https://<name>` in Safari or Chrome and
+   add it to the Home Screen. The first load can take a few seconds while Tailscale gets
+   the certificate.
+   *Check:* the page loads over HTTPS with no certificate warning, and the app opens from
+   the Home Screen icon.
+
+6. **First parent: create the household.** In the app, set up the baby, then Settings →
+   **Share with the other parent**, and save the passkey.
+   *Check:* Settings shows the household and that it's synced. On the server:
+   `sudo -u bht sqlite3 /var/lib/bht/bht.db 'SELECT COUNT(*) FROM households'` prints `1`.
+
+7. **Second parent: join.** On the first phone, Settings → **Invite the other parent**
+   shows a code. It works once, for 24 hours. On the second phone, open the URL, add it to
+   the Home Screen, set up the baby, then Settings → **Join the other parent** and enter
+   the code.
+   *Check:* log a wet diaper on each phone. Each shows up on the other phone once it syncs (reopen the app if it hasn't).
+
+   With `registration = "first"` (the default), nobody else on the tailnet can create a
+   second household now. A third phone that tries **Share** is told to ask for an invite.
+
+8. **Take a backup, and send it off the machine.**
+   `sudo systemctl start bht-backup.service`.
+   *Check:* `sudo ls /var/backup/bht` shows a `bht-<time>.db`, and
+   `systemctl list-timers bht-backup.timer` shows the next run. Then point the machine's
+   off-site backup (restic, borg, …) at `/var/backup/bht`; snapshots on the same disk do
+   not survive a lost disk.
+
+9. **Rehearse a restore, before the family relies on it.** Do this right after step 8,
+   while nobody is logging:
+
+   ```sh
+   sudo systemctl start bht-backup.service
+   sudo bht-restore "$(sudo ls /var/backup/bht | tail -n 1)"
+   ```
+
+   *Check:* it ends with the server healthy, both phones still sync (log one more
+   wet diaper on each), and the counts match:
+   `sudo -u bht sqlite3 /var/lib/bht/bht.db 'SELECT COUNT(*) FROM event_versions'` before
+   and after. Then delete `/var/lib/bht/restore-*`.
+
+   > **Restoring once the family uses it loses recent entries.** Phones don't re-send
+   > what the server already accepted, so anything logged after the snapshot is gone
+   > from the server and from the other phone. New entries can also be missed by a phone
+   > until the server catches up with where that phone had read to. Restore only to
+   > recover from a lost or corrupt database, and see "Restore" below.
+
+**Upgrading** later: change the commit or tag in `inputs.bht.url`, run
+`nix flake update bht`, then step 4 again with its check. Take a backup first
+(step 8).
+
+## Options
 
 | Option | Default | |
 | --- | --- | --- |
 | `origin` | none, required | The `https://` URL parents open |
-| `rpId` | the hostname of `origin` | WebAuthn relying-party ID |
+| `rpId` | the hostname of `origin` | WebAuthn relying-party ID; must be `origin`'s host or a parent domain |
+| `registration` | `first` | `first`: only the first household can register, everyone else joins by invite. `open`: any phone that reaches the server can create one |
+| `tailscaleServe.enable` | `false` | Publish `origin` with `tailscale serve`, once the machine's Tailscale name matches it |
+| `tailscaleServe.package` | `services.tailscale.package` | |
 | `host`, `port` | `127.0.0.1`, `8787` | Keep `host` on loopback |
 | `backup.enable` | `true` | |
 | `backup.directory` | `/var/backup/bht` | |
 | `backup.startAt` | `hourly` | systemd calendar expression |
 | `backup.keep` | `168` | One week of hourly snapshots |
 
-## Publish over Tailscale
-
-The tailnet needs MagicDNS and HTTPS certificates turned on (admin console,
-DNS page). Then, once, on the server:
+Without `tailscaleServe`, publish it by hand once; `tailscale serve` keeps the setting
+across reboots:
 
 ```sh
 sudo tailscale serve --bg --https=443 http://127.0.0.1:8787
 tailscale serve status
 ```
 
-`tailscale serve` keeps this setting across reboots. Open the `https://…ts.net`
-URL from a phone on the tailnet. Passkeys and the service worker both need
-HTTPS, so the plain `http://` LAN address will not work for sign-in.
-
-> **Warning: keep the hostname stable.** Every passkey is bound to `rpId`,
-> which is the machine's Tailscale name. Renaming the machine, renaming the
-> tailnet or changing `origin` makes every parent's passkey stop working, and
-> each parent has to register again. Pick the name before the first sign-in.
+Passkeys and the service worker both need HTTPS, so the plain `http://` LAN address will
+not work for sign-in.
 
 ## Backups
 
@@ -80,6 +164,9 @@ systemctl list-timers bht-backup.timer
 ```
 
 ## Restore
+
+A restore puts the server back to the snapshot. Entries logged after it are lost (see
+the warning in step 9), so restore only to recover a lost or corrupt database.
 
 Use `bht-restore`. Give it a snapshot file name from `backup.directory`, or a
 full path:
