@@ -651,7 +651,9 @@ for (const headers of ['immutable', 'no-cache'] as const) {
       await page.waitForURL((u) => u.pathname === '/bottle' && !u.search);
       await page.waitForTimeout(500);
       expect(await samePage(page)).toBe(true);
-      await expect(page.locator('.trow .val')).toHaveText(time!);
+      // The "· N min ago" half ticks with the real clock; occurredAt below pins the exact time.
+      const clock = time!.split(' · ')[0]!;
+      await expect(page.locator('.trow .val')).toContainText(`${clock} · `);
       await expect(page.locator('.readout')).toHaveText(readout!);
       await expect(page.getByRole('button', { name: 'Formula', exact: true })).toHaveAttribute(
         'aria-pressed',
