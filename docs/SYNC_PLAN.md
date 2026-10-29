@@ -367,17 +367,19 @@ None of these turns checks on by itself:
   watermark.
 - **Removing** a lost phone in Settings revokes its sessions and sets
   `removedAt`. Windows before `removedAt` that end after `W(D)` still wait for
-  a vouch. Windows after `removedAt` do not depend on D, because a removed
-  phone can no longer upload as that device.
-- **A returning phone** signs in as a new device. Its kept pending writes
-  upload then. Entries backdated into windows that were already assessed or
+  a vouch. Removal is itself an explicit parent action, so it counts as the
+  vouch from `removedAt` on: windows after `removedAt` do not depend on D.
+  Revoked sessions mean D can no longer upload as that device.
+- **A returning phone** has to rejoin, and signs in as a new device. Its kept
+  pending writes upload then. Entries backdated into windows that were already assessed or
   vouched reopen them: Readings recomputes, and the window says "Updated:
   entries from Sam's phone arrived late".
 
 Removal is the one place where windows stop depending on a device without a
-parent tapping "Count without". The parent has said the phone is gone, but
-entries it recorded after `removedAt` would then count as late. **PM call:**
-accept that, or require a vouch from `removedAt` too.
+parent tapping "Count without". **PM call (accepted):** removal is the vouch
+from `removedAt` on. Anything the phone recorded after `removedAt` arrives only
+after it rejoins, as a late entry, and reopens the windows it touches under
+rule 3.
 
 #### Tests
 
@@ -404,7 +406,12 @@ accept that, or require a vouch from `removedAt` too.
 - **Count without:** a vouch assesses the window, Undo restores waiting, and
   it syncs to the other phone.
 - **Removal** while the phone holds entries: windows before `removedAt` still
-  wait.
+  wait, windows after it are assessed, and the removed device's session is
+  refused on push.
+- **Remove, rejoin, late upload:** remove D, assess a window after
+  `removedAt`, then rejoin D as a new device and upload an entry it logged in
+  that window. The window reopens, says "Updated: entries from Sam's phone
+  arrived late", and its result changes.
 - **Late return:** backdated entries from the returning phone reopen an
   assessed window and change its result.
 - **Clock skew:** shifting a phone's clock by hours does not move the line.
