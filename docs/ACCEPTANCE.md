@@ -2,7 +2,7 @@
 
 A guided pass on two real phones before the family relies on sync. Browser tests cover
 the logic; they can't cover passkeys, Home Screen apps, airplane mode or a phone that
-sleeps in a pocket. It takes about 20 minutes. Do the checks in order: each one starts
+sleeps in a pocket. It takes about 25 minutes. Do the checks in order: each one starts
 from where the last one ended.
 
 **Phone A** is the owner's iPhone. **Phone B** is the second parent's phone. When a check
@@ -14,9 +14,9 @@ Checks 8 and 9 need step 3b-2 (Count without, removing a phone). Skip them until
 ## Where to run it
 
 There are two setups. Use the Mac rig first: it uses a test baby, and its database is
-thrown away afterwards. Check 6 needs a baby whose birth time you choose, so the full pass
-runs in 20 minutes only on the Mac rig. On the family server, run checks 1–5 and 7 with
-the real baby after [DEPLOY.md](DEPLOY.md) step 6, and check 6 at the baby's next day
+thrown away afterwards. Check 3 needs a baby whose birth time you choose, so the full pass
+runs in one sitting only on the Mac rig. On the family server, run checks 1, 2 and 4–7
+with the real baby after [DEPLOY.md](DEPLOY.md) step 6, and check 3 at the baby's next day
 boundary.
 
 **Both setups need:** both phones on the tailnet (Tailscale app on), passkeys on both
@@ -62,15 +62,18 @@ them on each phone (iPhone: Settings → Passwords, search for the Mac's name).
 ### Family server
 
 Follow DEPLOY.md through step 6, then start at check 1 below. Checks 1 and 2 are the same
-as DEPLOY.md steps 7 and 8. Skip check 1's step 3, and do check 6 the slow way described
+as DEPLOY.md steps 7 and 8. Skip check 1's step 3, and do check 3 the slow way described
 there.
 
 ## Before you start (2 min)
 
 - Note both phones' model and OS version. You'll need them for any report.
-- On the Mac rig, work out the test baby's birth time: **yesterday, 30 minutes from now**.
-  If it's 8:05 PM now, the birth time is yesterday at 8:35 PM. The baby's first day of
-  life then ends at 8:35 PM today, and check 6 needs that.
+- On the Mac rig, work out the test baby's birth time: **yesterday, 15 minutes from now**,
+  and write down three clock times. If it's 8:05 PM now:
+  - **Birth time:** yesterday at 8:20 PM. The baby's first day of life ends at 8:20 PM
+    today. Check 3 needs that.
+  - **B silent by:** 8:17 PM, 3 minutes before the day ends.
+  - **Readings at:** 8:21 PM, 1 minute after the day ends.
 - Keep each phone in the **Home Screen app** for the whole pass, not in a Safari tab. On
   iPhone, the Home Screen app keeps its own logs, separate from Safari's, so a household
   set up in Safari isn't there when you open the icon.
@@ -85,7 +88,7 @@ there.
    Tap **Add <name>**.
 3. Mac rig only: log a wet diaper and use the time row to set it to the birth time exactly
    (yesterday, same minute). Readings then counts logging as starting at birth, so the
-   whole first day is judged in check 6.
+   whole first day is judged in check 3.
 4. Settings → **Share with the other parent**. Enter your name, tap **Create with a
    passkey**, and save the passkey when the phone asks.
 
@@ -110,32 +113,75 @@ there.
 - After the passkey, B shows A's baby, by the same name. B's Settings shows "Synced with
   your household."
 
-### 3. Log on A, see it on B (2 min)
+### 3. Readings waits for the other phone (A + B, 10 min, Mac rig only)
 
-1. On A, log a wet diaper.
+Readings judges a day of life only once the day is over and every other phone has
+uploaded what it logged that day. The test baby's first day ends at the birth time you
+wrote down. B goes silent before then, and A looks after.
+
+1. **By your "B silent by" time**, on B, switch away from the app and back. Wait for
+   Settings to read "Synced with your household.", then turn on airplane mode. B now
+   stays silent: don't open the app on B until step 4. If it's already past your
+   "B silent by" time, this check can't show waiting on this baby. Note that in your
+   report, go on to check 4, and use the family-server variant below later.
+2. While you wait, do check 4 on A. It ends with A online again.
+3. **At your "Readings at" time or later**, on A, switch away from the app and back, wait
+   for Home to read "Synced", then open Readings. Readings recomputes once a minute.
+   *Expected:* the day-1 count checks (wet diapers, stools, feeds) read "Not assessed" with
+   "Waiting for <B's name>’s phone (last synced <day> <time>)." The time is when B synced
+   in step 1. The intake section ends with "Some logs from the other phones are not
+   synced yet."
+4. On B, turn airplane mode off, switch away from the app and back, and wait for Settings
+   to read "Synced with your household." Then, on A, switch away from the app and back,
+   wait for "Synced", and open Readings again.
+   *Expected:* the "Waiting for" lines are gone. The day-1 checks now show a result or a
+   different reason (with only the backdated wet diaper, "Not enough data"). Any result
+   counts, since this is a test baby. The intake line about other phones can stay: it
+   shows whenever B has been quiet since its last sync.
+
+**On the family server**, use the real baby's day boundary instead: it's the time of day
+the baby was born. Turn on airplane mode on B, after it reads "Synced with your
+household.", before that time. After it, foreground A, wait for "Synced" and check
+Readings, then bring B back as in step 4.
+
+### 4. Reload from the Home Screen (A, 2 min)
+
+Do this while check 3 waits for the day to end.
+
+1. Force-quit the app on A (swipe it away), then open it from the Home Screen icon.
+   *Expected:* the same entries, still signed in, and Home reads "Synced". After a reload,
+   Readings waits until the app has pulled once.
+2. Turn on airplane mode, force-quit and open it again.
+   *Expected:* it still opens, offline, with every entry. Home reads "Saved on this phone ·
+   sync paused". Turn airplane mode off afterwards, and go back to check 3.
+
+### 5. Log on A, see it on B (2 min)
+
+1. On A, log a wet diaper and wait for Home to read "Synced".
 2. On B, switch to another app and back. The app syncs when you log something, when the
    phone comes back online, and when you return to the app. There is no timer, so an app
    left open on screen won't pick up A's entry by itself.
-3. Do the same the other way: log a feed on B, then switch away from the app on A and back.
+3. Do the same the other way: log a feed on B, wait for B's Home to read "Synced", then
+   switch away from the app on A and back.
 
 *Expected:* each entry shows on the other phone with the same time, and both Home lines
 read "Synced".
 
-### 4. Both offline, both log, both back (3 min)
+### 6. Both offline, both log, both back (3 min)
 
 1. Turn on airplane mode on both phones.
 2. Log a dirty diaper on A and a wet diaper on B. Use the time row to give B's entry a
    time 10 minutes ago.
 3. On both phones, Home reads "Saved on this phone · sync paused". Settings reads
    "Not synced: No connection to the server. Logs stay on this phone and retry on their own."
-4. Turn airplane mode off on A, then on B. Switch away from the app and back on each phone,
-   then do it once more on A. A synced before B's entry reached the server, so A needs the
-   second pull.
+4. Turn airplane mode off on A and wait for Home to read "Synced". Then turn it off on B,
+   switch away from the app and back, and wait for B's Home to read "Synced". Last, switch
+   away from the app on A and back.
 
 *Expected:* both phones list both entries, B's at the time you set, not the time it
 synced. Both Home lines read "Synced".
 
-### 5. Sign out mid-sync (B, 3 min)
+### 7. Sign out mid-sync (B, 3 min)
 
 1. **Offline sign-out is refused.** On B, turn on airplane mode, then Settings →
    **Sign out**. *Expected:* "No connection to the server. Try again." in red, and B is
@@ -148,51 +194,16 @@ synced. Both Home lines read "Synced".
    phone · not synced". The wet diaper is still on B. It may or may not be on A yet. Both
    are correct.
 3. **Sign back in.** On B, Settings → **Sign in** → **Sign in with a passkey**.
-   *Expected:* B shows "Synced with your household." again. After you switch away from the
-   app on A and back, A has the wet diaper from step 2, and neither phone shows it twice.
+   *Expected:* B shows "Synced with your household." again. Once it does, switch away from
+   the app on A and back: A has the wet diaper from step 2, and neither phone shows it
+   twice.
 
-While B is signed out, A's Readings wait on B's last sync before the sign-out (check 6
+While B is signed out, A's Readings wait on B's last sync before the sign-out (check 3
 shows waiting). Until 3b-2 lands, that is expected.
-
-### 6. Readings waits for the other phone (A + B, 5 min, Mac rig only)
-
-Readings judges a day of life only once the day is over and every other phone has
-uploaded what it logged that day. The test baby's first day ends at the birth time you
-chose, about 30 minutes after you started.
-
-1. **Before the day ends**, on B, switch away from the app and back so it syncs, then turn
-   on airplane mode. B now stays silent. If the day has already ended, this check can't
-   show waiting on this baby: note it in your report and use the family-server variant
-   below.
-2. If the day ends more than 3 minutes from now, do check 7 on A while you wait, then
-   come back. Don't open the app on B.
-3. **After the day ends**, open Readings on A. Readings recomputes once a minute.
-   *Expected:* the day-1 count checks read "Not assessed" with
-   "Waiting for <B's name>’s phone (last synced <day> <time>)." The time is when B last
-   synced in step 1. The intake section ends with "Some logs from the other phones are not
-   synced yet."
-4. On B, turn airplane mode off and switch away from the app and back. Then do the same
-   on A.
-   *Expected:* the "Waiting for" lines are gone. The day-1 checks now show a result, or a
-   different reason. Any result counts, since this is a test baby.
-
-**On the family server**, use the real baby's day boundary instead: it's the time of day
-the baby was born. Turn on airplane mode on B before that time, check A's Readings after
-it, then bring B back.
-
-### 7. Reload from the Home Screen (A, 2 min)
-
-1. Force-quit the app on A (swipe it away), then open it from the Home Screen icon.
-   *Expected:* the same entries, still signed in, and Home reads "Synced". After a reload,
-   Readings waits until the app has pulled once. If you're here during check 6, it keeps
-   saying "Waiting for <B's name>’s phone" for days that ended after B went silent.
-2. Turn on airplane mode, force-quit and open it again.
-   *Expected:* it still opens, offline, with every entry. Home reads "Saved on this phone ·
-   sync paused". Turn airplane mode off afterwards.
 
 ### 8. Count without the other phone (after 3b-2)
 
-Repeat check 6 up to step 3 at a later day boundary, so A waits for B. On A, tap
+Repeat check 3 up to step 3 at a later day boundary, so A waits for B. On A, tap
 **Count without <B's name>’s phone** on a waiting check.
 
 *Expected:* the check is assessed. History lists the "Count without" entry, and Undo puts
