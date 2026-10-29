@@ -1,7 +1,8 @@
 # Sync and server plan (#5, #17, #8)
 
 Mapped on main `b5c1347`, 2026-10-29. Planning only; no code here. Revised the
-same day for the Adversarial read of `9a16afe` and the PM's calls on it.
+same day for the Adversarial reads of `9a16afe` and `b1829f5` and the PM's
+calls on them.
 
 ## What exists today
 
@@ -116,7 +117,9 @@ The server uses `resolveCurrent`.
    behind, the windows it could still hold entries for read "Not assessed ·
    Waiting for Sam's phone (last synced …)". A parent can vouch with **Count
    without Sam's phone**, a reversible mark stored like "We missed some". A
-   timeout, sign-out or removal alone never turns checks on, and late or
+   timeout or an offline sign-out never turns checks on. A sign-out barrier
+   covers only what the phone uploaded, and removing a phone is an explicit
+   parent action that counts as the vouch from `removedAt` on. Late or
    backdated uploads reopen assessment (step 3b). This replaces the 24-hour
    rule proposed at `9a16afe`.
 
@@ -337,18 +340,68 @@ A window is assessed only if it is fully logged as today (`readings.ts:99–121`
 minus "We missed some" marks) **and**, for every other household device D,
 either:
 
-- the window ends at or before `W(D)`, shifted to local time by `serverNow`
-  minus the local clock at pull; or
-- a **Count without D** mark covers the part of the window after `W(D)`.
+- the window ends at or before `W_local(D)`, the watermark on this phone's
+  clock (next section); or
+- a **Count without D** mark covers the part of the window after `W_local(D)`.
 
 Otherwise the check reads **"Not assessed · Waiting for Sam's phone (last
 synced Tue 9:14 PM)"**, with a **Count without Sam's phone** action.
 
+#### Converting a watermark to this phone's clock
+
+`W(D)` and `serverNow` are server-clock times. Windows are in this phone's
+local clock. The conversion must only ever move the line **earlier**: a
+conversion that moves it later can pass a window D has not uploaded yet.
+
+A point estimate (`serverNow` minus the local clock when the response
+*arrives*) does exactly that, because it counts the network delay as clock
+offset. With synchronized clocks, a pull whose `serverNow` is 12:00 and whose
+response arrives at 12:02 would move a 12:00 watermark to 12:02, and a window
+ending 12:01 would pass while D still holds a write from 12:00:30.
+
+**Contract (PM, 2026-10-29).** It bounds the offset from the instant the
+request is *sent*, as NTP does.
+
+1. **Sample.** Immediately before sending the first page request of a pull,
+   the client reads `t_send = Date.now()` and `p_send = performance.now()`.
+2. **Bound.** The first page carries `serverNow`. The server read it after
+   the request left the phone, so with `θ` the true offset (server clock minus
+   local clock), `serverNow >= t_send + θ`. Therefore
+   `θ <= θ_max = serverNow − t_send`.
+3. **Convert.** `W_local(D) = W(D) − θ_max`. Because `θ_max >= θ`, this is at
+   or before the local instant that `W(D)` really names, however long the
+   request or the response took. Delay only makes the line earlier, so checks
+   wait longer; they are never wrong.
+4. **Pagination.** The whole pull uses the first page's `t_send` and
+   `serverNow`. The device list comes from the first page's snapshot
+   ("Reading watermarks"), so later pages never refresh the sample, however
+   slowly they arrive. The sample is adopted with the device list, in the same
+   transaction as the page that reaches `through`.
+5. **Clock jumps.** At every use, the client checks
+   `|(Date.now() − t_send) − (performance.now() − p_send)| <= 2 s`. If the
+   wall clock and the monotonic clock have drifted further apart (the user or
+   the network changed the time, or the phone slept and the monotonic clock
+   paused), the sample is discarded and every other device counts as **not
+   synced**: its windows wait until the next pull takes a new sample.
+6. **Reloads.** `performance.now()` restarts with each page load, so the
+   sample lives in memory only. After a reload the adopted device list is
+   kept for the "last synced" text, but windows wait until the next pull,
+   which runs when the app opens.
+
+Entry timestamps come from D's own clock. If D's clock is behind, an entry
+logged just after `W(D)` can carry a time before it and land in a window that
+already passed. That is a late, backdated entry, and the window reopens when it
+arrives ("A returning phone", below). The watermark bound is about upload
+state, not D's clock.
+
 #### Count without Sam's phone
 
 - It is a household event, `type: 'count_without'`,
-  `data: {deviceId, start, end}`. `start` is D's watermark when the parent
-  taps it, and `end` is the tap time. This is a schema change, so
+  `data: {deviceId, start, end}`. Both are epoch ms on the tapping phone's
+  clock, like every other entry time. `end` is the tap time. `start` is
+  `W_local(D)` when the parent taps. It is `null` when D has no watermark yet
+  or this phone holds no valid clock sample, and a `null` start covers every
+  window that ends by `end`. This is a schema change, so
   `SCHEMA_VERSION` goes up and the server ships first.
 - It is stored, synced, edited and removed like "We missed some": a
   reversible, explicit parent statement, with Undo, listed in History.
@@ -357,14 +410,34 @@ synced Tue 9:14 PM)"**, with a **Count without Sam's phone** action.
 
 #### Idle, signed-out and removed phones
 
-None of these turns checks on by itself:
+A timeout or an offline sign-out never turns checks on. A sign-out barrier
+covers what the phone uploaded, and removal counts as a vouch from
+`removedAt` on:
 
 - **Idle.** No timeout. A silent phone holds its windows back, however long it
   is silent, until it syncs or a parent vouches.
 - **Signing out** first runs a barrier. If it succeeds, `W(D)` is just before
-  sign-out, D is marked signed out, and later windows do not wait for it. If the phone is offline,
-  the sign-out is local only and D still holds windows back from its last
-  watermark.
+  sign-out, D is marked signed out, and later windows do not wait for it. If
+  the phone is offline, the sign-out is local only and D still holds windows
+  back from its last watermark.
+- **Other tabs during sign-out.** A write in another tab after the barrier's
+  snapshot would have `gen > G`: it would sit behind a watermark that no longer
+  advances, on a device the household has stopped waiting for. So sign-out
+  quiesces first:
+  1. One `readwrite` transaction on `meta` sets `signingOut = true`. Every
+     local write already runs in a `readwrite` transaction that bumps `gen` in
+     `meta`, so IndexedDB orders the two: a write that started first commits
+     first and has `gen <= G`, and every later write sees the flag in its own
+     transaction and aborts. The tab says "Signing out in another tab" and
+     keeps the entry in its form. A `BroadcastChannel` message tells the
+     other tabs to show this before anyone taps; the flag, not the message,
+     is what guarantees it.
+  2. The snapshot `G` is read after the flag commits, so it holds every
+     write the phone will ever make as this device. Push and barrier as above.
+  3. If the barrier succeeds, the session is cleared and every tab goes to
+     sign-in. If it fails (offline) and the parent signs out anyway, the
+     pending rows stay in IndexedDB, as for a returning phone. If the parent
+     cancels, the flag is cleared and writing resumes.
 - **Removing** a lost phone in Settings revokes its sessions and sets
   `removedAt`. Windows before `removedAt` that end after `W(D)` still wait for
   a vouch. Removal is itself an explicit parent action, so it counts as the
@@ -378,8 +451,8 @@ None of these turns checks on by itself:
 Removal is the one place where windows stop depending on a device without a
 parent tapping "Count without". **PM call (accepted):** removal is the vouch
 from `removedAt` on. Anything the phone recorded after `removedAt` arrives only
-after it rejoins, as a late entry, and reopens the windows it touches under
-rule 3.
+after it rejoins, as a late entry, and reopens the windows it touches (see
+"A returning phone").
 
 #### Tests
 
@@ -414,7 +487,29 @@ rule 3.
   arrived late", and its result changes.
 - **Late return:** backdated entries from the returning phone reopen an
   assessed window and change its result.
-- **Clock skew:** shifting a phone's clock by hours does not move the line.
+- **Delayed response:** clocks agree. `W(D)` and `serverNow` are 12:00, the
+  request is sent at 12:00 and the response arrives at 12:02, and D holds an
+  unsynced write from 12:00:30. A window ending 12:01 is not assessed. The
+  same test against an arrival-time estimate must fail (control).
+- **Delayed pagination:** page 1 is sent at 12:00 with `serverNow` 12:00, and
+  page 2 arrives at 12:05. The bound still uses page 1's sample, and the
+  12:01 window with D's pending 12:00:30 write still waits.
+- **Clock skew:** this phone's clock is hours ahead or behind, with and
+  without delay. `W_local(D)` is never after the true local instant of
+  `W(D)`, and a window ending just after it is never assessed. A property
+  test over random offsets and delays checks `W_local <= W − θ`.
+- **Clock jump:** `Date.now()` jumps an hour between the pull and Readings
+  while `performance.now()` moves a second. The sample is discarded and
+  windows wait until the next pull. A 1 s jump keeps it.
+- **Reload:** after a reload with no pull yet, windows wait; the "last synced"
+  text still shows.
+- **Count without, no watermark:** D's watermark is null. The mark is stored
+  with `start: null`, covers every window ending by the tap, and Undo restores
+  waiting.
+- **Sign-out with another tab:** tab B starts a write before the flag and
+  commits it; tab C tries one after it. B's write is in the snapshot and on
+  the server before the barrier, and C's aborts with its form kept. Cancelling
+  sign-out lets C write again.
 
 ### Step 4: NixOS module (#8, part 1). Can start in parallel after step 1.
 
