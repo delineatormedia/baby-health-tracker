@@ -82,7 +82,7 @@ apart without colour.
 | Bottle | hollow ring on the outer ring | `#08664C` | `#25876B` |
 | Wet | dot on the inner ring | `#1F6FD6` | `#4C8EF0` |
 | Dirty | square on the inner ring | `#7F7410` | `#ABA53A` |
-| Pump | diamond (keys and History; not on the dial) | `#C2367A` | `#DA7AA0` |
+| Pump | arc on the outside ring (diamond when logged without a timer) | `#C2367A` | `#DA7AA0` |
 
 - **Strokes, marks and outlines only.** Event colours are never used for text
   and never fill a large area. The one exception is a running timer key, which
@@ -149,7 +149,8 @@ apart without colour.
   (night feed and wet), against 0.047 for an Okabe-Ito-style set. Feed and wet
   both look blue to a deuteranope, so they differ in lightness and shape (bar on
   the outer ring, dot on the inner ring). Bottle and pump both look grey, but
-  pump is not on the dial and every key is labelled.
+  they sit on different rings with different shapes, and every key is labelled
+  (#52).
 - **Dirty and the flag.** The night dirty mustard and the night flag tan are
   close in hue. The flag never appears on Home, and a flag always carries "!"
   and its text, so colour alone never signals a flag.
@@ -178,6 +179,85 @@ are grouped under "Consider talking to your pediatrician".
 - **Freshness.** The lines come from the event store, not a cache. They change
   right after a log and right after Undo (the undone event no longer counts),
   and the elapsed time ticks at least once a minute.
+
+## Home dial: bursts and sessions (#51, #52)
+
+Board: `clock.html` (light and night), rendered as `board-clock.png`. Owner
+iPhone check, 2026-10-29: repeat taps looked like separate times, and feeds and
+pumps showed a notch where the owner expected their length.
+
+**Rings.** Dial units, on the 300-unit dial. Each kind keeps its colour and shape.
+
+| Radius | What | Change |
+|---|---|---|
+| 146 | Pump arcs (5 wide), outside the dial outline. A pump logged without a timer is a diamond here. | New: pumps join the dial. |
+| 134 | Breastfeed arcs (10 wide). Bottles stay hollow rings on top of them. | Notch becomes an arc. |
+| 115 | Hour numerals, and burst counts | Counts are new. |
+| 99 | Wet dots and dirty squares | Same sizes; bursts become one mark. |
+| 141 to 150 | "Now": a short dim radial line | Was a dot at 146, which would sit on the pump ring. |
+
+The feed and pump rings are separated by the r=140 outline, so a feed and a
+pump at the same time never cover each other.
+
+### Bursts become one mark with a count (#51)
+
+- **The cause.** `innerMarks()` spreads any two wet or dirty marks less than 16
+  units of arc apart (about 37 minutes), so three quick Wet taps were drawn 37
+  minutes apart.
+- **The rule.** Marks of one kind are a burst when each is within 2 minutes of
+  the burst's first one. A burst is one mark at the first entry's time, with
+  its count beside it ("×3"). A single entry has no count.
+- **Count label.** "×3", on the r=115 band outward from the mark, 18.5 units
+  (15 px at 320) in `ink`. The "×" and the brighter colour keep it from reading
+  as an hour numeral, which a bare "3" beside the 0 did on the board. If it
+  would touch an hour numeral, the numeral is hidden; its tick stays.
+- **One kind never moves.** Two marks of one kind more than 2 minutes apart are
+  drawn at their true times, even if their shapes overlap. Spreading applies
+  only between a wet and a dirty within one step (a mixed diaper, or a wet
+  logged minutes after a dirty). The pair stays centred on its true time, so
+  each mark is at most half a step (about 18 minutes) from it.
+- **Same rule on every ring.** Bottles and pump diamonds use the same burst
+  rule. Feeds and timed pumps are arcs, so they follow the overlap rule below.
+- **Counts don't change.** The legend still counts entries, so a burst of
+  three is "Wet 3". History still lists each entry, and Undo or delete there
+  lowers the count on the mark.
+- **Test.** A unit test for the grouping: 3 taps within 2 minutes give one mark
+  with count 3 at the first tap; taps 2 minutes and 1 second apart give two
+  marks; a burst across midnight stays one mark; wet and dirty bursts at the
+  same time stay two marks, side by side.
+
+### Feeds and pumps as arcs (#52)
+
+- **Span.** An arc runs from the session's start to its end, clockwise. A
+  breastfeed ends at start + duration + paused time (the same end as Reports'
+  feed bar, `feedEnd()`). A pump ends at start + duration.
+- **Short sessions.** An arc is never shorter than its own width, so a
+  1-minute feed still reads as a mark (today's notch).
+- **Running.** A running feed or pump grows to the "now" line every second,
+  paused or not. It ends with a round cap at the line, and the dial caption
+  still says "Feeding" or "Paused". A stopped pump waiting for its amount is a
+  finished arc.
+- **Both sides of a breastfeed.** One feed is one arc. Where the timer
+  switched sides, the arc has a 2-unit gap in the dial background, so a
+  left-then-right feed reads as one session in two parts. A typed duration or a
+  one-side feed has no gap. The gap sits at the share of the feed that the
+  first side took; if the feed was paused, it is approximate, because pauses
+  are stored as a total, not as times.
+- **Pumps on both sides** pump at once, so they are one arc with no gap.
+- **Overlap.** Sessions on the same ring (a backdated feed over another, or a
+  burst of short feeds) are drawn longest first. Every arc has a 2-unit casing
+  in the dial background, so a shorter arc on top shows both its ends and the
+  longer one shows on either side. Two sessions with the same start (within 2
+  minutes) and the same end are one arc with a count, like a burst.
+- **The 24 hours.** An arc is drawn if any part of it falls in the last 24
+  hours. A part before that is cut off at the "now" line with a flat end. The
+  legend still counts a feed by its start.
+- **Legend.** Pump joins the legend ("Pump 2"). It has to fit on one line at
+  320 px with the other four; if it doesn't, it takes a second line.
+
+**Colour vision.** Bottle and pump both look grey to a deuteranope. On the
+dial they now differ by ring (inside vs. outside the outline) and shape
+(hollow ring vs. arc or diamond), so colour is never the only cue.
 
 ## Reports (#21)
 
