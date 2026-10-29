@@ -240,9 +240,11 @@ in
           echo "no database at $db yet, nothing to back up"
           exit 0
         fi
+        # A run killed mid-copy leaves its .partial (and SQLite's -journal) behind. Runs never
+        # overlap (oneshot), so anything left over now is stale (#45).
+        find "$dir" -maxdepth 1 -name '.bht-*.db.partial*' -printf 'removing stale %f\n' -delete
         stamp=$(date -u +%Y%m%dT%H%M%SZ)
         partial="$dir/.bht-$stamp.db.partial"
-        rm -f "$partial"
         sqlite3 "$db" ".backup '$partial'"
         check=$(sqlite3 "$partial" 'PRAGMA integrity_check')
         if [ "$check" != ok ]; then

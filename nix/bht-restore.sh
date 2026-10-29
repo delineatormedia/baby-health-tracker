@@ -27,6 +27,9 @@ case $src in
   */*) ;;
   *) src=$BHT_BACKUP_DIR/$src ;;
 esac
+case $src in
+  *.partial | *.partial-*) die "$src is an unfinished backup, not a snapshot; the live database is untouched" ;;
+esac
 [ -f "$src" ] || die "no snapshot at $src; the live database is untouched"
 [ -s "$src" ] || die "$src is empty; the live database is untouched"
 
