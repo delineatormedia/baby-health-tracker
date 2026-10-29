@@ -170,10 +170,15 @@ export function ticks(w: DayWindow, dayStart: number, tz: string): number[] {
   return [...out, w.end];
 }
 
-/** Events in [start, end), oldest first. */
-export function eventsIn(events: readonly BabyEvent[], start: number, end: number): BabyEvent[] {
+/** Logged events in [start, end), oldest first. "We missed some" marks are not logs. */
+export function eventsIn(
+  events: readonly BabyEvent[],
+  start: number,
+  end: number,
+): Exclude<BabyEvent, { type: 'missed_logs' }>[] {
   return events
-    .filter((e) => {
+    .filter((e): e is Exclude<BabyEvent, { type: 'missed_logs' }> => {
+      if (e.type === 'missed_logs') return false;
       const t = Date.parse(e.occurredAt);
       return t >= start && t < end;
     })
@@ -302,7 +307,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** A list row: "Bottle 60 mL" with "Breast milk" under it. Glyph is the dial shape, if any. */
 export function rowText(
-  e: BabyEvent,
+  e: Exclude<BabyEvent, { type: 'missed_logs' }>,
   volume: (ml: number) => string,
 ): { glyph: 'feed' | 'bottle' | 'wet' | 'dirty' | 'pump' | null; name: string; detail: string } {
   switch (e.type) {
@@ -352,7 +357,15 @@ export function rowText(
         name: `Weight · ${formatWeight(e.data.grams, 'kg')} / ${formatWeight(e.data.grams, 'lb_oz')}`,
         detail: e.data.source === 'clinic' ? 'Clinic' : 'Home scale',
       };
-    case 'weighted_feed':
-      return { glyph: null, name: 'Weighted feed', detail: '' };
+    case 'weighted_feed': {
+      // A measurement taken around a breastfeed that is logged on its own, so never a feed.
+      const g = e.data.afterGrams - e.data.beforeGrams;
+      const side = e.data.side ? `${cap(e.data.side)} · ` : '';
+      return {
+        glyph: null,
+        name: `Test weighing · ${g >= 0 ? '+' : '−'}${Math.abs(g)} g`,
+        detail: `${side}Approximate, not counted as a feed`,
+      };
+    }
   }
 }

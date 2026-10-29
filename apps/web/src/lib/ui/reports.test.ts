@@ -15,6 +15,7 @@ import {
   mondayOf,
   parseYmd,
   reportDay,
+  rowText,
   tally,
   ticks,
   wall,
@@ -202,6 +203,33 @@ describe('counts', () => {
     expect(tally(eventsIn(events, w.start, w.end))).toMatchObject({ breast: 2, wet: 2 });
   });
 
+  test('a test weighing is listed as a measurement; its breastfeed is the feed', () => {
+    const f = feed('2026-10-26T09:00:00-04:00', 12);
+    const weighed = ev('weighted_feed', '2026-10-26T09:13:00-04:00', {
+      beforeGrams: 3500,
+      afterGrams: 3540,
+      side: 'left',
+    });
+    const w = dayWindow(MON, EIGHT, NY);
+    const day = eventsIn([f, weighed], w.start, w.end);
+    expect(day).toHaveLength(2);
+    expect(tally(day)).toMatchObject({ breast: 1, bottle: 0, bottleMl: 0 });
+    expect(rowText(weighed as Extract<BabyEvent, { type: 'weighted_feed' }>, String)).toEqual({
+      glyph: null,
+      name: 'Test weighing · +40 g',
+      detail: 'Left · Approximate, not counted as a feed',
+    });
+  });
+
+  test('a "We missed some" mark is not a logged event', () => {
+    const mark = ev('missed_logs', '2026-10-26T09:00:00-04:00', {
+      start: iso('2026-10-26T09:00:00-04:00'),
+      end: iso('2026-10-26T12:00:00-04:00'),
+    });
+    const w = dayWindow(MON, EIGHT, NY);
+    expect(eventsIn([...MONDAY, mark], w.start, w.end)).toHaveLength(MONDAY.length);
+  });
+
   test('averages count finished days only', () => {
     const now = Date.parse('2026-10-29T07:00:00Z'); // 3 AM Thu: Wed is still under way at 8 AM
     const days = [0, 1, 2, 3].map((i) => {
@@ -236,7 +264,9 @@ describe('Readings ignore Day starts at', () => {
     const midnight = readings(0);
     const eight = readings(EIGHT);
     expect(midnight.shown).not.toBe(eight.shown);
-    expect(midnight.results.some((r) => r.status !== 'not_enough_data')).toBe(true);
+    // A count check really ran on the new evaluator (#30), so the comparison is not vacuous.
+    const wet = midnight.results.find((r) => r.check === 'wet_diapers');
+    expect(wet?.status).not.toBe('not_enough_data');
     expect(eight.results).toEqual(midnight.results);
   });
 
