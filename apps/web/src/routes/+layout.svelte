@@ -15,8 +15,15 @@
 
 {#if app.saveError}
   <div class="save-fail" role="alert">
-    <span>{app.saveError} Nothing changed. Try again.</span>
-    <button onclick={() => (app.saveError = null)}>OK</button>
+    <span>{app.saveError?.text}</span>
+    <span class="acts">
+      {#if app.saveError?.retry}
+        <button onclick={() => app.retrySave()}>{app.saveError?.retry?.label}</button>
+      {/if}
+      <button onclick={() => (app.saveError = null)}
+        >{app.saveError?.retry ? 'Dismiss' : 'OK'}</button
+      >
+    </span>
   </div>
 {/if}
 
@@ -49,6 +56,10 @@
     border-radius: 12px;
     background: var(--panel);
     font-size: 14px;
+  }
+  .save-fail .acts {
+    display: flex;
+    align-self: stretch;
   }
   .save-fail button {
     align-self: stretch;

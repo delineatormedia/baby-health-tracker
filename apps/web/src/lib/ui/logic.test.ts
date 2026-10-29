@@ -17,6 +17,7 @@ import {
   stepBottle,
   stopSeconds,
   suggestSide,
+  typedSide,
 } from './logic.ts';
 
 const NOW = Date.parse('2026-10-29T12:00:00.000Z');
@@ -67,6 +68,17 @@ describe('breastfeed timer', () => {
     expect(suggestSide(events)).toBe('right');
     expect(suggestSide([])).toBe('left');
     expect(suggestSide([ev('breastfeed', { side: 'both', durationSeconds: 60 }, 3)])).toBe('left');
+  });
+
+  test("a typed duration keeps the running feed's side, whatever the suggestion", () => {
+    // The last finished feed was right, so the suggestion is left: the running side must win.
+    const done = ev('breastfeed', { side: 'right', durationSeconds: 900 }, 300);
+    for (const side of ['right', 'both', 'left'] as const) {
+      const events = [ev('breastfeed', { side, durationSeconds: null }, 290), done];
+      expect(typedSide(events)).toBe(side);
+    }
+    expect(typedSide([done])).toBe('left');
+    expect(typedSide([])).toBe('left');
   });
 });
 

@@ -27,6 +27,13 @@ export interface Toast {
   undo?: () => Promise<unknown>;
 }
 
+/** A failed write, shown until dismissed or the next write succeeds. */
+export interface SaveError {
+  text: string;
+  /** Repeats the failed operation, e.g. an Undo that did not save. */
+  retry?: { label: string; run: () => Promise<unknown> };
+}
+
 const TOAST_MS = 6_000;
 
 /**
@@ -41,8 +48,7 @@ class AppState {
   // Read in init(): touching localStorage can throw (SecurityError) and must reach the error screen.
   prefs = $state<Prefs>(DEFAULT_PREFS);
   toast = $state.raw<Toast | null>(null);
-  /** A write that failed. Shown until dismissed or the next write succeeds. */
-  saveError = $state<string | null>(null);
+  saveError = $state.raw<SaveError | null>(null);
   /** Wall clock for elapsed-time displays, ticking once a second. */
   now = $state(Date.now());
 
@@ -93,13 +99,17 @@ class AppState {
     void this.#reload();
   }
 
-  /** Applies for this session even if the phone cannot store it. */
+  /** Applies for this session even if the phone cannot store it, and says so. */
   setPrefs(patch: Partial<Prefs>): void {
     this.prefs = { ...this.prefs, ...patch };
     try {
       savePrefs(this.#storage, this.prefs);
     } catch (e) {
-      this.fail(e);
+      console.error(e);
+      this.dismissToast();
+      this.saveError = {
+        text: `${saveFailure(e)} The setting applies for this session only.`,
+      };
     }
   }
 
@@ -107,10 +117,20 @@ class AppState {
    * Reports a failed write. Screens call this from their catch and stay where they are, so
    * whatever the parent entered is still there to retry. The stale success toast goes away.
    */
-  fail(e: unknown): void {
+  fail(e: unknown, retry?: SaveError['retry']): void {
     console.error(e);
     this.dismissToast();
-    this.saveError = saveFailure(e);
+    this.saveError = {
+      text: `${saveFailure(e)} ${retry ? 'Nothing changed.' : 'Nothing changed. Try again.'}`,
+      retry,
+    };
+  }
+
+  /** Runs a failed write's retry once; a second failure puts it back in the banner. */
+  retrySave(): void {
+    const retry = this.saveError?.retry;
+    this.saveError = null;
+    if (retry) void retry.run();
   }
 
   volume = (ml: number): string => formatVolume(ml, this.prefs.volume);
@@ -130,18 +150,17 @@ class AppState {
   }
 
   showUndo(text: string, change: Change): void {
-    this.#showToast({
-      text,
-      undo: async () => {
-        try {
-          await change.undo();
-        } catch (e) {
-          this.fail(e);
-          return;
-        }
-        this.#showToast({ text: 'Undone' });
-      },
-    });
+    // A failed Undo keeps its inverse in the error banner until it lands or is dismissed.
+    const undo = async () => {
+      try {
+        await change.undo();
+      } catch (e) {
+        this.fail(e, { label: 'Retry undo', run: undo });
+        return;
+      }
+      this.#showToast({ text: 'Undone' });
+    };
+    this.#showToast({ text, undo });
   }
 
   dismissToast(): void {

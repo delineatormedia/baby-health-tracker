@@ -11,7 +11,7 @@
     MAX_FEED_SECONDS,
     runningFeed,
     stopSeconds,
-    suggestSide,
+    typedSide,
   } from '../../lib/ui/logic.ts';
   import { fromLocalInput, toLocalInput } from '../../lib/ui/time.ts';
 
@@ -28,7 +28,9 @@
   // Home sends ?fix when Stop found an overrun timer.
   let typing = $state(page.url.searchParams.has('fix'));
   let minutes = $state<number | null>(null);
-  let manualSide = $state<Side>(suggestSide(app.events));
+  // Follows the log until the parent picks a side, so a direct load of ?fix keeps the running side.
+  let picked = $state<Side | null>(null);
+  const manualSide = $derived(picked ?? typedSide(app.events));
   let busy = false;
 
   async function once(fn: () => Promise<unknown>) {
@@ -53,7 +55,7 @@
   const choose = (side: Side) =>
     once(async () => {
       if (typing) {
-        manualSide = side;
+        picked = side;
       } else if (!running) {
         await app.log('breastfeed', { side, durationSeconds: null }, 'Breastfeed started');
       } else if (running.data.side !== side) {
@@ -81,7 +83,7 @@
   );
 
   function startTyping() {
-    manualSide = running?.data.side ?? suggestSide(app.events);
+    picked = null;
     // An overrun timer's elapsed time is not a duration, so there is nothing to prefill.
     minutes = running && !overrun ? Math.max(1, Math.round(elapsed / 60_000)) : null;
     typing = true;

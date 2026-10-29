@@ -53,6 +53,14 @@ export function suggestSide(events: readonly BabyEvent[]): 'left' | 'right' {
   return lastSide(events) === 'left' ? 'right' : 'left';
 }
 
+/**
+ * The side a typed duration starts on: the running feed's own side when there is one, so
+ * correcting a timer never changes it; otherwise the suggested next side.
+ */
+export function typedSide(events: readonly BabyEvent[]): Side {
+  return runningFeed(events)?.data.side ?? suggestSide(events);
+}
+
 /** Elapsed time as "08:42", or "1:08:42" past an hour. */
 export function clock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
