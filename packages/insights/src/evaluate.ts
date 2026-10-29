@@ -265,9 +265,9 @@ function countCheck(
 
 /**
  * No wet diaper for more than 8 h on days 2-4 of life (no_urine_hours_dol2_4). The gap is
- * measured back from the last sync, because an unsynced wet diaper on the other phone may
- * fill it. The composite dehydration entry is cited but never flags (it needs signs v1 does
- * not log). There is no gap check on day 1 or after day 4.
+ * measured back from this device's last pull, because a wet diaper written after it may not
+ * have arrived yet. The composite dehydration entry is cited but never flags (it needs signs
+ * v1 does not log). There is no gap check on day 1 or after day 4.
  */
 function noUrine(ctx: Ctx): CheckResult | null {
   const age = ctx.now - ctx.birth;
@@ -708,7 +708,7 @@ function observeExpected(
   return { value, unit, expected };
 }
 
-/** Is [start, end] inside the fully-logged periods, and synced by both phones? */
+/** Is [start, end] inside the fully-logged periods, and pulled by this device? */
 function coverage(ctx: Ctx, start: number, end: number): NotEnoughDataReason | null {
   if (ctx.synced === null || end > ctx.synced) return 'not_synced';
   const span = ctx.covered.find(([s, e]) => s <= start && end <= e);

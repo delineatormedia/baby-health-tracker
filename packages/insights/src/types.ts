@@ -117,8 +117,15 @@ export interface EvaluateInput {
   /** Current versions of this baby's events (after resolveAll). Deleted events are ignored. */
   events: readonly BabyEvent[];
   now: Timestamp;
-  /** Periods the parents marked as fully logged. Count checks run only inside them. */
+  /**
+   * Periods the parents marked as fully logged. Count and absence checks run only inside them.
+   * The mark is the only thing that vouches for writes still offline on the other phone.
+   */
   fullyLogged: readonly Interval[];
-  /** Both phones have synced up to here; null if unknown. */
+  /**
+   * This device has no pending writes and last pulled at this time; null otherwise. It says
+   * nothing about the other phone. Checks treat it as a lower bound: nothing after it is
+   * assumed synced.
+   */
   syncedThrough: Timestamp | null;
 }
