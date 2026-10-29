@@ -147,6 +147,9 @@ pkgs.testers.runNixOSTest {
         server.wait_for_open_port(8787)
         server.succeed("curl -fsS http://127.0.0.1:8787/api/health")
         server.succeed("systemctl is-active bht.service bht-backup.timer")
-        server.succeed("sqlite3 /var/lib/bht/restore-*/failed/bht.db 'SELECT name FROM vm_poison'")
+        server.succeed(
+            "sqlite3 /var/lib/bht/restore-*/failed/bht.db "
+            "\"SELECT name FROM sqlite_master WHERE name = 'vm_poison'\" | grep -Fx vm_poison"
+        )
   '';
 }
