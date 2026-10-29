@@ -1,8 +1,9 @@
 import 'fake-indexeddb/auto';
 import { newId } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
-import { openDatabase } from './db.ts';
+import { openDatabase, rowKey } from './db.ts';
 import { EventStore } from './store.ts';
+import { FakeServer } from './testing/fake-server.ts';
 
 const babyId = newId();
 
@@ -112,5 +113,62 @@ describe('EventStore', () => {
   test('unknown ids cannot be edited', async () => {
     const store = await makeStore();
     await expect(store.edit(newId(), { notes: 'x' })).rejects.toThrow(/Unknown event/);
+  });
+
+  test('simultaneous edits each get their own version and both are kept', async () => {
+    const store = await makeStore();
+    const { event } = await store.log(babyId, 'diaper', { kind: 'wet' });
+    const [a, b] = await Promise.all([
+      store.edit(event.id, { notes: 'A' }),
+      store.edit(event.id, { notes: 'B' }),
+    ]);
+    expect([a.event.version, b.event.version].sort()).toEqual([2, 3]);
+    const held = await store.db.getAllFromIndex('versions', 'byId', event.id);
+    expect(held.map((r) => r.event.notes ?? '').sort()).toEqual(['', 'A', 'B']);
+    expect(await store.pending(10)).toHaveLength(3);
+  });
+
+  test('two tabs on one database never share a version number', async () => {
+    const name = `test-${newId()}`;
+    const tab1 = new EventStore(await openDatabase(name), newId());
+    const tab2 = new EventStore(await openDatabase(name), newId());
+    const { event } = await tab1.log(babyId, 'diaper', { kind: 'wet' });
+    const edits = await Promise.all(
+      [tab1, tab2, tab1, tab2].map((t, i) => t.edit(event.id, { notes: String(i) })),
+    );
+    expect(edits.map((e) => e.event.version).sort()).toEqual([2, 3, 4, 5]);
+    expect(await tab1.db.count('versions')).toBe(5);
+  });
+
+  test('an acknowledgment only retires the body that was submitted', async () => {
+    const store = await makeStore();
+    const server = new FakeServer();
+    const { event } = await store.log(babyId, 'diaper', { kind: 'wet' });
+    const submitted = await store.pending(10);
+    const response = server.push(submitted);
+    // The pending row changes after submission (not reachable through the store's own
+    // writes, which never reuse a version; this pins the acknowledgment's own guard).
+    const changed = { ...event, notes: 'changed' };
+    await store.db.put('versions', {
+      key: rowKey(changed, null),
+      id: event.id,
+      babyId,
+      seq: null,
+      pending: 1,
+      event: changed,
+    });
+    const [result] = response.results;
+    if (result?.status !== 'accepted') throw new Error('expected an accepted push');
+    await store.applyPushResults(submitted, response.results);
+    expect(await store.pending(10)).toEqual([changed]);
+    const synced = await store.db.get('versions', rowKey(event, result.seq));
+    expect(synced?.event).toEqual(event);
+  });
+
+  test('a result for a version that was not submitted changes nothing', async () => {
+    const store = await makeStore();
+    const { event } = await store.log(babyId, 'diaper', { kind: 'wet' });
+    await store.applyPushResults([], [{ id: event.id, version: 1, seq: 1, status: 'accepted' }]);
+    expect(await store.pending(10)).toEqual([event]);
   });
 });

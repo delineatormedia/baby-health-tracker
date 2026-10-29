@@ -112,13 +112,15 @@ describe('resolveCurrent', () => {
     expect(resolveCurrent(log)?.seq).toBe(7);
   });
 
-  test('tied unsynced versions resolve by content, not clock or property order', () => {
+  test('tied unsynced versions resolve by canonical body, not property order', () => {
     const a = version(2, null, { notes: 'A', recordedAt: '2026-10-29T03:00:00.000Z' });
     const b = version(2, null, { notes: 'B', recordedAt: '2026-10-29T03:00:00.000Z' });
     const winner = resolveCurrent([a, b]);
     expect(resolveCurrent([b, a])).toBe(winner);
 
-    // An earlier or later client clock on either side changes nothing.
+    // These bodies first differ in notes, which canonical order puts before recordedAt, so a
+    // skewed clock changes nothing here. Bodies that differ only in a timestamp are ordered by
+    // it; that order is provisional until the server sequences them (see docs/PRD.md).
     for (const recordedAt of ['2020-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']) {
       const loserId = winner === a ? b : a;
       const skewed = { ...loserId, event: { ...loserId.event, recordedAt } };

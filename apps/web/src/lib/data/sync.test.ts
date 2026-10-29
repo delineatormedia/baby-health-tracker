@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { newId } from '@bht/schema';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { openDatabase } from './db.ts';
 import { EventStore } from './store.ts';
 import { SyncClient } from './sync.ts';
@@ -156,6 +156,63 @@ describe('SyncClient', () => {
     mom.transport.status = 401;
     await mom.sync.sync();
     expect(mom.sync.status).toBe('signed_out');
+  });
+
+  test('a 401 pauses every trigger until resume()', async () => {
+    const server = new FakeServer();
+    const mom = await phone(server);
+    let pulls = 0;
+    const pull = mom.transport.pull.bind(mom.transport);
+    mom.transport.pull = (...args) => {
+      pulls += 1;
+      return pull(...args);
+    };
+    mom.transport.status = 401;
+    await mom.sync.sync();
+    expect(mom.sync.status).toBe('signed_out');
+    pulls = 0;
+    const { event } = await mom.store.log(babyId, 'diaper', { kind: 'wet' });
+    await mom.sync.sync();
+    expect(mom.transport.pushes).toBe(0);
+    expect(pulls).toBe(0);
+
+    mom.transport.status = null;
+    await mom.sync.resume();
+    expect(mom.sync.status).toBe('idle');
+    expect(server.current(event.id)).toEqual(event);
+  });
+
+  test('stopping during a failing request schedules no retry or follow-up run', async () => {
+    vi.stubGlobal('window', new EventTarget());
+    vi.stubGlobal('document', Object.assign(new EventTarget(), { visibilityState: 'visible' }));
+    try {
+      const server = new FakeServer();
+      // A 1 ms base delay: a retry, if scheduled, would fire well inside the wait below.
+      const mom = await phone(server);
+      const sync = new SyncClient(mom.store, mom.transport, { baseDelayMs: 1, random: () => 1 });
+      clients.push(sync);
+      let pulls = 0;
+      const fail = Promise.withResolvers<never>();
+      const started = Promise.withResolvers<void>();
+      mom.transport.pull = () => {
+        pulls += 1;
+        started.resolve();
+        return pulls === 1 ? fail.promise : Promise.reject(new TypeError('Failed to fetch'));
+      };
+      const dispose = sync.start();
+      await started.promise;
+      const running = sync.sync(); // queues a follow-up run
+      dispose();
+      fail.reject(new TypeError('Failed to fetch'));
+      await running;
+      await new Promise((r) => setTimeout(r, 50));
+      expect(pulls).toBe(1);
+      expect(sync.status).toBe('offline');
+      await sync.sync();
+      expect(pulls).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test('concurrent requests are single-flight with one follow-up run', async () => {

@@ -1,4 +1,5 @@
 import {
+  canonicalJson,
   newId,
   nextVersion,
   parseEvent,
@@ -9,7 +10,8 @@ import {
   type EventType,
   type StoredVersion,
 } from '@bht/schema';
-import { rowKey, type Database, type VersionRow } from './db.ts';
+import type { IDBPTransaction } from 'idb';
+import { rowKey, type BhtDB, type Database, type VersionRow } from './db.ts';
 import type { PullResponse, PushResult } from './protocol.ts';
 
 export interface Change {
@@ -78,14 +80,12 @@ export class EventStore {
   }
 
   async edit(id: string, fields: EditFields): Promise<Change> {
-    const prev = await this.#require(id);
-    const event = await this.#next(prev, { ...fields, deleted: false });
+    const { prev, event } = await this.#next(id, { ...fields, deleted: false });
     return { event, undo: () => this.#restore(prev) };
   }
 
   async remove(id: string): Promise<Change> {
-    const prev = await this.#require(id);
-    const event = await this.#next(prev, { deleted: true });
+    const { prev, event } = await this.#next(id, { deleted: true });
     return { event, undo: () => this.#restore(prev) };
   }
 
@@ -99,23 +99,30 @@ export class EventStore {
   }
 
   /**
-   * Records the server's verdict on pushed versions. Accepted, duplicate and superseded
-   * versions are kept under their seq. Rejected ones are dropped (retrying cannot fix them)
-   * and returned so the caller can surface them.
+   * Records the server's verdict on the versions in `submitted`. Accepted, duplicate and
+   * superseded versions are stored under their seq exactly as submitted. Rejected ones are
+   * dropped (retrying cannot fix them) and returned so the caller can surface them. A pending
+   * row is retired only if it still holds the submitted body; anything else stays pending.
    */
-  async applyPushResults(results: PushResult[]): Promise<PushResult[]> {
+  async applyPushResults(submitted: BabyEvent[], results: PushResult[]): Promise<PushResult[]> {
+    const sent = new Map(submitted.map((e) => [`${e.id}:${e.version}`, e]));
     const rejected: PushResult[] = [];
     const tx = this.db.transaction('versions', 'readwrite');
     for (const r of results) {
-      const localKey = `${r.id}:${r.version}:local`;
+      const event = sent.get(`${r.id}:${r.version}`);
+      if (!event) continue;
+      const localKey = rowKey(event, null);
       const local = await tx.store.get(localKey);
-      if (!local) continue;
-      await tx.store.delete(localKey);
+      const unchanged = local !== undefined && canonicalJson(local.event) === canonicalJson(event);
       if (r.status === 'rejected') {
-        rejected.push(r);
+        if (unchanged) {
+          await tx.store.delete(localKey);
+          rejected.push(r);
+        }
         continue;
       }
-      await tx.store.put({ ...local, key: rowKey(local.event, r.seq), seq: r.seq, pending: 0 });
+      if (unchanged) await tx.store.delete(localKey);
+      await tx.store.put({ ...toRow(event, r.seq), pending: 0 });
     }
     await tx.done;
     this.#emit();
@@ -126,16 +133,7 @@ export class EventStore {
   async applyPull(page: PullResponse): Promise<void> {
     const tx = this.db.transaction(['versions', 'meta'], 'readwrite');
     const versions = tx.objectStore('versions');
-    for (const { seq, event } of page.versions) {
-      await versions.put({
-        key: rowKey(event, seq),
-        id: event.id,
-        babyId: event.babyId,
-        seq,
-        pending: 0,
-        event,
-      });
-    }
+    for (const { seq, event } of page.versions) await versions.put(toRow(event, seq));
     await tx.objectStore('meta').put(page.next, CURSOR);
     await tx.done;
     if (page.versions.length > 0) this.#emit();
@@ -166,46 +164,64 @@ export class EventStore {
     return this.db.getAllFromIndex('versions', 'byId', id);
   }
 
-  async #require(id: string): Promise<BabyEvent> {
-    const current = await this.current(id);
-    if (!current) throw new Error(`Unknown event ${id}`);
-    return current;
-  }
-
-  /** Writes the next version of an event; the number is above every version held, won or lost. */
-  async #next(prev: BabyEvent, fields: EditFields & { deleted: boolean }): Promise<BabyEvent> {
-    const highest = Math.max(...(await this.#rows(prev.id)).map((r) => r.event.version));
-    return this.#write({
+  /**
+   * Writes the next version of an event on top of its current version. Reading the versions
+   * held and appending happen in one readwrite transaction, which IndexedDB serializes across
+   * every connection, so concurrent writers (in this store or another tab) each get their own
+   * number above every version held, won or lost, and never overwrite each other.
+   */
+  async #next(
+    id: string,
+    fields: EditFields & { deleted: boolean },
+  ): Promise<{ prev: BabyEvent; event: BabyEvent }> {
+    const tx = this.db.transaction('versions', 'readwrite');
+    const rows = await tx.store.index('byId').getAll(id);
+    const prev = resolveCurrent(rows.map(toStored))?.event;
+    if (!prev) {
+      tx.abort();
+      await tx.done.catch(() => {});
+      throw new Error(`Unknown event ${id}`);
+    }
+    const event = await this.#append(tx, {
       ...prev,
       ...fields,
       authorId: this.authorId,
       recordedAt: this.now().toISOString(),
-      version: nextVersion(highest),
+      version: nextVersion(Math.max(...rows.map((r) => r.event.version))),
     });
+    return { prev, event };
   }
 
   async #restore(prev: BabyEvent): Promise<Change> {
-    const before = await this.#require(prev.id);
     const { data, occurredAt, notes, deleted } = prev;
-    const event = await this.#next(prev, { data, occurredAt, notes, deleted });
+    const { prev: before, event } = await this.#next(prev.id, { data, occurredAt, notes, deleted });
     return { event, undo: () => this.#restore(before) };
   }
 
-  async #write(candidate: unknown): Promise<BabyEvent> {
+  #write(candidate: unknown): Promise<BabyEvent> {
+    return this.#append(this.db.transaction('versions', 'readwrite'), candidate);
+  }
+
+  /** Adds a pending version and commits `tx`. `add` refuses to replace an existing row. */
+  async #append(tx: VersionsTx, candidate: unknown): Promise<BabyEvent> {
     const parsed = parseEvent(candidate);
-    if (!parsed.ok) throw new Error(`Invalid event: ${parsed.errors.join('; ')}`);
+    if (!parsed.ok) {
+      tx.abort();
+      await tx.done.catch(() => {});
+      throw new Error(`Invalid event: ${parsed.errors.join('; ')}`);
+    }
     const event = parsed.value;
-    await this.db.put('versions', {
-      key: rowKey(event, null),
-      id: event.id,
-      babyId: event.babyId,
-      seq: null,
-      pending: 1,
-      event,
-    });
+    await tx.store.add({ ...toRow(event, null), pending: 1 });
+    await tx.done;
     this.#emit(true);
     return event;
   }
+}
+
+type VersionsTx = IDBPTransaction<BhtDB, ['versions'], 'readwrite'>;
+
+function toRow(event: BabyEvent, seq: number | null): VersionRow {
+  return { key: rowKey(event, seq), id: event.id, babyId: event.babyId, seq, pending: 0, event };
 }
 
 function toStored(row: VersionRow): StoredVersion {

@@ -13,11 +13,13 @@ export interface SyncOptions {
 
 /**
  * Pushes pending versions, then pulls everything after the cursor. Failures retry with
- * exponential backoff and jitter; a 401 stops until sign-in. Runs are single-flight: a
- * request during a run schedules exactly one more run.
+ * exponential backoff and jitter. A 401 pauses every trigger until resume() after sign-in.
+ * Runs are single-flight: a request during a run schedules exactly one more run. Once
+ * stopped, nothing in flight schedules more work.
  */
 export class SyncClient {
   #status: SyncStatus = 'idle';
+  #stopped = false;
   #failures = 0;
   #running: Promise<void> | null = null;
   #again = false;
@@ -52,6 +54,7 @@ export class SyncClient {
 
   /** Syncs now, or once more after the run in flight. Resolves when that sync settles. */
   sync(): Promise<void> {
+    if (this.#stopped || this.#status === 'signed_out') return this.#running ?? Promise.resolve();
     if (this.#running) {
       this.#again = true;
       return this.#running;
@@ -59,16 +62,16 @@ export class SyncClient {
     this.#clearTimer();
     this.#running = this.#run().finally(() => {
       this.#running = null;
-      if (this.#again) {
-        this.#again = false;
-        void this.sync();
-      }
+      const again = this.#again;
+      this.#again = false;
+      if (again) void this.sync();
     });
     return this.#running;
   }
 
   /** Wires browser triggers: local writes, coming back online, and returning to the app. */
   start(): () => void {
+    this.#stopped = false;
     const onChange = () => void this.sync();
     const onVisible = () => {
       if (document.visibilityState === 'visible') void this.sync();
@@ -81,13 +84,22 @@ export class SyncClient {
       unsubscribe();
       window.removeEventListener('online', onChange);
       document.removeEventListener('visibilitychange', onVisible);
-      this.#clearTimer();
+      this.stop();
     };
   }
 
-  /** Cancels a scheduled retry. */
+  /** Stops syncing: cancels a scheduled retry, and a run in flight schedules nothing more. */
   stop(): void {
+    this.#stopped = true;
+    this.#again = false;
     this.#clearTimer();
+  }
+
+  /** Call after a successful sign-in: lifts the 401 pause and syncs. */
+  resume(): Promise<void> {
+    if (this.#status === 'signed_out') this.#setStatus('idle');
+    this.#failures = 0;
+    return this.sync();
   }
 
   onStatus(listener: (s: SyncStatus) => void): () => void {
@@ -109,6 +121,7 @@ export class SyncClient {
       }
       this.#failures += 1;
       this.#setStatus('offline');
+      if (this.#stopped) return;
       this.#timer = setTimeout(() => void this.sync(), this.backoffMs(this.#failures));
     }
   }
@@ -118,7 +131,7 @@ export class SyncClient {
       const batch = await this.store.pending(MAX_PUSH_BATCH);
       if (batch.length === 0) return;
       const { results } = await this.transport.push(batch);
-      const rejected = await this.store.applyPushResults(results);
+      const rejected = await this.store.applyPushResults(batch, results);
       if (rejected.length > 0) this.#opts.onRejected?.(rejected);
       if (batch.length < MAX_PUSH_BATCH) return;
     }
