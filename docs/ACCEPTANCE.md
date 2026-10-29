@@ -10,6 +10,7 @@ says *Expected*, the text in quotes is what the app shows, word for word. If the
 says something else, that's a failure, even if it seems to mean the same thing.
 
 Checks 8 and 9 need step 3b-2 (Count without, removing a phone). Skip them until it lands.
+Check 10 needs #74 (app updates) on the commit under test. Skip it until then.
 
 ## Where to run it
 
@@ -223,6 +224,41 @@ arrived late". (Wording from the 3b plan, [SYNC_PLAN.md](SYNC_PLAN.md). Check it
    again. *Expected:* B signs in as a new phone without any dead end. Its kept entries
    upload, and any day they land in on A reads "Updated: entries from <B's name>’s phone
    arrived late".
+
+### 10. App update (after #74, Mac rig, A, 5 min)
+
+The browser tests switch builds on a desktop browser and fake the return to the app. This
+check is the real thing: build N is running on A, the Mac starts build N+1, and A comes back
+from the background. The app shows no build number, so N+1 gets a small "build N+1" label
+in the bottom-left corner.
+
+1. On A, open **Feed**, tap **Left** and leave the timer running on screen. Switch to the
+   Home Screen (don't force-quit) and note the timer's time.
+2. On the Mac, stop the server (Ctrl-C). Build again and mark the new build:
+
+   ```sh
+   pnpm build
+   perl -pi -e 's#</head>#<style>body::after{content:"build N+1";position:fixed;left:8px;bottom:4px;font:12px system-ui;opacity:.7}</style></head>#' apps/web/build/index.html
+   grep -c 'build N+1' apps/web/build/index.html     # prints 1
+   ```
+
+   Start the server again with the same command and the same `DATABASE_PATH`. Leave
+   `tailscale serve` as it is.
+3. On A, open the app from the app switcher.
+   *Expected:* the timer is still running, and its time counted on while the app was in
+   the background. If the timer screen is showing, it isn't reloaded and has no label
+   yet; that's correct. If iOS closed the app in the background, it opens on Home
+   instead, with the feed still running.
+4. Swipe back to Home if you're on the timer.
+   *Expected:* "build N+1" in the bottom-left corner, Home reads "Synced", and the feed is
+   still running. Open it: the timer shows the same running time, not 0.
+5. Stop the timer and save the feed. Force-quit the app and open it from the Home Screen
+   icon.
+   *Expected:* "build N+1" is still there, and the feed is in the log once.
+
+Within one screen change of A coming back, the label must be showing. If it takes more
+than one, or if any screen reloads while you're entering something, report it as a
+failure of 10.3 or 10.4.
 
 ## What to send back
 
