@@ -15,6 +15,7 @@ import {
   markSetup,
   loadHomeNoteDismissed,
   loadPrefs,
+  loadSeeded,
   saveBaby,
   saveHomeNoteDismissed,
   savePrefs,
@@ -65,6 +66,8 @@ class AppState {
   /** Whether the browser has promised to keep this phone's logs; Settings shows it. */
   persistence = $state<Persistence>('unknown');
   homeNoteDismissed = $state(false);
+  /** Dev test data was loaded here (#58): badged, and never synced to a real server. */
+  seeded = $state(false);
   /** Wall clock for elapsed-time displays, ticking once a second. */
   now = $state(Date.now());
 
@@ -82,6 +85,11 @@ class AppState {
       if (!kv) throw new Error('Local storage is unavailable.');
       this.prefs = loadPrefs(kv);
       this.#kv = kv;
+      // Dev builds only (#58): `?seed=healthy-month` replaces local data with test data.
+      if (import.meta.env.DEV) {
+        await (await import('../dev/seed.ts')).seedFromUrl(kv, () => openDatabase());
+      }
+      this.seeded = loadSeeded(kv);
       this.#store = new EventStore(await openDatabase(), authorId(kv));
       this.baby = loadBaby(kv);
       this.setupAt = loadSetupAt(kv);

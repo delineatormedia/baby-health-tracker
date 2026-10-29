@@ -13,6 +13,11 @@
   });
 </script>
 
+{#if app.seeded}
+  <!-- Dev test data (#58). The marker outlives every reload; only clearing site data ends it. -->
+  <p class="test-data" role="status">Test data</p>
+{/if}
+
 {#if app.saveError}
   <div class="save-fail" role="alert">
     <span>{app.saveError?.text}</span>
@@ -40,6 +45,17 @@
 {/if}
 
 <style>
+  .test-data {
+    margin: 0;
+    padding: calc(4px + env(safe-area-inset-top)) 12px 4px;
+    background: var(--flag);
+    color: var(--bg);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-align: center;
+    text-transform: uppercase;
+  }
   .save-fail {
     position: fixed;
     top: calc(8px + env(safe-area-inset-top));
