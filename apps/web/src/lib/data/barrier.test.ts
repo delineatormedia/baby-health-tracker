@@ -247,6 +247,45 @@ describe('adopting the device list', () => {
     expect(next?.watermark).toBe(server.now);
   });
 
+  // Fail closed at the boundary: a row without the wire shape rejects the whole page, before
+  // anything from it is written or adopted, so Readings keeps waiting.
+  const bad: [string, unknown][] = [
+    ['deviceId', 'not-a-ulid'],
+    ['memberName', 7],
+    ['watermark', '2026-10-29'],
+    ['watermark', -1],
+    ['lastSeenAt', 1.5],
+    ['removedAt', 'yes'],
+    ['signedOutAt', 'yes'],
+    ['signedOutAt', true],
+  ];
+  const fields = ['deviceId', 'memberName', 'watermark', 'lastSeenAt', 'removedAt', 'signedOutAt'];
+  test.each([
+    ...fields.map((field) => [field, 'missing', undefined] as const),
+    ...bad.map(([field, value]) => [field, JSON.stringify(value), value] as const),
+  ])('a device row with %s %s rejects the page', async (field, _label, value) => {
+    const server = new FakeServer();
+    const dad = await phone(server);
+    await wet(dad.store);
+    await dad.sync.sync();
+    const mom = await phone(server);
+    const pull = mom.transport.pull.bind(mom.transport);
+    mom.transport.pull = async (...args) => {
+      const page = await pull(...args);
+      const row: Record<string, unknown> = { ...page.devices![0]! };
+      if (value === undefined) delete row[field];
+      else row[field] = value;
+      return { ...page, devices: [row as HouseholdDevice] };
+    };
+    await mom.sync.sync();
+    expect(mom.sync.status).toBe('offline');
+    expect(mom.sync.error).toBe('Server sent an unreadable device list');
+    expect(mom.adopted).toEqual([]);
+    expect(await mom.store.devices('')).toBeNull();
+    expect(await mom.store.cursor()).toBe(0);
+    expect(mom.transport.barriersSent).toEqual([]);
+  });
+
   test('a stopped client adopts nothing', async () => {
     const server = new FakeServer();
     const mom = await phone(server);

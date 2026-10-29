@@ -191,6 +191,26 @@ describe('syncedThrough', () => {
     expect(waitingOn(v, NOON - H)).toEqual([sam]);
   });
 
+  // A row the pull would reject, or one kept from before a field existed, must never read as
+  // synced: only a finite number is a time.
+  test.each([
+    ['missing', undefined],
+    ['a string', '2026-10-29'],
+    ['NaN', NaN],
+    ['Infinity', Infinity],
+    ['-Infinity', -Infinity],
+  ])('a time that is %s grants no coverage', (_label, bad) => {
+    const garbage = bad as unknown as number;
+    for (const field of ['watermark', 'removedAt', 'signedOutAt'] as const) {
+      const sam: HouseholdDevice = { ...device('Sam', null), [field]: garbage };
+      if (bad === undefined) delete (sam as Partial<HouseholdDevice>)[field];
+      const v = view([sam], agreed(), MIN);
+      expect(syncedSpans(v), field).toEqual([]);
+      expect(syncedThrough(v), field).toBeNull();
+      expect(waitingOn(v, NOON - 30 * 24 * H), field).toEqual([sam]);
+    }
+  });
+
   test('property: min over phones matches the per-window rule both ways', () => {
     let seed = 11;
     const rand = () => (seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31) / 2 ** 31;
