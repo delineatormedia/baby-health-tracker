@@ -57,7 +57,7 @@ jobs:
         if: steps.browsers.outputs.cache-hit == 'true'
         run: pnpm --filter @bht/web exec playwright install-deps chromium webkit
       - run: pnpm --filter @bht/web build
-      - run: pnpm --filter @bht/web e2e
+      - run: pnpm --filter @bht/web e2e e2e/sync.spec.ts --repeat-each 30
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
