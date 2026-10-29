@@ -250,3 +250,13 @@ export function latestStart(e: BabyEvent, now: number): number | undefined {
     return now - e.data.durationSeconds * 1000;
   return undefined;
 }
+
+/**
+ * The start to save for an event moved to `at` (null is now), held to its exact latest start.
+ * A clamped time stays a timestamp, so a finished feed never ends after `now`.
+ */
+export function cappedStart(e: BabyEvent, at: string | null, now: number): string {
+  const ms = at === null ? now : Date.parse(at);
+  const cap = latestStart(e, now);
+  return new Date(cap !== undefined && ms > cap ? cap : ms).toISOString();
+}

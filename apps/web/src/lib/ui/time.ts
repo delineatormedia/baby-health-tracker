@@ -47,15 +47,17 @@ export function minutesBefore(now: number, minutes: number): string {
 }
 
 /**
- * Reads a time picked on the phone's wheel. Null means "now": anything within the last minute.
- * Undefined means the pick can't be used (empty, or later than `latest`) and changes nothing,
- * since iOS ignores the input's max and lets a parent spin into the future.
+ * Reads a time picked on the phone's wheel. Undefined means the pick can't be used (empty, or
+ * later than the cap) and changes nothing, since iOS ignores the input's max and lets a parent
+ * spin into the future. Without a cap, anything within the last minute is null, "now". With a
+ * cap (a finished feed's latest start) the pick is kept as picked: it is checked against the
+ * exact cap and never becomes "now", which would move the feed's end past the present.
  */
-export function readPick(value: string, now: number, latest = now): string | null | undefined {
+export function readPick(value: string, now: number, latest?: number): string | null | undefined {
   const iso = fromLocalInput(value);
   if (iso === null) return undefined;
   const ms = Date.parse(iso);
-  if (latest < now - MINUTE) return ms > latest ? undefined : iso;
+  if (latest !== undefined) return ms > latest ? undefined : iso;
   if (ms > now) return undefined;
   return ms >= now - MINUTE ? null : iso;
 }

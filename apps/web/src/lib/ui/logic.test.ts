@@ -2,6 +2,7 @@ import { newId, toMl, type BabyEvent } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
 import {
   ageDays,
+  cappedStart,
   clock,
   countMarks,
   dayMarks,
@@ -207,4 +208,26 @@ test('latestStart keeps a finished feed ending by now', () => {
     NOW - 900_000,
   );
   expect(latestStart(ev('diaper', { kind: 'wet' }, 0), NOW)).toBeUndefined();
+});
+
+describe('cappedStart', () => {
+  // Completed an hour ago, 30 seconds long: it can start no later than 30 s before now.
+  const feed = ev('breastfeed', { side: 'left', durationSeconds: 30 }, 60);
+  const iso = (ms: number) => new Date(ms).toISOString();
+
+  test('Now on a completed 30-second feed saves the exact latest start, never a future end', () => {
+    const start = cappedStart(feed, null, NOW);
+    expect(start).toBe(iso(NOW - 30_000));
+    expect(Date.parse(start) + 30_000).toBeLessThanOrEqual(NOW);
+  });
+  test('a time inside the last 30 seconds clamps to the cap and stays a timestamp', () => {
+    expect(cappedStart(feed, iso(NOW - 10_000), NOW)).toBe(iso(NOW - 30_000));
+  });
+  test('a time at or before the cap is kept exactly', () => {
+    expect(cappedStart(feed, iso(NOW - 30_000), NOW)).toBe(iso(NOW - 30_000));
+    expect(cappedStart(feed, feed.occurredAt, NOW)).toBe(feed.occurredAt);
+  });
+  test('an uncapped event saves Now as now', () => {
+    expect(cappedStart(ev('diaper', { kind: 'wet' }, 5), null, NOW)).toBe(iso(NOW));
+  });
 });

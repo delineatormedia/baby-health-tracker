@@ -40,6 +40,16 @@ describe('readPick', () => {
     expect(readPick('', NOW)).toBeUndefined();
     expect(readPick('2026-10-29', NOW)).toBeUndefined();
   });
+  test('a cap within the last minute is exact: no slack, and the pick is never "now"', () => {
+    // A completed 30-second feed: latest start is 1:40:00 when it is 1:40:30.
+    const latest = NOW - 30_000;
+    const minute = local(29, 1, 40);
+    expect(readPick(toLocalInput(minute), NOW, latest)).toBe(new Date(minute).toISOString());
+    expect(readPick(toLocalInput(minute), NOW, minute - 1)).toBeUndefined();
+    expect(readPick(toLocalInput(local(29, 1, 39)), NOW, latest)).toBe(
+      new Date(local(29, 1, 39)).toISOString(),
+    );
+  });
   test('a cap before now rules out now and anything after the cap', () => {
     const latest = NOW - 20 * 60_000; // a 20-minute feed must have started by 1:20
     expect(readPick(toLocalInput(NOW), NOW, latest)).toBeUndefined();

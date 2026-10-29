@@ -4,7 +4,7 @@
   import { page } from '$app/state';
   import { untrack } from 'svelte';
   import { app } from '../../lib/ui/app.svelte.ts';
-  import { describe, latestStart } from '../../lib/ui/logic.ts';
+  import { cappedStart, describe, latestStart } from '../../lib/ui/logic.ts';
   import TimeRow from '../../lib/ui/TimeRow.svelte';
   import { when } from '../../lib/ui/time.ts';
 
@@ -22,7 +22,8 @@
     if (busy || !event) return;
     busy = true;
     try {
-      const occurredAt = at ?? new Date().toISOString();
+      // The row already honours the cap; the clock has moved since, so hold it exactly here too.
+      const occurredAt = cappedStart(event, at, Date.now());
       if (occurredAt !== event.occurredAt) {
         const change = await app.store.edit(event.id, { occurredAt });
         app.showUndo(

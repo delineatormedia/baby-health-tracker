@@ -5,8 +5,8 @@
 
   /**
    * The one time control on every logging screen (#18). `at` is a UTC timestamp, or null for
-   * "now" at the moment of saving. `latest` caps it, e.g. a finished feed must start early
-   * enough to have ended by now; past that cap "Now" and the nearer offsets are disabled.
+   * "now" at the moment of saving. `latest` caps it exactly, e.g. a finished feed must start
+   * early enough to have ended by now; "Now" and any offset after the cap are disabled.
    */
   let {
     at = $bindable(null),
@@ -16,7 +16,7 @@
   }: { at?: string | null; label?: string; latest?: number; open?: boolean } = $props();
 
   const cap = $derived(latest ?? app.now);
-  const nowAllowed = $derived(cap >= app.now - 60_000);
+  const nowAllowed = $derived(cap >= app.now);
   const value = $derived(
     at === null ? 'Now' : `${when(at, app.now)} · ${agoText(app.now - Date.parse(at))}`,
   );
@@ -57,7 +57,7 @@
           value={toLocalInput(at === null ? app.now : Date.parse(at))}
           max={toLocalInput(cap)}
           onchange={(e) => {
-            const next = readPick(e.currentTarget.value, Date.now(), latest ?? Date.now());
+            const next = readPick(e.currentTarget.value, Date.now(), latest);
             if (next !== undefined) set(next);
           }}
           aria-label="Pick a time"

@@ -25,7 +25,7 @@
         },
         { occurredAt: at ?? undefined },
       );
-      await goto(resolve(`/diaper/details?id=${change.event.id}`), { replaceState: true });
+      await goto(resolve(`/diaper/details?id=${change.event.id}&new`), { replaceState: true });
     } catch (e) {
       app.fail(e);
     } finally {

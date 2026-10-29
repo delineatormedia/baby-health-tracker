@@ -5,6 +5,7 @@
   import { untrack } from 'svelte';
   import type { Stool } from '@bht/schema';
   import { app } from '../../../lib/ui/app.svelte.ts';
+  import { saveDetails } from '../../../lib/ui/details.ts';
   import { describe, swatch, type Diaper } from '../../../lib/ui/logic.ts';
   import TimeRow from '../../../lib/ui/TimeRow.svelte';
   import { when } from '../../../lib/ui/time.ts';
@@ -33,6 +34,8 @@
   ];
 
   const id = page.url.searchParams.get('id') ?? '';
+  // Set by the color tap that just logged this diaper; absent when reopened from a toast.
+  const fresh = page.url.searchParams.has('new');
   const event = $derived(
     app.events.find(
       (e): e is Diaper => e.id === id && e.type === 'diaper' && e.data.kind !== 'wet',
@@ -52,32 +55,25 @@
     (flags = flags.includes(f) ? flags.filter((x) => x !== f) : [...flags, f]);
 
   async function done() {
-    if (busy || !event || event.data.kind === 'wet') return;
+    if (busy || !event) return;
     busy = true;
     try {
-      const data = {
-        kind: event.data.kind,
-        stool: { color: stool?.color ?? null, consistency, size, flags },
-      };
-      const occurredAt = at ?? new Date().toISOString();
-      const moved = occurredAt !== event.occurredAt;
-      // Details and the time land as one new version: one sync, one undo.
-      const changed =
-        consistency !== (stool?.consistency ?? null) ||
-        size !== (stool?.size ?? null) ||
-        flags.join() !== (stool?.flags ?? []).join();
-      const saved =
-        moved || changed
-          ? (await app.store.edit(event.id, { data, ...(moved ? { occurredAt } : {}) })).event
-          : event;
-      // Undo on home takes back the whole diaper, which is what was just logged.
-      app.showUndo(
-        `${describe(saved, app.volume)} logged · ${when(saved.occurredAt, Date.now())}`,
+      const change = await saveDetails(
+        app.store,
+        event,
         {
-          event: saved,
-          undo: () => app.store.remove(event.id),
+          stool: { color: stool?.color ?? null, consistency, size, flags },
+          occurredAt: at ?? new Date().toISOString(),
         },
+        fresh,
       );
+      if (change) {
+        const verb = fresh ? 'logged' : 'updated';
+        app.showUndo(
+          `${describe(change.event, app.volume)} ${verb} · ${when(change.event.occurredAt, Date.now())}`,
+          change,
+        );
+      }
       await goto(resolve('/'), { replaceState: true });
     } catch (e) {
       app.fail(e);
