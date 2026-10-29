@@ -37,8 +37,14 @@ brand marks. No bevels, no fake chrome.
 
 ## Safe zone and legibility (reviewed 2026-10-29)
 
-- All six tiles keep the mark inside the Ø80% maskable safe zone. Worst case
-  is Fledge at 0.779; Cairn 0.760/0.765, Hearth 0.757.
+- All six tiles keep the mark inside the Ø80% maskable safe zone (limit
+  r 409.6 at 1024, i.e. ratio 0.800). Metric: **max distance from canvas
+  center over rendered mark pixels ÷ 512**, measured on the 1024 masters
+  rendered at 2× (2048 px), threshold-summed channel diff > 90 against the
+  tile bg. Measured on the masters: **Cairn 0.744, Hearth 0.741, Fledge
+  0.769** — identical night and light. (The board review quoted
+  0.760/0.765/0.757/0.779; those were pixel measurements of the rendered
+  208 px board tiles and are superseded by these master measurements.)
 - At 48 px: Cairn reads clearly (three stones, accent top) — the strongest of
   the three; Hearth reads (arch + droplet).
 - Fledge does not read below ~96 px ("rising trend + reading point"). If
