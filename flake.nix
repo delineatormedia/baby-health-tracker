@@ -139,7 +139,10 @@
                 {
                   # Only what any bootable system needs; a real host has its own.
                   boot.loader.grub.devices = [ "nodev" ];
-                  fileSystems."/".device = "/dev/disk/by-label/nixos";
+                  fileSystems."/" = {
+                    device = "/dev/disk/by-label/nixos";
+                    fsType = "ext4";
+                  };
                   system.stateVersion = lib.trivial.release;
                 }
               ];
