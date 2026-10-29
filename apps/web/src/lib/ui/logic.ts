@@ -14,6 +14,7 @@ import {
 export type Breastfeed = Extract<BabyEvent, { type: 'breastfeed' }>;
 export type Bottle = Extract<BabyEvent, { type: 'bottle' }>;
 export type Diaper = Extract<BabyEvent, { type: 'diaper' }>;
+export type Pump = Extract<BabyEvent, { type: 'pump' }>;
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -253,6 +254,99 @@ export function lastBottle(events: readonly BabyEvent[]): Bottle | undefined {
   return events.find((e): e is Bottle => e.type === 'bottle');
 }
 
+// Pump ------------------------------------------------------------------------------------
+
+/** A feed that ended this long before a pump started counts as "right after a feed". */
+export const AFTER_FEED_MS = 30 * 60_000;
+
+/** The pump whose timer is running (no volumes yet), newest first. */
+export function runningPump(events: readonly BabyEvent[]): Pump | undefined {
+  return events.find((e): e is Pump => e.type === 'pump' && e.data.durationSeconds === null);
+}
+
+/**
+ * Stopped, amount not entered (#32): Stop saved the duration at once; the volumes are a later
+ * edit. No volume on either side marks it, since a finished pump always has one.
+ */
+export const awaitingAmount = (p: Pump) =>
+  p.data.durationSeconds != null && p.data.leftMl === null && p.data.rightMl === null;
+
+/** The pump stopped with its amount still to enter, newest first. */
+export function stoppedPump(events: readonly BabyEvent[]): Pump | undefined {
+  return events.find((e): e is Pump => e.type === 'pump' && awaitingAmount(e));
+}
+
+/** The last finished pump, for Home and for the next pump's starting volumes. */
+export function lastPump(events: readonly BabyEvent[]): Pump | undefined {
+  return events.find(
+    (e): e is Pump => e.type === 'pump' && e.data.durationSeconds !== null && !awaitingAmount(e),
+  );
+}
+
+/** The sides a pump ran on: its timer's side, or the sides with a volume on older pumps. */
+export function pumpSide(p: Pump): Side {
+  if (p.data.side) return p.data.side;
+  if (p.data.leftMl !== null && p.data.rightMl !== null) return 'both';
+  return p.data.leftMl !== null ? 'left' : 'right';
+}
+
+export const pumpsLeft = (side: Side) => side !== 'right';
+export const pumpsRight = (side: Side) => side !== 'left';
+
+/** A new timer on these sides. The volumes and "after a feed" are asked at Stop. */
+export function startPumpData(side: Side): Pump['data'] {
+  return { leftMl: null, rightMl: null, afterFeed: false, side, durationSeconds: null };
+}
+
+/** Stop: the timer's sides and duration, saved at once. The volumes come with Log. */
+export function stopPumpData(side: Side, durationSeconds: number): Pump['data'] {
+  return { leftMl: null, rightMl: null, afterFeed: false, side, durationSeconds };
+}
+
+/** A finished pump's data: only the sides it ran on get a volume. */
+export function pumpData(
+  side: Side,
+  volumes: { left: number; right: number },
+  afterFeed: boolean,
+  durationSeconds?: number,
+): Pump['data'] {
+  return {
+    leftMl: pumpsLeft(side) ? volumes.left : null,
+    rightMl: pumpsRight(side) ? volumes.right : null,
+    afterFeed,
+    side,
+    ...(durationSeconds === undefined ? {} : { durationSeconds }),
+  };
+}
+
+/**
+ * Whether a pump starting at `start` directly followed a feed: a finished breastfeed or a
+ * bottle ended at most 30 minutes before it. Pre-fills the question; the parent decides.
+ */
+export function followsFeed(events: readonly BabyEvent[], start: number): boolean {
+  return events.some((e) => {
+    if (e.deleted) return false;
+    let end: number;
+    if (e.type === 'bottle') end = Date.parse(e.occurredAt);
+    else if (e.type === 'breastfeed' && e.data.durationSeconds !== null)
+      end = Date.parse(e.occurredAt) + e.data.durationSeconds * 1000;
+    else return false;
+    return end <= start && start - end <= AFTER_FEED_MS;
+  });
+}
+
+/** The volume a side starts at on the Stop screen: that side's last pump, else the default. */
+export function lastPumpMl(events: readonly BabyEvent[], breast: 'left' | 'right'): number {
+  for (const e of events) {
+    if (e.type !== 'pump' || e.data.durationSeconds === null) continue;
+    const ml = breast === 'left' ? e.data.leftMl : e.data.rightMl;
+    if (ml !== null) return ml;
+  }
+  return DEFAULT_PUMP_ML;
+}
+
+export const DEFAULT_PUMP_ML = 60;
+
 // Stool swatches --------------------------------------------------------------------------
 
 export interface Swatch {
@@ -309,8 +403,17 @@ export function describe(e: BabyEvent, volume: (ml: number) => string): string {
       }
       return `Breastfeed · ${e.data.side} · ${minutes(d)}`;
     }
-    case 'pump':
-      return 'Pump';
+    case 'pump': {
+      const side = pumpSide(e);
+      if (e.data.durationSeconds === null) return `Pump · ${side} · running`;
+      if (awaitingAmount(e))
+        return `Pump · ${side} · ${minutes(e.data.durationSeconds!)} · add amount`;
+      const parts = [
+        e.data.leftMl === null ? null : `left ${volume(e.data.leftMl)}`,
+        e.data.rightMl === null ? null : `right ${volume(e.data.rightMl)}`,
+      ].filter((p) => p !== null);
+      return `Pump · ${parts.join(' · ')}`;
+    }
     case 'weight':
       return 'Weight';
     case 'weighted_feed':
@@ -323,9 +426,9 @@ export function describe(e: BabyEvent, volume: (ml: number) => string): string {
 /**
  * The second action on an event's Logged toast: the screen that changes its time. Dirty and
  * mixed diapers reopen their details; a running feed opens its timer; the rest share /logged.
- * A "We missed some" mark has no time to change, so none.
+ * A "We missed some" mark has no time to change, and a stopped pump is on its amount form, so none.
  */
-export type EditPath = `/diaper/details?id=${string}` | '/feed' | `/logged?id=${string}`;
+export type EditPath = `/diaper/details?id=${string}` | '/feed' | '/pump' | `/logged?id=${string}`;
 
 export function editLink(e: BabyEvent): { label: string; path: EditPath } | undefined {
   if (e.type === 'missed_logs') return undefined;
@@ -333,14 +436,22 @@ export function editLink(e: BabyEvent): { label: string; path: EditPath } | unde
     return { label: 'Details', path: `/diaper/details?id=${e.id}` };
   if (e.type === 'breastfeed' && e.data.durationSeconds === null)
     return { label: 'Change time', path: '/feed' };
+  if (e.type === 'pump' && e.data.durationSeconds === null)
+    return { label: 'Change time', path: '/pump' };
+  // Its Stop toast sits on the amount form already, so nothing to link to.
+  if (e.type === 'pump' && awaitingAmount(e)) return undefined;
   return { label: 'Change time', path: `/logged?id=${e.id}` };
 }
 
 /**
- * The latest start a saved event can be moved to: a finished feed has to have ended by now,
+ * The latest start a saved event can be moved to: a finished feed or timed pump has to have ended by now,
  * and a running one has to fit the sides it already switched from. Undefined means now.
  */
 export function latestStart(e: BabyEvent, now: number): number | undefined {
+  if (e.type === 'pump') {
+    const d = e.data.durationSeconds;
+    return d === undefined || d === null ? undefined : now - d * 1000;
+  }
   if (e.type !== 'breastfeed') return undefined;
   if (e.data.durationSeconds !== null) return now - e.data.durationSeconds * 1000;
   // A running feed's earlier sides already happened, so they must fit before now.

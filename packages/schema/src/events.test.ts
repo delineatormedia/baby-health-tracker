@@ -301,6 +301,116 @@ describe('pump', () => {
   ])('rejects %j', (data) => {
     expectInvalid(event('pump', data));
   });
+
+  test('timer: running with no volumes, then finished with the sides it ran on', () => {
+    expectValid(
+      event('pump', {
+        leftMl: null,
+        rightMl: null,
+        afterFeed: false,
+        side: 'both',
+        durationSeconds: null,
+      }),
+    );
+    expectValid(
+      event('pump', {
+        leftMl: 50,
+        rightMl: 0,
+        afterFeed: true,
+        side: 'both',
+        durationSeconds: 900,
+      }),
+    );
+    expectValid(
+      event('pump', {
+        leftMl: null,
+        rightMl: 30,
+        afterFeed: false,
+        side: 'right',
+        durationSeconds: 1,
+      }),
+    );
+    expectValid(
+      event('pump', {
+        leftMl: 30,
+        rightMl: null,
+        afterFeed: false,
+        side: 'left',
+        durationSeconds: 14_400,
+      }),
+    );
+  });
+
+  test('timer stopped, amount not entered yet (#32): a side and a duration, no volumes', () => {
+    for (const side of ['left', 'right', 'both'])
+      expectValid(
+        event('pump', {
+          leftMl: null,
+          rightMl: null,
+          afterFeed: false,
+          side,
+          durationSeconds: 1500,
+        }),
+      );
+  });
+
+  test('a pump logged without a timer still needs a volume', () => {
+    expectInvalid(event('pump', { leftMl: null, rightMl: null, afterFeed: false }));
+    expectInvalid(event('pump', { leftMl: null, rightMl: null, afterFeed: false, side: 'left' }));
+  });
+
+  test.each([
+    [
+      'running without a side',
+      { leftMl: null, rightMl: null, afterFeed: false, durationSeconds: null },
+    ],
+    [
+      'running with a volume',
+      { leftMl: 20, rightMl: null, afterFeed: false, side: 'left', durationSeconds: null },
+    ],
+    [
+      'both sides, one volume',
+      { leftMl: 20, rightMl: null, afterFeed: false, side: 'both', durationSeconds: 600 },
+    ],
+    [
+      'left side, right volume',
+      { leftMl: null, rightMl: 20, afterFeed: false, side: 'left', durationSeconds: 600 },
+    ],
+    [
+      'left side, both volumes',
+      { leftMl: 20, rightMl: 20, afterFeed: false, side: 'left', durationSeconds: 600 },
+    ],
+    [
+      'stopped with no volume and no side',
+      { leftMl: null, rightMl: null, afterFeed: false, durationSeconds: 600 },
+    ],
+    [
+      'stopped at zero seconds',
+      { leftMl: null, rightMl: null, afterFeed: false, side: 'left', durationSeconds: 0 },
+    ],
+    [
+      'stopped past 4 hours',
+      { leftMl: null, rightMl: null, afterFeed: false, side: 'both', durationSeconds: 14_401 },
+    ],
+    [
+      'zero seconds',
+      { leftMl: 20, rightMl: null, afterFeed: false, side: 'left', durationSeconds: 0 },
+    ],
+    [
+      'past 4 hours',
+      { leftMl: 20, rightMl: null, afterFeed: false, side: 'left', durationSeconds: 14_401 },
+    ],
+    [
+      'fractional seconds',
+      { leftMl: 20, rightMl: null, afterFeed: false, side: 'left', durationSeconds: 1.5 },
+    ],
+    [
+      'unknown side',
+      { leftMl: 20, rightMl: null, afterFeed: false, side: 'middle', durationSeconds: 60 },
+    ],
+  ])('rejects %s', (_, data) => {
+    expectInvalid(event('pump', data));
+  });
 });
 
 describe('weight', () => {

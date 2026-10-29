@@ -10,6 +10,15 @@ import {
   describe as describeEvent,
   editLink,
   finishFeedData,
+  followsFeed,
+  lastPump,
+  lastPumpMl,
+  pumpData,
+  pumpSide,
+  runningPump,
+  startPumpData,
+  stopPumpData,
+  stoppedPump,
   hm,
   intake24h,
   lastSide,
@@ -28,6 +37,7 @@ import {
   switchFeedData,
   typedSide,
   type Breastfeed,
+  type Pump,
 } from './logic.ts';
 
 const NOW = Date.parse('2026-10-29T12:00:00.000Z');
@@ -349,5 +359,127 @@ describe('cappedStart', () => {
   });
   test('an uncapped event saves Now as now', () => {
     expect(cappedStart(ev('diaper', { kind: 'wet' }, 5), null, NOW)).toBe(iso(NOW));
+  });
+});
+
+describe('pump timer (#22)', () => {
+  const pumpEv = (data: unknown, minutesAgo: number) => ev('pump', data, minutesAgo) as Pump;
+  const valid = (e: BabyEvent) => expect(parseEvent(e)).toMatchObject({ ok: true });
+
+  test('start, then stop after closing the tab: the saved event validates with the real duration', () => {
+    const running = pumpEv(startPumpData('both'), 0);
+    valid(running);
+    expect(runningPump([running])?.id).toBe(running.id);
+    // Reopened 25 minutes later: the duration comes from the stored start, not a page timer.
+    const seconds = stopSeconds(running.occurredAt, Date.parse(running.occurredAt) + 25 * 60_000);
+    expect(seconds).toBe(1500);
+    const done = { ...running, data: pumpData('both', { left: 50, right: 0 }, true, seconds!) };
+    valid(done);
+    expect(runningPump([done])).toBeUndefined();
+    expect(lastPump([done])?.id).toBe(done.id);
+    expect(describeEvent(done, (ml) => `${ml} mL`)).toBe('Pump · left 50 mL · right 0 mL');
+  });
+
+  test('a long pump is not clamped below the schema bound; past it, nothing is computed', () => {
+    const start = '2026-10-29T08:00:00.000Z';
+    expect(stopSeconds(start, Date.parse(start) + MAX_FEED_SECONDS * 1000)).toBe(MAX_FEED_SECONDS);
+    expect(stopSeconds(start, Date.parse(start) + MAX_FEED_SECONDS * 1000 + 1000)).toBeNull();
+  });
+
+  test('only the sides pumped get a volume', () => {
+    expect(pumpData('left', { left: 40, right: 70 }, false, 60)).toMatchObject({
+      leftMl: 40,
+      rightMl: null,
+      side: 'left',
+    });
+    expect(pumpData('right', { left: 40, right: 70 }, false)).toEqual({
+      leftMl: null,
+      rightMl: 70,
+      afterFeed: false,
+      side: 'right',
+    });
+    valid(pumpEv(pumpData('right', { left: 40, right: 70 }, false), 10));
+  });
+
+  test('side comes from the timer, or from the volumes on pumps from before it', () => {
+    expect(pumpSide(pumpEv(pumpData('both', { left: 0, right: 0 }, true, 60), 1))).toBe('both');
+    expect(pumpSide(pumpEv({ leftMl: null, rightMl: 30, afterFeed: false }, 1))).toBe('right');
+    expect(pumpSide(pumpEv({ leftMl: 30, rightMl: 30, afterFeed: false }, 1))).toBe('both');
+  });
+
+  test('"right after a feed" when a feed ended within 30 minutes before the start', () => {
+    const start = NOW;
+    // A 20-minute feed that started 50 minutes ago ended 30 minutes ago: counts.
+    expect(
+      followsFeed([ev('breastfeed', { side: 'left', durationSeconds: 1200 }, 50)], start),
+    ).toBe(true);
+    expect(
+      followsFeed([ev('breastfeed', { side: 'left', durationSeconds: 1200 }, 51)], start),
+    ).toBe(false);
+    expect(followsFeed([ev('bottle', { contents: 'formula', volumeMl: 60 }, 10)], start)).toBe(
+      true,
+    );
+    // A running feed has not ended, a deleted one never happened, a later one is not before.
+    expect(followsFeed([ev('breastfeed', { side: 'left', durationSeconds: null }, 5)], start)).toBe(
+      false,
+    );
+    expect(
+      followsFeed(
+        [{ ...ev('bottle', { contents: 'formula', volumeMl: 60 }, 5), deleted: true }],
+        start,
+      ),
+    ).toBe(false);
+    expect(followsFeed([ev('bottle', { contents: 'formula', volumeMl: 60 }, -1)], start)).toBe(
+      false,
+    );
+  });
+
+  test('each side starts at its own last volume, skipping running pumps', () => {
+    const events = [
+      pumpEv(startPumpData('left'), 1),
+      pumpEv(pumpData('right', { left: 0, right: 45 }, false, 600), 60),
+      pumpEv(pumpData('left', { left: 80, right: 0 }, false, 600), 120),
+    ];
+    expect(lastPumpMl(events, 'right')).toBe(45);
+    expect(lastPumpMl(events, 'left')).toBe(80);
+    expect(lastPumpMl([], 'left')).toBe(60);
+  });
+
+  test('volumes round-trip between mL and oz on the snapped scale', () => {
+    for (let ml = 0; ml <= 240; ml += 5) {
+      const oz = snapBottle(ml, 'oz');
+      expect(snapBottle(oz, 'oz')).toBe(oz);
+      expect(snapBottle(snapBottle(ml, 'ml'), 'ml')).toBe(ml);
+    }
+    expect(snapBottle(toMl(2.5, 'oz'), 'oz')).toBe(toMl(2.5, 'oz'));
+  });
+
+  test('a running pump reopens its timer; a finished one keeps ending by now', () => {
+    expect(editLink(pumpEv(startPumpData('left'), 3))?.path).toBe('/pump');
+    const done = pumpEv(pumpData('left', { left: 40, right: 0 }, false, 900), 20);
+    expect(editLink(done)?.path).toBe(`/logged?id=${done.id}`);
+    expect(latestStart(done, NOW)).toBe(NOW - 900_000);
+    expect(latestStart(pumpEv({ leftMl: 4, rightMl: null, afterFeed: false }, 5), NOW)).toBe(
+      undefined,
+    );
+  });
+
+  test('Stop saves "stopped, amount not entered" (#32): valid, not running, not the last pump', () => {
+    const before = pumpEv(pumpData('left', { left: 80, right: 0 }, false, 600), 120);
+    const stopped = pumpEv(stopPumpData('both', 1500), 30);
+    valid(stopped);
+    const events = [stopped, before];
+    expect(runningPump(events)).toBeUndefined();
+    expect(stoppedPump(events)?.id).toBe(stopped.id);
+    // Home and the next pump's defaults follow the last pump with an amount.
+    expect(lastPump(events)?.id).toBe(before.id);
+    expect(lastPumpMl(events, 'left')).toBe(80);
+    expect(describeEvent(stopped, (ml) => `${ml} mL`)).toBe('Pump · both · 25 min · add amount');
+    expect(editLink(stopped)).toBeUndefined();
+    expect(latestStart(stopped, NOW)).toBe(NOW - 1_500_000);
+    // Running and finished pumps are never "stopped"; nor is an old pump with a 0 mL side.
+    expect(stoppedPump([pumpEv(startPumpData('left'), 1)])).toBeUndefined();
+    expect(stoppedPump([before])).toBeUndefined();
+    expect(stoppedPump([pumpEv({ leftMl: 0, rightMl: null, afterFeed: true }, 1)])).toBeUndefined();
   });
 });

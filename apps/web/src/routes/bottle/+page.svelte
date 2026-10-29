@@ -3,40 +3,19 @@
   import { goto } from '$app/navigation';
   import { fromMl, formatVolume, ML_PER_FL_OZ } from '@bht/schema';
   import { app } from '../../lib/ui/app.svelte.ts';
-  import {
-    BOTTLE_MAX_ML,
-    DEFAULT_BOTTLE_ML,
-    lastBottle,
-    snapBottle,
-    stepBottle,
-  } from '../../lib/ui/logic.ts';
+  import { BOTTLE_MAX_ML, DEFAULT_BOTTLE_ML, lastBottle, snapBottle } from '../../lib/ui/logic.ts';
   import TimeRow from '../../lib/ui/TimeRow.svelte';
+  import Vessel from '../../lib/ui/Vessel.svelte';
 
   const last = lastBottle(app.events);
   let contents = $state<'breast_milk' | 'formula'>(last?.data.contents ?? 'breast_milk');
   // The level starts at the last amount, so a repeat feed is two taps.
   let ml = $state(snapBottle(last?.data.volumeMl ?? DEFAULT_BOTTLE_ML, app.prefs.volume));
   let at = $state<string | null>(null);
-  let vessel: HTMLDivElement;
   let busy = false;
 
-  const pct = $derived((ml / BOTTLE_MAX_ML) * 100);
   const ML_TICKS = [0, 60, 120, 180, 240];
   const OZ_TICKS = [0, 2, 4, 6, 8];
-
-  function fromPointer(e: PointerEvent) {
-    const r = vessel.getBoundingClientRect();
-    const f = 1 - (e.clientY - r.top) / r.height;
-    ml = snapBottle(f * BOTTLE_MAX_ML, app.prefs.volume);
-  }
-
-  function keys(e: KeyboardEvent) {
-    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') ml = stepBottle(ml, app.prefs.volume, 1);
-    else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft')
-      ml = stepBottle(ml, app.prefs.volume, -1);
-    else return;
-    e.preventDefault();
-  }
 
   async function log() {
     if (busy || ml <= 0) return;
@@ -79,28 +58,7 @@
     <div class="scale l">
       {#each ML_TICKS as t (t)}<div style:bottom="{(t / BOTTLE_MAX_ML) * 100}%">{t}</div>{/each}
     </div>
-    <div
-      class="vessel"
-      bind:this={vessel}
-      role="slider"
-      tabindex="0"
-      aria-label="Amount"
-      aria-valuemin={0}
-      aria-valuemax={BOTTLE_MAX_ML}
-      aria-valuenow={Math.round(ml)}
-      aria-valuetext={formatVolume(ml, app.prefs.volume)}
-      onpointerdown={(e) => {
-        e.currentTarget.setPointerCapture(e.pointerId);
-        fromPointer(e);
-      }}
-      onpointermove={(e) => {
-        if (e.currentTarget.hasPointerCapture(e.pointerId)) fromPointer(e);
-      }}
-      onkeydown={keys}
-    >
-      <div class="fill" style:height="{pct}%"></div>
-      <div class="grip" style:bottom="{pct}%"></div>
-    </div>
+    <Vessel bind:ml />
     <div class="scale r">
       {#each OZ_TICKS as t (t)}<div style:bottom="{((t * ML_PER_FL_OZ) / BOTTLE_MAX_ML) * 100}%">
           {t}
@@ -148,33 +106,6 @@
   }
   .scale.r div {
     left: 0;
-  }
-  .vessel {
-    position: relative;
-    border: 2px solid var(--ink);
-    border-radius: 26px 26px 30px 30px;
-    overflow: hidden;
-    background: var(--panel);
-    touch-action: none;
-    cursor: ns-resize;
-  }
-  .fill {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--band);
-    border-top: 3px solid var(--acc);
-  }
-  .grip {
-    position: absolute;
-    left: 50%;
-    width: 62px;
-    height: 22px;
-    margin-left: -31px;
-    border-radius: 11px;
-    background: var(--acc);
-    transform: translateY(50%);
   }
   .readout {
     text-align: center;
