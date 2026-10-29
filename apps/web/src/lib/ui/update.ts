@@ -1,4 +1,4 @@
-import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
+import { afterNavigate, beforeNavigate } from '$app/navigation';
 
 /**
  * Brings a new build onto the screen without a string of reopens (#70). The service worker
@@ -13,9 +13,11 @@ import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
  *
  * Neither happens while something is in progress: setup, the Undo toast a save leaves, a failed
  * save waiting for Retry, or a write that has started and not yet committed (#74), since a page
- * load aborts an IndexedDB transaction still queued. A form on screen is never reloaded, since
- * every path waits for the parent to leave it. The next screen change or exit retries; losing a
- * diaper is far worse than one more launch on the old build.
+ * load aborts an IndexedDB transaction still queued. Nothing waits for that to end: a waiter
+ * that fires later can land on a screen the parent has since opened and typed into. The chance
+ * is skipped, the update stays armed, and the next screen change or exit tries again from
+ * scratch. Nor is a screen that stays mounted reloaded once something is entered on it. Losing a diaper is far worse
+ * than one more launch on the old build.
  *
  * A Home Screen app on iPhone resumes rather than relaunching, which checks for no new worker,
  * so resuming asks for one. Call from the root layout (navigation hooks need component init).
@@ -25,8 +27,6 @@ export interface UpdateGuard {
   idle: () => boolean;
   /** A write has started and not settled. */
   writing: () => boolean;
-  /** Resolves once no write is in flight and what follows one (its toast or error) is set. */
-  settled: () => Promise<void>;
 }
 
 export function watchForUpdates(guard: UpdateGuard): void {
@@ -40,25 +40,15 @@ export function watchForUpdates(guard: UpdateGuard): void {
     controlled = true;
   });
 
-  const clear = () => replaced && guard.idle();
+  // The parent has typed, tapped or picked on the screen drawn now (most entry is buttons, which
+  // fire no input event). Cleared when a different screen draws; a screen that stays mounted
+  // across a query change keeps what was entered.
+  let entered = false;
+  for (const type of ['input', 'pointerdown', 'keydown'])
+    document.addEventListener(type, () => (entered = true), true);
 
-  /**
-   * The only way this module loads a page. Skips this chance if anything is on screen in
-   * progress. A write in flight is waited out (or, with `wait` false, skips this chance too),
-   * then the screen is checked again, since that write may have raised a toast or an error. Resolves whether it loaded; the
-   * update stays armed if not.
-   */
-  async function safeReload(
-    kind: 'reload' | 'assign',
-    { href = '', wait = true, still = (): boolean => true } = {},
-  ) {
-    if (!clear() || (!wait && guard.writing())) return false;
-    await guard.settled();
-    if (!clear() || !still()) return false;
-    if (kind === 'assign') location.assign(href);
-    else location.reload();
-    return true;
-  }
+  /** Whether a page load now loses nothing. Checked at the moment of loading, never earlier. */
+  const clear = () => replaced && guard.idle() && !guard.writing();
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
@@ -66,36 +56,24 @@ export function watchForUpdates(guard: UpdateGuard): void {
         .getRegistration()
         .then((r) => r?.update())
         .catch(() => {}); // offline: the next resume tries again
-    } else if (location.pathname === '/') {
-      // The app may be suspended before a write settles, so leaving never waits for one: the
-      // next launch or screen change picks up the new build instead.
-      const leaving = () => document.visibilityState === 'hidden' && location.pathname === '/';
-      void safeReload('reload', { wait: false, still: leaving });
+    } else if (location.pathname === '/' && clear()) {
+      location.reload();
     }
   });
 
-  // A screen change that safeReload turned down goes ahead in this build.
-  let inPlace = false;
   beforeNavigate((nav) => {
-    if (inPlace || nav.willUnload || nav.type === 'popstate') return;
-    // A tap during a write opens its screen in this build rather than waiting on storage.
-    if (!clear() || guard.writing()) return;
+    if (nav.willUnload || nav.type === 'popstate') return;
     if (!nav.to || nav.to.url.origin !== location.origin) return;
-    const url = nav.to.url;
+    // What is typed belongs to the screen being left, unless the same screen stays mounted.
+    const leaving = nav.from?.route.id !== nav.to.route.id;
+    if (!clear() || (entered && !leaving)) return;
     nav.cancel();
-    void safeReload('assign', { href: url.href }).then(async (loaded) => {
-      if (loaded) return;
-      inPlace = true;
-      try {
-        // eslint-disable-next-line svelte/no-navigation-without-resolve -- already resolved
-        await goto(url);
-      } finally {
-        inPlace = false;
-      }
-    });
+    location.assign(nav.to.url.href);
   });
-  // Back and forward can't be redone as a page load before they happen; reload once drawn.
-  afterNavigate(({ type }) => {
-    if (type === 'popstate') void safeReload('reload');
+  // Back and forward can't be redone as a page load before they happen; reload once drawn, if
+  // the screen that just drew is still clear.
+  afterNavigate(({ type, from, to }) => {
+    if (from?.route.id !== to?.route.id) entered = false;
+    if (type === 'popstate' && clear() && !entered) location.reload();
   });
 }

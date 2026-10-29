@@ -37,7 +37,6 @@ export class EventStore {
   readonly #localListeners = new Set<() => void>();
   /** Writes started and not yet settled; a page load now would lose them (#74). */
   #writes = 0;
-  readonly #settled = new Set<() => void>();
 
   constructor(
     readonly db: Database,
@@ -120,29 +119,13 @@ export class EventStore {
   }
 
   /**
-   * Resolves once no write is in flight. After waiting on one it also lets the code that runs
-   * after it (its Undo toast, the next write of a batch) run: a task after the last write
-   * settled, with none since. With nothing in flight it resolves at once.
-   */
-  async idle(): Promise<void> {
-    while (this.#writes > 0) {
-      await new Promise<void>((ok) => this.#settled.add(ok));
-      await new Promise((ok) => setTimeout(ok, 0));
-    }
-  }
-
-  /**
    * Counts `run` as a write in flight from this call until it settles. The count goes up before
    * `run` starts, so a caller can clear whatever showed the work as pending (a Retry banner)
    * inside `run` with no moment where neither shows (#74).
    */
   track<T>(run: () => Promise<T>): Promise<T> {
     this.#writes++;
-    const done = () => {
-      if (--this.#writes > 0) return;
-      for (const ok of this.#settled) ok();
-      this.#settled.clear();
-    };
+    const done = () => void this.#writes--;
     let p: Promise<T>;
     try {
       p = run();

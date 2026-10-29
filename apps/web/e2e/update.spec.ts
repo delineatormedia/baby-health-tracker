@@ -431,7 +431,7 @@ test('a tap while a Wet is queued opens its screen in this build, and the Wet sa
   s.server.close();
 });
 
-test('back or forward while a Wet is queued waits for it, then keeps its toast', async ({
+test('back or forward while a Wet is queued skips this chance and keeps its toast', async ({
   browser,
 }) => {
   const { s, ctx, page, errors } = await armed(browser);
@@ -456,6 +456,74 @@ test('back or forward while a Wet is queued waits for it, then keeps its toast',
   await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
   expect(await samePage(page)).toBe(true);
   expect(await current(page, 'diaper')).toHaveLength(1);
+  expect(errors).toEqual([]);
+  await ctx.close();
+  s.server.close();
+});
+
+test('a bottle entered after Back during a quiet edit stays and saves; the next screen updates', async ({
+  browser,
+}) => {
+  const { s, ctx, page, errors } = await armed(browser);
+  await page.getByRole('button', { name: /^Feed/ }).tap();
+  await page.getByRole('button', { name: /^Left/ }).tap();
+  await page.getByRole('button', { name: 'Pause', exact: true }).waitFor();
+  await screenIdle(page);
+  await update(page, s);
+  const [feed] = await current(page, 'breastfeed');
+  await countWrites(page);
+  await hold(page);
+  // Moving the start time is an edit with no toast: once it queues, nothing on screen is busy.
+  const earlier = await page.evaluate(() => {
+    const d = new Date(Date.now() - 5 * 60_000);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  });
+  await page.getByLabel('Change the start time').fill(earlier);
+  await queued(page);
+
+  await page.goBack();
+  await page.waitForURL((u) => u.pathname === '/');
+  await page.getByRole('button', { name: /^Bottle/ }).tap();
+  await page.waitForURL((u) => u.pathname === '/bottle');
+  await page.getByRole('button', { name: 'Formula', exact: true }).tap();
+  const vessel = page.getByRole('slider').first();
+  const box = (await vessel.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const readout = await page.locator('.readout').textContent();
+  expect(readout).not.toMatch(/^\s*0 /);
+
+  await release(page);
+  const [moved] = await until(
+    page,
+    () => current(page, 'breastfeed'),
+    ([f]) => f!.occurredAt !== feed!.occurredAt,
+  );
+  expect(moved!.data.durationSeconds).toBeNull();
+  await page.waitForTimeout(500);
+  expect(await samePage(page)).toBe(true);
+  await expect(page.locator('.readout')).toHaveText(readout!);
+  await expect(page.getByRole('button', { name: 'Formula', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  await page.locator('button.go').tap();
+  await page.waitForURL((u) => u.pathname === '/');
+  const [bottle] = await until(
+    page,
+    () => current(page, 'bottle'),
+    (b) => b.length === 1,
+  );
+  expect(bottle!.data.contents).toBe('formula');
+  expect(await samePage(page)).toBe(true);
+
+  // The update stayed armed: the next clean screen change loads it.
+  await screenIdle(page);
+  await page.getByRole('link', { name: 'History', exact: true }).tap();
+  await page.waitForURL((u) => u.pathname === '/history');
+  await onNext(page);
+  expect(await samePage(page)).toBe(false);
   expect(errors).toEqual([]);
   await ctx.close();
   s.server.close();

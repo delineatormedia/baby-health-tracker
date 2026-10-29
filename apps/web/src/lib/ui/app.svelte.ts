@@ -201,11 +201,6 @@ class AppState {
     return this.#store?.writing ?? false;
   }
 
-  /** Resolves once no write is in flight and what follows one (a toast, an error) is set. */
-  settled(): Promise<void> {
-    return this.#store?.idle() ?? Promise.resolve();
-  }
-
   volume = (ml: number): string => formatVolume(ml, this.prefs.volume);
 
   async log<T extends EventType>(

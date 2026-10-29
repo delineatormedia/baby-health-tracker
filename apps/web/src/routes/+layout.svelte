@@ -11,7 +11,6 @@
   watchForUpdates({
     idle: () => !!app.baby && !app.toast && !app.saveError && !app.error,
     writing: () => app.writing,
-    settled: () => app.settled(),
   });
 
   $effect(() => {
