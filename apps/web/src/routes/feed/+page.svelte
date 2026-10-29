@@ -16,6 +16,7 @@
     MAX_FEED_SECONDS,
     minutes as mins,
     pauseFeedData,
+    pickSideData,
     resumeFeedData,
     runningFeed,
     sideElapsed,
@@ -86,7 +87,7 @@
       }
       // An old "both" timer has no side to switch from; the tap says which side it is.
       if (on === null) {
-        await app.store.edit(running.id, { data: startFeedData(side) });
+        await app.store.edit(running.id, { data: pickSideData(running, side) });
         return;
       }
       const data = switchFeedData(running, Date.now());

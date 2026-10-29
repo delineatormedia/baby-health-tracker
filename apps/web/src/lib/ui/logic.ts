@@ -78,6 +78,15 @@ export function startFeedData(side: Breast): Breastfeed['data'] {
 }
 
 /**
+ * An old "both" timer told which breast it is on: the whole feed so far goes to that side.
+ * Pause state carries over untouched, so finished pauses stay out of the time and a paused
+ * timer stays paused.
+ */
+export function pickSideData(f: Breastfeed, side: Breast): Breastfeed['data'] {
+  return { ...f.data, ...startFeedData(side) };
+}
+
+/**
  * A feed's per-side stretches. A feed from before per-side timing has one on its side;
  * a typed or old "both" feed has no known split, so null.
  */
