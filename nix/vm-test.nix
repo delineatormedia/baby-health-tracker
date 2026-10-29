@@ -134,8 +134,8 @@ pkgs.testers.runNixOSTest {
         server.succeed("systemctl reset-failed bht-backup.service")
         server.succeed("systemctl start bht-backup.service")
         server.fail("ls -a /var/backup/bht | grep -F .partial")
-        log = server.succeed("journalctl -u bht-backup.service -o cat")
-        assert f"removing stale {stale.split('/')[-1]}" in log, log
+        journal = server.succeed("journalctl -u bht-backup.service -o cat")
+        assert f"removing stale {stale.split('/')[-1]}" in journal, journal
         snapshots = server.succeed("ls -1 /var/backup/bht").split()
         assert len(snapshots) == 2, f"keep = 2, found {snapshots}"
         newest = sorted(snapshots)[-1]
