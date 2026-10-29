@@ -91,7 +91,7 @@ rollback() {
   ok=1
   # Before the snapshot is in place, files at $BHT_DB are still the old ones.
   if [ "$installed" -eq 1 ]; then
-    mkdir -p -m 700 "$work/failed" || ok=0
+    mkdir -m 700 "$work/failed" || ok=0
     for f in "$BHT_DB" "$BHT_DB-wal" "$BHT_DB-shm"; do
       if [ -e "$f" ]; then mv -- "$f" "$work/failed/" || ok=0; fi
     done
