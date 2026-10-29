@@ -32,45 +32,54 @@
 <div class="dial">
   <svg viewBox="0 0 300 300" aria-hidden="true">
     <circle cx="150" cy="150" r="140" fill="none" stroke="var(--line)" stroke-width="1.5" />
+    <circle
+      cx="150"
+      cy="150"
+      r="99"
+      fill="none"
+      stroke="var(--line)"
+      stroke-width="1"
+      stroke-dasharray="2 5"
+    />
     {#each [0, 6, 12, 18] as h (h)}
       {@const [a, b] = polar(h, 140)}
       {@const [x, y] = polar(h, 131)}
-      {@const [tx, ty] = polar(h, 120)}
+      {@const [tx, ty] = polar(h, 121)}
       <line x1={a} y1={b} x2={x} y2={y} stroke="var(--dim)" stroke-width="1.5" />
-      <text x={tx} y={ty + 4} text-anchor="middle" class="h">{h}</text>
+      <text x={tx} y={ty + 5} text-anchor="middle" class="h">{h}</text>
     {/each}
+    <!-- Each kind has its own colour and shape, as on the keys: feeds and bottles share the
+         outer ring, wet and dirty the inner one, so the dial still reads without colour. -->
     {#each marks as m, i (i)}
       {#if m.kind === 'feed'}
-        {@const [a, b] = polar(m.hour, 140)}
-        {@const [x, y] = polar(m.hour, 128)}
+        {@const [a, b] = polar(m.hour, 141)}
+        {@const [x, y] = polar(m.hour, 126)}
         <line
           x1={a}
           y1={b}
           x2={x}
           y2={y}
-          stroke="var(--acc)"
-          stroke-width="4"
+          stroke="var(--feed)"
+          stroke-width="6"
           stroke-linecap="round"
         />
-      {:else if m.kind === 'wet'}
-        {@const [x, y] = polar(m.hour, 104)}
-        <circle cx={x} cy={y} r="3" fill="var(--ink)" />
-      {:else}
-        {@const [x, y] = polar(m.hour, 92)}
-        <rect
-          x={x - 3.5}
-          y={y - 3.5}
-          width="7"
-          height="7"
-          fill="none"
-          stroke="var(--ink)"
-          stroke-width="1.6"
-        />
+      {:else if m.kind === 'bottle'}
+        {@const [x, y] = polar(m.hour, 134)}
+        <circle cx={x} cy={y} r="6" fill="var(--panel)" stroke="var(--bottle)" stroke-width="3" />
       {/if}
     {/each}
     {#if arc}
-      <path d={arc} stroke="var(--acc)" stroke-width="12" fill="none" stroke-linecap="round" />
+      <path d={arc} stroke="var(--feed)" stroke-width="14" fill="none" stroke-linecap="round" />
     {/if}
+    {#each marks as m, i (i)}
+      {#if m.kind === 'wet'}
+        {@const [x, y] = polar(m.hour, 99)}
+        <circle cx={x} cy={y} r="5.5" fill="var(--wet)" />
+      {:else if m.kind === 'dirty'}
+        {@const [x, y] = polar(m.hour, 99)}
+        <rect x={x - 5.5} y={y - 5.5} width="11" height="11" rx="1" fill="var(--dirty)" />
+      {/if}
+    {/each}
     <circle cx={hand[0]} cy={hand[1]} r="3.5" fill="var(--dim)" />
   </svg>
   <div class="center">{@render children()}</div>
@@ -90,8 +99,8 @@
     height: 100%;
   }
   .h {
-    font: 10px var(--mono);
-    fill: var(--dim);
+    font: 15px var(--mono);
+    fill: var(--text-dim);
   }
   .center {
     position: absolute;

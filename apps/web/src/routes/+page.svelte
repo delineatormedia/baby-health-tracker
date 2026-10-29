@@ -80,10 +80,11 @@
     </Dial>
   </a>
 
-  <div class="legend lab num">
-    <span><i class="feed"></i>Feed {counts.feed}</span>
-    <span><i class="wet"></i>Wet {counts.wet}</span>
-    <span><i class="dirty"></i>Dirty {counts.dirty}</span>
+  <div class="legend">
+    <span><i class="g g-feed"></i>Feed <b class="num">{counts.feed}</b></span>
+    <span><i class="g g-bottle"></i>Bottle <b class="num">{counts.bottle}</b></span>
+    <span><i class="g g-wet"></i>Wet <b class="num">{counts.wet}</b></span>
+    <span><i class="g g-dirty"></i>Dirty <b class="num">{counts.dirty}</b></span>
   </div>
   <p class="quiet lab">Saved on this phone · not synced</p>
 
@@ -137,32 +138,22 @@
   }
   .legend {
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
-    gap: 18px;
+    gap: 6px 18px;
     margin-top: 14px;
+    font: 400 15px var(--sans);
+    color: var(--text-dim);
   }
   .legend span {
     display: flex;
     align-items: center;
     gap: 6px;
+    white-space: nowrap;
   }
-  .legend i {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-  }
-  .legend .feed {
-    background: var(--acc);
-    border-radius: 50%;
-  }
-  .legend .wet {
-    background: var(--ink);
-    border-radius: 50%;
-  }
-  .legend .dirty {
-    border: 1.6px solid var(--ink);
-    width: 7px;
-    height: 7px;
+  .legend b {
+    color: var(--ink);
+    font-weight: 600;
   }
   .quiet {
     text-align: center;

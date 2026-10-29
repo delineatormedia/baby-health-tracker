@@ -99,33 +99,4 @@
   .run :global(small) {
     color: var(--ink);
   }
-  /* Event shapes, the same as the dial and History: feed bar, bottle ring, wet dot, dirty
-     square, pump diamond. */
-  .g {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    flex: none;
-  }
-  .g-feed {
-    background: var(--feed);
-    border-radius: 2px;
-    width: 6px;
-    height: 14px;
-  }
-  .g-bottle {
-    border: 2.5px solid var(--bottle);
-    border-radius: 50%;
-  }
-  .g-wet {
-    background: var(--wet);
-    border-radius: 50%;
-  }
-  .g-dirty {
-    background: var(--dirty);
-  }
-  .g-pump {
-    background: var(--pump);
-    transform: rotate(45deg) scale(0.85);
-  }
 </style>

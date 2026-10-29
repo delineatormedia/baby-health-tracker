@@ -238,7 +238,7 @@ export function ageDays(birthAt: string, now: number): number {
 export interface Mark {
   /** Hour of the local day, 0–24, for placing the mark on the dial. */
   hour: number;
-  kind: 'feed' | 'wet' | 'dirty';
+  kind: 'feed' | 'bottle' | 'wet' | 'dirty';
 }
 
 /**
@@ -252,7 +252,8 @@ export function dayMarks(events: readonly BabyEvent[], now: number): Mark[] {
     if (t > now || t <= now - DAY) continue;
     const d = new Date(t);
     const hour = d.getHours() + d.getMinutes() / 60;
-    if (e.type === 'breastfeed' || e.type === 'bottle') marks.push({ hour, kind: 'feed' });
+    if (e.type === 'breastfeed') marks.push({ hour, kind: 'feed' });
+    if (e.type === 'bottle') marks.push({ hour, kind: 'bottle' });
     if (e.type === 'diaper') {
       if (e.data.kind !== 'dirty') marks.push({ hour, kind: 'wet' });
       if (e.data.kind !== 'wet') marks.push({ hour, kind: 'dirty' });
@@ -262,7 +263,7 @@ export function dayMarks(events: readonly BabyEvent[], now: number): Mark[] {
 }
 
 export function countMarks(marks: readonly Mark[]): Record<Mark['kind'], number> {
-  const n = { feed: 0, wet: 0, dirty: 0 };
+  const n = { feed: 0, bottle: 0, wet: 0, dirty: 0 };
   for (const m of marks) n[m.kind] += 1;
   return n;
 }

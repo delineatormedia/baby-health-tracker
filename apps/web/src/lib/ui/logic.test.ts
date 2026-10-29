@@ -384,7 +384,7 @@ describe('pause (#29)', () => {
 });
 
 describe('dial', () => {
-  test('counts the last 24 hours only; a mixed diaper is wet and dirty', () => {
+  test('counts the last 24 hours only; a mixed diaper is wet and dirty; bottles are their own mark', () => {
     const events = [
       ev('diaper', { kind: 'wet' }, 10),
       ev('diaper', { kind: 'mixed', stool: null }, 20),
@@ -394,7 +394,7 @@ describe('dial', () => {
       ev('diaper', { kind: 'wet' }, 24 * 60), // exactly 24 h ago: outside
       ev('diaper', { kind: 'wet' }, -5), // future: outside
     ];
-    expect(countMarks(dayMarks(events, NOW))).toEqual({ feed: 2, wet: 2, dirty: 2 });
+    expect(countMarks(dayMarks(events, NOW))).toEqual({ feed: 1, bottle: 1, wet: 2, dirty: 2 });
   });
 
   test('marks sit at the local hour of day', () => {
