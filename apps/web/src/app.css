@@ -11,6 +11,14 @@
   --flag: #a8552f;
   --flag-soft: #f7ebe3;
   --well: #ffffff;
+  /* Event colours and readable secondary text from the #20 design (docs/design/README.md).
+     Reports use them; --text-dim reaches 4.5:1 on --bg and --panel where --dim does not. */
+  --feed: #6e2a9c;
+  --bottle: #08664c;
+  --wet: #1f6fd6;
+  --dirty: #7f7410;
+  --pump: #c2367a;
+  --text-dim: #5b6670;
   --mono: ui-monospace, 'SF Mono', Menlo, monospace;
   --sans: -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
   --safe-b: env(safe-area-inset-bottom, 0px);
@@ -30,6 +38,12 @@
     --flag: #c29a62;
     --flag-soft: #1b1712;
     --well: #1c1a17;
+    --feed: #b880d8;
+    --bottle: #25876b;
+    --wet: #4c8ef0;
+    --dirty: #aba53a;
+    --pump: #da7aa0;
+    --text-dim: #8a8378;
     color-scheme: dark;
   }
 }
@@ -46,6 +60,12 @@
   --flag: #c29a62;
   --flag-soft: #1b1712;
   --well: #1c1a17;
+  --feed: #b880d8;
+  --bottle: #25876b;
+  --wet: #4c8ef0;
+  --dirty: #aba53a;
+  --pump: #da7aa0;
+  --text-dim: #8a8378;
   color-scheme: dark;
 }
 

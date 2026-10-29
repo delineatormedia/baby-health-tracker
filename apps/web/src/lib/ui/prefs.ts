@@ -11,9 +11,14 @@ export type Theme = 'auto' | 'night' | 'light';
 export interface Prefs {
   volume: VolumeDisplay;
   theme: Theme;
+  /**
+   * "Day starts at" (#21), minutes after midnight. Groups Reports into days; Readings never
+   * read it. Per phone until household sync (#5) can share it.
+   */
+  dayStart: number;
 }
 
-export const DEFAULT_PREFS: Prefs = { volume: 'ml', theme: 'auto' };
+export const DEFAULT_PREFS: Prefs = { volume: 'ml', theme: 'auto', dayStart: 0 };
 
 const VOLUMES: readonly VolumeDisplay[] = ['ml', 'oz', 'both'];
 const THEMES: readonly Theme[] = ['auto', 'night', 'light'];
@@ -42,8 +47,13 @@ export function loadPrefs(kv: KV): Prefs {
   return {
     volume: VOLUMES.find((x) => x === o.volume) ?? DEFAULT_PREFS.volume,
     theme: THEMES.find((x) => x === o.theme) ?? DEFAULT_PREFS.theme,
+    dayStart: isDayStart(o.dayStart) ? o.dayStart : DEFAULT_PREFS.dayStart,
   };
 }
+
+/** Whole minutes from midnight up to 11:59 PM. */
+export const isDayStart = (x: unknown): x is number =>
+  typeof x === 'number' && Number.isInteger(x) && x >= 0 && x < 1440;
 
 export function savePrefs(kv: KV, prefs: Prefs): void {
   kv.setItem(KEYS.prefs, JSON.stringify(prefs));

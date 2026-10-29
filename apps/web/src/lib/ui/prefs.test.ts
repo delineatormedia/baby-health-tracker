@@ -24,12 +24,16 @@ describe('prefs', () => {
   test('round-trip, with field-by-field fallback for damage', () => {
     const s = kv();
     expect(loadPrefs(s)).toEqual(DEFAULT_PREFS);
-    savePrefs(s, { volume: 'both', theme: 'night' });
-    expect(loadPrefs(s)).toEqual({ volume: 'both', theme: 'night' });
+    savePrefs(s, { volume: 'both', theme: 'night', dayStart: 480 });
+    expect(loadPrefs(s)).toEqual({ volume: 'both', theme: 'night', dayStart: 480 });
     expect(loadPrefs(kv({ [KEYS.prefs]: '{"volume":"cups","theme":"light"}' }))).toEqual({
       volume: 'ml',
       theme: 'light',
+      dayStart: 0,
     });
+    for (const bad of [-1, 1440, 7.5, '480', null]) {
+      expect(loadPrefs(kv({ [KEYS.prefs]: JSON.stringify({ dayStart: bad }) })).dayStart).toBe(0);
+    }
     expect(loadPrefs(kv({ [KEYS.prefs]: 'not json' }))).toEqual(DEFAULT_PREFS);
   });
 
