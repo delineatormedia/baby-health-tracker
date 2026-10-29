@@ -226,3 +226,37 @@ export function describe(e: BabyEvent, volume: (ml: number) => string): string {
       return 'Weighted feed';
   }
 }
+
+/**
+ * The second action on an event's Logged toast: the screen that changes its time. Dirty and
+ * mixed diapers reopen their details; a running feed opens its timer; the rest share /logged.
+ */
+export type EditPath = `/diaper/details?id=${string}` | '/feed' | `/logged?id=${string}`;
+
+export function editLink(e: BabyEvent): { label: string; path: EditPath } {
+  if (e.type === 'diaper' && e.data.kind !== 'wet')
+    return { label: 'Details', path: `/diaper/details?id=${e.id}` };
+  if (e.type === 'breastfeed' && e.data.durationSeconds === null)
+    return { label: 'Change time', path: '/feed' };
+  return { label: 'Change time', path: `/logged?id=${e.id}` };
+}
+
+/**
+ * The latest start a saved event can be moved to: a finished feed has to have ended by now.
+ * Undefined means now.
+ */
+export function latestStart(e: BabyEvent, now: number): number | undefined {
+  if (e.type === 'breastfeed' && e.data.durationSeconds !== null)
+    return now - e.data.durationSeconds * 1000;
+  return undefined;
+}
+
+/**
+ * The start to save for an event moved to `at` (null is now), held to its exact latest start.
+ * A clamped time stays a timestamp, so a finished feed never ends after `now`.
+ */
+export function cappedStart(e: BabyEvent, at: string | null, now: number): string {
+  const ms = at === null ? now : Date.parse(at);
+  const cap = latestStart(e, now);
+  return new Date(cap !== undefined && ms > cap ? cap : ms).toISOString();
+}

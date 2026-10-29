@@ -10,7 +10,7 @@
     snapBottle,
     stepBottle,
   } from '../../lib/ui/logic.ts';
-  import TimeField from '../../lib/ui/TimeField.svelte';
+  import TimeRow from '../../lib/ui/TimeRow.svelte';
 
   const last = lastBottle(app.events);
   let contents = $state<'breast_milk' | 'formula'>(last?.data.contents ?? 'breast_milk');
@@ -62,8 +62,8 @@
 <main class="screen fade">
   <header class="top">
     <h1>Bottle</h1>
-    <TimeField bind:at />
   </header>
+  <TimeRow bind:at />
 
   <div class="seg">
     <button aria-pressed={contents === 'breast_milk'} onclick={() => (contents = 'breast_milk')}
@@ -124,14 +124,14 @@
   .units {
     display: flex;
     justify-content: space-between;
-    margin: 18px 30px 8px;
+    margin: 14px 30px 8px;
   }
   .bottle {
     display: grid;
     grid-template-columns: 1fr 130px 1fr;
     gap: 12px;
     margin: 0 16px;
-    height: min(400px, calc(100dvh - 380px));
+    height: min(400px, calc(100dvh - 450px));
     min-height: 220px;
   }
   .scale {

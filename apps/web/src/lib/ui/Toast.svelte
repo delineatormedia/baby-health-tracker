@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
+  import { goto } from '$app/navigation';
   import { app } from './app.svelte.ts';
 </script>
 
@@ -7,6 +9,17 @@
     {@const t = app.toast}
     <div class="toast fade">
       <span>{t.text}</span>
+      {#if t.edit}
+        {@const edit = t.edit}
+        <button
+          onclick={() => {
+            // Read the path first: dismissing clears the toast these consts derive from.
+            const path = resolve(edit.path);
+            app.dismissToast();
+            void goto(path);
+          }}>{edit.label}</button
+        >
+      {/if}
       {#if t.undo}
         <button onclick={() => void t.undo?.()}>Undo</button>
       {/if}
@@ -30,9 +43,17 @@
     background: var(--panel);
     font-size: 14px;
   }
+  span {
+    flex: 1;
+    padding: 8px 0;
+  }
   button {
     align-self: stretch;
-    padding: 0 16px;
+    padding: 0 14px;
     font-weight: 600;
+    white-space: nowrap;
+  }
+  button + button {
+    border-left: 1px solid var(--line);
   }
 </style>

@@ -2,9 +2,13 @@
   import { resolve } from '$app/paths';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
+  import { untrack } from 'svelte';
   import type { Stool } from '@bht/schema';
-  import { app, time } from '../../../lib/ui/app.svelte.ts';
+  import { app } from '../../../lib/ui/app.svelte.ts';
+  import { leaveDetails, saveDetails } from '../../../lib/ui/details.ts';
   import { describe, swatch, type Diaper } from '../../../lib/ui/logic.ts';
+  import TimeRow from '../../../lib/ui/TimeRow.svelte';
+  import { when } from '../../../lib/ui/time.ts';
 
   type Consistency = NonNullable<Stool['consistency']>;
   type Size = NonNullable<Stool['size']>;
@@ -30,6 +34,8 @@
   ];
 
   const id = page.url.searchParams.get('id') ?? '';
+  // Set by the color tap that just logged this diaper; absent when reopened from a toast.
+  const fresh = page.url.searchParams.has('new');
   const event = $derived(
     app.events.find(
       (e): e is Diaper => e.id === id && e.type === 'diaper' && e.data.kind !== 'wet',
@@ -37,32 +43,37 @@
   );
   const stool = $derived(event && event.data.kind !== 'wet' ? event.data.stool : null);
 
-  let consistency = $state<Consistency | null>(null);
-  let size = $state<Size | null>(null);
-  let flags = $state<Flag[]>([]);
+  // Seeded from the saved diaper, so reopening it from the toast keeps what was entered.
+  const seed = untrack(() => stool);
+  let consistency = $state<Consistency | null>(seed?.consistency ?? null);
+  let size = $state<Size | null>(seed?.size ?? null);
+  let flags = $state<Flag[]>(seed?.flags ?? []);
+  let at = $state<string | null>(untrack(() => event?.occurredAt ?? null));
   let busy = false;
 
   const toggle = (f: Flag) =>
     (flags = flags.includes(f) ? flags.filter((x) => x !== f) : [...flags, f]);
 
   async function done() {
-    if (busy || !event || event.data.kind === 'wet') return;
+    if (busy || !event) return;
     busy = true;
     try {
-      const touched = consistency !== null || size !== null || flags.length > 0;
-      if (touched) {
-        await app.store.edit(event.id, {
-          data: {
-            kind: event.data.kind,
-            stool: { color: stool?.color ?? null, consistency, size, flags },
-          },
-        });
-      }
-      // Undo on home takes back the whole diaper, which is what was just logged.
-      app.showUndo(`${describe(event, app.volume)} logged · ${time(event.occurredAt)}`, {
+      const change = await saveDetails(
+        app.store,
         event,
-        undo: () => app.store.remove(event.id),
-      });
+        {
+          stool: { color: stool?.color ?? null, consistency, size, flags },
+          occurredAt: at ?? new Date().toISOString(),
+        },
+        fresh,
+      );
+      if (change) {
+        const verb = fresh ? 'logged' : 'updated';
+        app.showUndo(
+          `${describe(change.event, app.volume)} ${verb} · ${when(change.event.occurredAt, Date.now())}`,
+          change,
+        );
+      }
       await goto(resolve('/'), { replaceState: true });
     } catch (e) {
       app.fail(e);
@@ -71,11 +82,12 @@
     }
   }
 
-  async function undo() {
+  // Fresh: Undo removes the diaper just logged. Reopened: Cancel drops unsaved inputs, no write.
+  async function leave() {
     if (busy || !event) return;
     busy = true;
     try {
-      await app.store.remove(event.id);
+      await leaveDetails(app.store, event, fresh);
       await goto(resolve('/'), { replaceState: true });
     } catch (e) {
       app.fail(e);
@@ -96,10 +108,11 @@
     <div class="done">
       <span class="chip" style:background={swatch(stool?.color)?.hex ?? 'var(--line)'}></span>
       <div>
-        Logged · {describe(event, app.volume).toLowerCase()}<small>{time(event.occurredAt)}</small>
+        Logged · {describe(event, app.volume).toLowerCase()}
       </div>
-      <button onclick={undo}>Undo</button>
+      <button onclick={leave}>{fresh ? 'Undo' : 'Cancel'}</button>
     </div>
+    <TimeRow bind:at />
 
     <div class="sec lab">Texture</div>
     <div class="opts three">
@@ -165,12 +178,6 @@
   .done div {
     flex: 1;
     font-size: 15px;
-  }
-  .done small {
-    display: block;
-    color: var(--dim);
-    font-size: 13px;
-    margin-top: 2px;
   }
   .done button {
     align-self: stretch;

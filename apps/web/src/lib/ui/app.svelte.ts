@@ -16,8 +16,8 @@ import {
   savePrefs,
   type Prefs,
 } from './prefs.ts';
-import { saveFailure } from './logic.ts';
-import { time } from './time.ts';
+import { editLink, saveFailure, type EditPath } from './logic.ts';
+import { time, when } from './time.ts';
 
 export { time };
 
@@ -25,6 +25,8 @@ export interface Toast {
   text: string;
   /** Absent once undone, or for a plain notice. */
   undo?: () => Promise<unknown>;
+  /** "Change time" or "Details": reopens the event just logged. */
+  edit?: { label: string; path: EditPath };
 }
 
 /** A failed write, shown until dismissed or the next write succeeds. */
@@ -145,7 +147,7 @@ class AppState {
     const baby = this.baby;
     if (!baby) throw new Error('No baby');
     const change = await this.store.log(baby.id, type, data, opts);
-    this.showUndo(`${label} · ${time(change.event.occurredAt)}`, change);
+    this.showUndo(`${label} · ${when(change.event.occurredAt, Date.now())}`, change);
     return change;
   }
 
@@ -160,7 +162,11 @@ class AppState {
       }
       this.#showToast({ text: 'Undone' });
     };
-    this.#showToast({ text, undo });
+    this.#showToast({
+      text,
+      edit: change.event.deleted ? undefined : editLink(change.event),
+      undo,
+    });
   }
 
   dismissToast(): void {
