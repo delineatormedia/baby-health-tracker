@@ -24,6 +24,7 @@ interface Entry {
     'below_min_flag' | 'above_max_flag' | 'red_flag_any' | 'expected_range' | 'informational';
   op?: Op;
   status?: 'deferred';
+  requires_signs?: string[];
   suppressed_by?: { id: string; when: string }[];
   source_value?: Value;
   source_unit?: string;
@@ -46,7 +47,7 @@ const FLAGGING = new Set(['below_min_flag', 'above_max_flag', 'red_flag_any']);
 
 /** Is the entry active at this age? Age in hours since birth. */
 function active(e: Entry, ageHours: number): boolean {
-  if (e.status === 'deferred' || !FLAGGING.has(e.direction)) return false;
+  if (e.status === 'deferred' || e.requires_signs || !FLAGGING.has(e.direction)) return false;
   const a = e.age_range;
   if (a.from_hours !== undefined && a.to_hours !== undefined) {
     return ageHours >= a.from_hours && ageHours < a.to_hours;
@@ -207,6 +208,19 @@ describe('boundaries', () => {
     expect(flags(e, days(27), 1)).toBe(true);
     expect(flags(e, days(35), 1)).toBe(false);
     expect(e.suppressed_by?.map((s) => s.id)).toContain('stool_interval_breastfed_normal');
+  });
+
+  test('the composite dehydration gap needs signs v1 does not log, so it never flags alone', () => {
+    const composite = entry('no_urine_hours_dehydration');
+    expect(composite.requires_signs).toEqual([
+      'dark_urine',
+      'no_stool_24h',
+      'very_dry_mouth',
+      'no_tears',
+    ]);
+    expect(flags(composite, days(3), 9)).toBe(false);
+    expect(flags(entry('no_urine_hours_dol2_4'), days(3), 9)).toBe(true);
+    expect(entries.filter((e) => e.requires_signs).map((e) => e.id)).toEqual([composite.id]);
   });
 
   test('legacy 7% loss and high weight-for-age never flag', () => {

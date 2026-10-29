@@ -54,6 +54,9 @@ emergency services regardless of what the app shows.
   - `sex` (`male`/`female`) appears only on WHO growth-velocity entries.
   - `condition` appears on the NICE centile entries, which depend on birth-weight
     centile.
+  - `requires_signs` lists signs the source pairs with the threshold. The app
+    logs none of them, so the entry is cited but never flags on its own
+    (`no_urine_hours_dehydration`).
 - **Deferred entries.** `status: deferred` means the entry is recorded but must
   not run until its missing inputs exist (see NEWT in section 3).
 - **Overlapping entries.** Where sources disagree, both entries are kept. The
@@ -99,7 +102,10 @@ Urgent signs:
   to contact the doctor within 24 hours
   ([AAP KidsDoc](https://www.healthychildren.org/English/tips-tools/symptom-checker/Pages/symptomviewer.aspx?symptom=Breast-Feeding+Questions)).
 - **No urine for more than 8 hours together with other signs of dehydration.**
-  KidsDoc says to call or seek care now.
+  KidsDoc says to call or seek care now. The app does not log the other signs
+  (dark urine, no stool for 24 hours, dry mouth, no tears), so an 8-hour gap
+  alone never reaches "seek care now". The app checks the gap only on days 2–4,
+  with the rule above.
 - **Only 1–2 wet diapers in a day.** The AAP lists this as a sign of severe
   dehydration
   ([AAP](https://www.healthychildren.org/English/health-issues/injuries-emergencies/Pages/dehydration.aspx)).
