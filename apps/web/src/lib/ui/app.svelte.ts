@@ -82,6 +82,10 @@ class AppState {
       if (!kv) throw new Error('Local storage is unavailable.');
       this.prefs = loadPrefs(kv);
       this.#kv = kv;
+      // Dev builds only (#58): `?seed=healthy-month` replaces local data with test data.
+      if (import.meta.env.DEV) {
+        await (await import('../dev/seed.ts')).seedFromUrl(kv, () => openDatabase());
+      }
       this.#store = new EventStore(await openDatabase(), authorId(kv));
       this.baby = loadBaby(kv);
       this.setupAt = loadSetupAt(kv);
