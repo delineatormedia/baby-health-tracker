@@ -89,7 +89,9 @@
   const startPump = () =>
     once(() => app.log('pump', startPumpData(side), `Pump started · ${side}`));
 
+  // The start's Undo toast would take the pump away under the form, so it goes.
   function stop() {
+    app.dismissToast();
     stoppedAt = Date.now();
     afterPick = null;
     typedMinutes = null;
@@ -97,6 +99,7 @@
   }
 
   function logPast() {
+    app.dismissToast();
     at = null;
     afterPick = null;
     form = 'past';
@@ -208,7 +211,6 @@
       <button aria-pressed={!afterFeed} onclick={() => (afterPick = false)}>No</button>
     </div>
 
-    <div class="toast"><Toast /></div>
     <button class="go2" onclick={() => (form = null)}
       >{form === 'stop' ? 'Back to the timer' : 'Back'}</button
     >
