@@ -63,6 +63,9 @@ importers:
         specifier: ^8.0.4
         version: 8.0.4
     devDependencies:
+      '@bht/insights':
+        specifier: workspace:*
+        version: link:../../packages/insights
       '@bht/schema':
         specifier: workspace:*
         version: link:../../packages/schema
