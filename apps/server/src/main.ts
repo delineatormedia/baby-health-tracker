@@ -13,7 +13,14 @@ const webRoot = process.env.BHT_WEB_ROOT;
 // answers 401.
 const rpId = process.env.BHT_RP_ID;
 const origin = process.env.BHT_ORIGIN;
-const auth = rpId && origin ? { rpId, origin } : undefined;
+// BHT_REGISTRATION=first allows only the first household; everyone else joins by invite.
+const registration = process.env.BHT_REGISTRATION ?? 'open';
+if (registration !== 'open' && registration !== 'first') {
+  throw new Error(`BHT_REGISTRATION must be open or first, not ${registration}`);
+}
+// Narrowed for the object literal below.
+const mode: 'open' | 'first' = registration;
+const auth = rpId && origin ? { rpId, origin, registration: mode } : undefined;
 if (!auth) console.warn('BHT_RP_ID and BHT_ORIGIN are not set: sign-in and sync are off');
 
 const app = createApp(db, auth ? { auth } : {});
