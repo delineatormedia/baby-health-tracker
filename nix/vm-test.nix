@@ -98,9 +98,9 @@ pkgs.testers.runNixOSTest {
         assert served == "serve --bg --https=443 http://127.0.0.1:8787", served
         server.succeed("rm /run/fake-ts/serve && echo renamed.example.ts.net > /run/fake-ts/name")
         server.fail("systemctl restart bht-tailscale-serve.service")
-        log = server.succeed("journalctl -u bht-tailscale-serve.service -o cat")
-        assert "Tailscale name is renamed.example.ts.net" in log, log
-        assert "Not publishing" in log, log
+        journal = server.succeed("journalctl -u bht-tailscale-serve.service -o cat")
+        assert "Tailscale name is renamed.example.ts.net" in journal, journal
+        assert "Not publishing" in journal, journal
         server.fail("test -e /run/fake-ts/serve")
         server.succeed("rm /run/fake-ts/name && systemctl restart bht-tailscale-serve.service")
         server.succeed("test -e /run/fake-ts/serve")
