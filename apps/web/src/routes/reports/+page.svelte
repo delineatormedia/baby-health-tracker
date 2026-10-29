@@ -657,8 +657,6 @@
     right: 4px;
     width: 10px;
     height: 10px;
-    /* Keeps the hatched mark at 12 px in its 10 px corner, as before the 16 px box (#53). */
-    --g: 14.4px;
   }
   .c.x {
     background: none;

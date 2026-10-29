@@ -78,17 +78,21 @@
   .tall {
     grid-row: span 2;
   }
+  /* Narrow keys (320 px screens) put the 16 px icon on its own line above the label, so the
+     label gets the whole key width whatever font the phone falls back to (#53). */
   b {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
     gap: 4px;
     font-weight: 600;
   }
-  /* The icon is 20 px (#53) once the key fits "Bottle" beside it (from 375 px screens). A
-     narrower key keeps the 16 px box with a 4 px gap, the width the old 12 px box and 8 px gap
-     took. */
+  /* The icon is 20 px beside the label once the key fits "Bottle" next to it (from 375 px
+     screens). */
   @container (min-width: 83px) {
     b {
+      flex-direction: row;
+      align-items: center;
       gap: 8px;
     }
     b :global(.g) {
