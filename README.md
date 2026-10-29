@@ -12,7 +12,16 @@ pediatrician. It does not diagnose.
 
 ## Development
 
-Requires Node 24 and pnpm 11 (`nix develop` provides both).
+Requires Node 24 and pnpm 11.27.0. `nix develop` provides both. Without Nix,
+run pnpm through npx; `corepack enable` can fail on older Node installs with
+"Cannot find matching keyid":
+
+```sh
+npx -y pnpm@11.27.0 install
+npx -y pnpm@11.27.0 --filter @bht/web dev --host   # open the Network: URL on a phone
+```
+
+With pnpm on your PATH:
 
 ```sh
 pnpm install

@@ -51,3 +51,9 @@ export const Baby = v.strictObject({
   sex: Sex,
 });
 export type Baby = v.InferOutput<typeof Baby>;
+
+/** Validates an untrusted baby record (local storage, sync). null if it is not a valid baby. */
+export function parseBaby(input: unknown): Baby | null {
+  const r = v.safeParse(Baby, input);
+  return r.success ? r.output : null;
+}
