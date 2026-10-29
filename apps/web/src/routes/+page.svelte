@@ -9,13 +9,15 @@
     ago,
     clock,
     countMarks,
+    currentSide,
     dayMarks,
+    finishFeedData,
     hm,
     DEFAULT_BOTTLE_ML,
     lastBottle,
     lastDiaperAt,
+    minutes,
     runningFeed,
-    stopSeconds,
     suggestSide,
   } from '../lib/ui/logic.ts';
 
@@ -42,25 +44,14 @@
     }
   }
 
-  const startFeed = () =>
-    once(() =>
-      app.log(
-        'breastfeed',
-        { side: suggestSide(app.events), durationSeconds: null },
-        'Breastfeed started',
-      ),
-    );
-
   const stopFeed = () =>
     once(async () => {
       if (!running) return;
-      const seconds = stopSeconds(running.occurredAt, Date.now());
+      const data = finishFeedData(running, Date.now());
       // Past the 4-hour bound: save nothing, ask how long the feed really was.
-      if (seconds === null) return goto(resolve('/feed?fix'));
-      const change = await app.store.edit(running.id, {
-        data: { ...running.data, durationSeconds: seconds },
-      });
-      app.showUndo(`Breastfeed · ${Math.max(1, Math.round(seconds / 60))} min logged`, change);
+      if (data === null) return goto(resolve('/feed?fix'));
+      const change = await app.store.edit(running.id, { data });
+      app.showUndo(`Breastfeed · ${minutes(data.durationSeconds ?? 0)} logged`, change);
     });
 
   const wet = () => once(() => app.log('diaper', { kind: 'wet' }, 'Wet logged'));
@@ -79,7 +70,7 @@
   >
     <Dial {marks} running={running?.occurredAt ?? null} now={app.now}>
       {#if running}
-        <span class="lab">Feeding · {running.data.side}</span>
+        <span class="lab">Feeding · {currentSide(running) ?? running.data.side}</span>
         <span class="v num">{clock(app.now - Date.parse(running.occurredAt))}</span>
         <span class="lab">since {time(running.occurredAt)}</span>
       {:else if lastFeed}
@@ -120,13 +111,16 @@
       {#if running}
         <button class="run" onclick={stopFeed}>
           Stop<small class="num"
-            >{running.data.side[0]?.toUpperCase()} · {clock(
+            >{(currentSide(running) ?? running.data.side)[0]?.toUpperCase()} · {clock(
               app.now - Date.parse(running.occurredAt),
             )}</small
           >
         </button>
       {:else}
-        <button onclick={startFeed}>Feed<small>Start {suggestSide(app.events)}</small></button>
+        <!-- Opens Left / Right: starting on either side is two taps (#19). -->
+        <button onclick={() => goto(resolve('/feed'))}
+          >Feed<small>Next {suggestSide(app.events)}</small></button
+        >
       {/if}
       <button onclick={wet}>Wet<small>1 tap</small></button>
       <button onclick={() => goto(resolve('/diaper'))}>Dirty<small>Color</small></button>
