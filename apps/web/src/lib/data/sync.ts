@@ -20,6 +20,11 @@ export interface SyncOptions {
   maxPushBytes?: number;
   random?: () => number;
   onRejected?: (results: PushResult[]) => void;
+  /**
+   * Runs before each push with the batch about to go up, e.g. to add a baby the server does
+   * not have yet. A throw fails the run like a failed push: nothing is sent, and it retries.
+   */
+  prepare?: (batch: BabyEvent[]) => Promise<void>;
 }
 
 /**
@@ -37,7 +42,8 @@ export class SyncClient {
   #again = false;
   #timer: ReturnType<typeof setTimeout> | null = null;
   readonly #listeners = new Set<(s: SyncStatus) => void>();
-  readonly #opts: Required<Omit<SyncOptions, 'onRejected'>> & Pick<SyncOptions, 'onRejected'>;
+  readonly #opts: Required<Omit<SyncOptions, 'onRejected' | 'prepare'>> &
+    Pick<SyncOptions, 'onRejected' | 'prepare'>;
 
   constructor(
     readonly store: EventStore,
@@ -164,6 +170,7 @@ export class SyncClient {
         await this.#refuseLocally(batch[0]!);
         continue;
       }
+      await this.#opts.prepare?.(batch);
       let results: PushResult[];
       try {
         ({ results } = await this.transport.push(batch));

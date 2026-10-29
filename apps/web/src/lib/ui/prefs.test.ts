@@ -4,8 +4,11 @@ import {
   authorId,
   DEFAULT_PREFS,
   KEYS,
+  loadAccount,
   loadBaby,
   loadPrefs,
+  mintAuthorId,
+  saveAccount,
   saveBaby,
   savePrefs,
 } from './prefs.ts';
@@ -16,6 +19,7 @@ function kv(init: Record<string, string> = {}) {
   return {
     getItem: (k: string) => m.get(k) ?? null,
     setItem: (k: string, v: string) => void m.set(k, v),
+    removeItem: (k: string) => void m.delete(k),
     m,
   };
 }
@@ -67,5 +71,26 @@ describe('datetime-local', () => {
     expect(fromLocalInput('2026-10-29T02:59')).toBe(new Date(ms).toISOString());
     expect(fromLocalInput('')).toBeNull();
     expect(fromLocalInput('2026-13-40T99:99')).toBeNull();
+  });
+
+  test('minting replaces the author id, and later reads keep the new one', () => {
+    const s = kv();
+    const first = authorId(s);
+    const minted = mintAuthorId(s);
+    expect(minted).not.toBe(first);
+    expect(authorId(s)).toBe(minted);
+  });
+
+  test('the stored account round-trips, clears, and ignores damage', () => {
+    const s = kv();
+    expect(loadAccount(s)).toBeNull();
+    const account = { householdId: newId(), memberId: newId() };
+    saveAccount(s, account);
+    expect(loadAccount(s)).toEqual(account);
+    saveAccount(s, null);
+    expect(s.m.has(KEYS.account)).toBe(false);
+    for (const bad of ['not json', '{"householdId":"x","memberId":"y"}', '[]', 'null']) {
+      expect(loadAccount(kv({ [KEYS.account]: bad }))).toBeNull();
+    }
   });
 });

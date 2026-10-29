@@ -38,7 +38,8 @@ export class EventStore {
 
   constructor(
     readonly db: Database,
-    readonly authorId: string,
+    /** Stamped on every write. Replaced when sign-in mints this phone a new device id. */
+    public authorId: string,
     readonly now: () => Date = () => new Date(),
   ) {}
 

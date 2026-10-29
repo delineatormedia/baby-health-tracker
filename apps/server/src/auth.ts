@@ -1,6 +1,8 @@
 import {
   AddBaby,
   CeremonyResponse,
+  DEVICE_ELSEWHERE,
+  DEVICE_REMOVED,
   JoinRequest,
   LoginRequest,
   newId,
@@ -66,8 +68,8 @@ const fail = (status: 400 | 401 | 403 | 404 | 409, error: string) =>
 /** What an options step answers: the body, and the flow secret for the browser's cookie. */
 type Started = CeremonyOptions & { browser: string };
 
-/** The 409 a phone id held by another household gets; step 3 answers it with a new id. */
-export const DEVICE_ELSEWHERE = 'This phone id belongs to another household';
+// The 409 a phone id held by another household gets; step 3 answers it with a new id.
+export { DEVICE_ELSEWHERE } from '@bht/schema';
 
 export const hashSecret = (secret: string) => createHash('sha256').update(secret).digest('hex');
 
@@ -393,7 +395,7 @@ export class Accounts {
          JOIN members m ON m.id = d.member_id WHERE d.id = ?`,
       )
       .get(deviceId) as { removed_at: string | null; household_id: string } | undefined;
-    if (device?.removed_at) return fail(401, 'This phone was removed from the household');
+    if (device?.removed_at) return fail(401, DEVICE_REMOVED);
     if (device && device.household_id !== householdId) return fail(409, DEVICE_ELSEWHERE);
     return null;
   }

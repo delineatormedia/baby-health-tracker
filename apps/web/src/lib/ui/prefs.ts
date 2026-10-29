@@ -29,9 +29,11 @@ export const KEYS = {
   baby: 'bht.baby',
   setupAt: 'bht.setupAt',
   homeNoteDismissed: 'bht.homeNoteDismissed',
+  account: 'bht.account',
 } as const;
 
 type KV = Pick<Storage, 'getItem' | 'setItem'>;
+type KVRemove = KV & Pick<Storage, 'removeItem'>;
 
 function readJson(kv: KV, key: string): unknown {
   try {
@@ -67,6 +69,36 @@ export function authorId(kv: KV): Id {
   const id = newId();
   kv.setItem(KEYS.author, id);
   return id;
+}
+
+/**
+ * Replaces this phone's author id with a fresh one (#5 step 3): the server refused the old
+ * one at sign-in, as a removed phone or another household's. Entries already logged keep
+ * the id they were logged under.
+ */
+export function mintAuthorId(kv: KV): Id {
+  const id = newId();
+  kv.setItem(KEYS.author, id);
+  return id;
+}
+
+/** The household this phone signed in to; the session itself is an HttpOnly cookie. */
+export interface StoredAccount {
+  householdId: Id;
+  memberId: Id;
+}
+
+export function loadAccount(kv: KV): StoredAccount | null {
+  const raw = readJson(kv, KEYS.account) as Partial<StoredAccount> | null;
+  const ok = (x: unknown): x is Id => typeof x === 'string' && ULID.test(x);
+  return raw && ok(raw.householdId) && ok(raw.memberId)
+    ? { householdId: raw.householdId, memberId: raw.memberId }
+    : null;
+}
+
+export function saveAccount(kv: KVRemove, account: StoredAccount | null): void {
+  if (account) kv.setItem(KEYS.account, JSON.stringify(account));
+  else kv.removeItem(KEYS.account);
 }
 
 export function loadBaby(kv: KV): Baby | null {
