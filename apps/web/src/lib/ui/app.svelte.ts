@@ -16,6 +16,7 @@ import {
   coveredThrough,
   syncedSpans,
   waitingOn,
+  waitingOnWindow,
   type ClockSample,
   type Spans,
   type SyncView,
@@ -427,6 +428,12 @@ class AppState {
   coveredThrough(d: HouseholdDevice, wall: number, mono: number): number | null {
     const view = this.syncView(wall, mono);
     return view ? coveredThrough(view, d) : null;
+  }
+
+  /** The phones a not_synced check's window [start, end] waits on. */
+  waitingOnWindow(start: number, end: number, wall: number, mono: number): HouseholdDevice[] {
+    const view = this.syncView(wall, mono);
+    return view ? waitingOnWindow(view, start, end) : [];
   }
 
   /** Starts syncing the signed-in household, or resumes after a retried placement. */

@@ -46,11 +46,17 @@
   const isoOrNull = (ms: number) => (Number.isFinite(ms) ? new Date(ms).toISOString() : null);
   /** The phones a check's window waits on. */
   const waitingFor = (r: CheckResult) =>
-    app.waitingOn(Date.parse(r.window.start), Date.parse(r.window.end), clock.wall, clock.mono);
+    app.waitingOnWindow(
+      Date.parse(r.window.start),
+      Date.parse(r.window.end),
+      clock.wall,
+      clock.mono,
+    );
   const notSynced = (r: CheckResult) =>
     r.status === 'not_enough_data' && r.reason === 'not_synced' && app.account !== null;
   /** Why a check waits on the other phones, or its usual reason. */
-  const why = (r: CheckResult) => (notSynced(r) ? waitingText(waitingFor(r)) : reasonText(r, start));
+  const why = (r: CheckResult) =>
+    notSynced(r) ? waitingText(waitingFor(r)) : reasonText(r, start);
   const waiting = $derived(
     app.account && app.waitingOn(clock.wall, clock.wall, clock.wall, clock.mono).length > 0,
   );

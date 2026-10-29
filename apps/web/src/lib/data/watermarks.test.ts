@@ -1,11 +1,14 @@
-import { newId, type HouseholdDevice } from '@bht/schema';
+import { evaluate } from '@bht/insights';
+import { newId, type BabyEvent, type HouseholdDevice } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
 import {
   DRIFT_BUDGET_MS,
   localWatermark,
   sampleHolds,
+  syncedSpans,
   syncedThrough,
   waitingOn,
+  waitingOnWindow,
   type ClockSample,
   type SyncView,
 } from './watermarks.ts';
@@ -19,7 +22,14 @@ const NOON = Date.parse('2026-10-29T12:00:00.000Z');
 const self = newId();
 
 function device(memberName: string, watermark: number | null): HouseholdDevice {
-  return { deviceId: newId(), memberName, watermark, lastSeenAt: NOON, removedAt: null, signedOutAt: null };
+  return {
+    deviceId: newId(),
+    memberName,
+    watermark,
+    lastSeenAt: NOON,
+    removedAt: null,
+    signedOutAt: null,
+  };
 }
 
 /** A view at the moment the sample was taken, plus `elapsed` on both clocks. */
@@ -88,7 +98,12 @@ describe('localWatermark', () => {
     for (const theta of [-5 * H, -1, 0, 1, 3 * H]) {
       for (const delay of [0, 400, 90 * S]) {
         // This phone's clock reads tSend; the server's reads tSend + theta.
-        const sample = { tSend: NOON, pSend: 0, serverNow: NOON + delay + theta, tRecv: NOON + delay };
+        const sample = {
+          tSend: NOON,
+          pSend: 0,
+          serverNow: NOON + delay + theta,
+          tRecv: NOON + delay,
+        };
         const w = NOON + theta; // the server time at the instant the request left
         const sam = device('Sam', w);
         const localInstant = w - theta;
@@ -197,5 +212,64 @@ describe('syncedThrough', () => {
         expect(assessed).toBe(waitingOn(v, end).length === 0);
       }
     }
+  });
+});
+
+describe('waitingOnWindow', () => {
+  const iso = (t: number) => new Date(t).toISOString();
+  const wet = (t: number): BabyEvent => ({
+    id: newId(),
+    babyId: newId(),
+    authorId: self,
+    occurredAt: iso(t),
+    recordedAt: iso(t),
+    version: 1,
+    deleted: false,
+    notes: null,
+    type: 'diaper',
+    data: { kind: 'wet' },
+  });
+
+  test('no_urine, clamped to the watermark that holds it back, names that phone', () => {
+    // Day 3; Sam's phone last synced 3 h ago and the last wet diaper is 9 h old. no_urine's
+    // window ends where the synced span does: Sam's converted watermark (Ignition's probe on #64).
+    const sam = device('Sam', NOON - 3 * H);
+    const v = view([sam], agreed());
+    const synced = syncedThrough(v)!;
+    const r = evaluate({
+      baby: { birthAt: iso(NOON - 50 * H), sex: 'female' },
+      events: [wet(NOON - 9 * H)],
+      now: iso(NOON),
+      fullyLogged: [{ start: iso(NOON - 50 * H), end: iso(NOON) }],
+      synced: syncedSpans(v).map(([s, e]) => ({
+        start: Number.isFinite(s) ? iso(s) : null,
+        end: Number.isFinite(e) ? iso(e) : null,
+      })),
+    }).find((c) => c.check === 'no_urine')!;
+    expect(r).toMatchObject({ status: 'not_enough_data', reason: 'not_synced' });
+    expect(Date.parse(r.window.end)).toBe(synced);
+    // The bug: the window's own end is not past Sam's watermark, so nobody was named.
+    expect(waitingOn(v, Date.parse(r.window.end), Date.parse(r.window.start))).toEqual([]);
+    expect(waitingOnWindow(v, Date.parse(r.window.start), Date.parse(r.window.end))).toEqual([sam]);
+  });
+
+  test('a clamped window waits on every phone not yet through now', () => {
+    const sam = device('Sam', NOON - 3 * H);
+    const ana = device('Ana', NOON - H);
+    const v = view([sam, ana], agreed());
+    const end = syncedThrough(v)!;
+    expect(waitingOnWindow(v, end - 8 * H, end)).toEqual([sam, ana]);
+  });
+
+  test('a window ending past syncedThrough still names only the phones behind its end', () => {
+    const sam = device('Sam', NOON - 3 * H);
+    const ana = device('Ana', NOON - H);
+    const v = view([sam, ana], agreed());
+    expect(waitingOnWindow(v, NOON - 3 * H, NOON - 2 * H)).toEqual([sam]);
+  });
+
+  test('nothing known yet: the window waits on every phone', () => {
+    const fresh = device('Sam', null);
+    expect(waitingOnWindow(view([fresh], agreed()), NOON - 2 * H, NOON - H)).toEqual([fresh]);
   });
 });

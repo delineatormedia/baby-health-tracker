@@ -167,3 +167,14 @@ function intersect(a: Spans, b: Spans): Spans {
   }
   return merge(out);
 }
+
+/**
+ * The other phones a not_synced check waits on. A window outside the synced spans waits on the
+ * phones that do not cover it. A window inside one (no_urine's, clamped to the span's end: "no
+ * wet diaper in the 8 h before the pull") is asking about now, so it waits on every phone that
+ * does not cover it through now, starting with the one whose watermark clamped it.
+ */
+export function waitingOnWindow(view: SyncView, start: number, end: number): HouseholdDevice[] {
+  const inside = syncedSpans(view).some(([s, e]) => s <= start && end <= e);
+  return waitingOn(view, inside ? Math.max(end, view.wall) : end, start);
+}
