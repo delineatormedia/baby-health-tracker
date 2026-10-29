@@ -14,13 +14,14 @@ body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:4
 .phone{width:390px;height:844px;border-radius:46px;overflow:hidden;position:relative;box-shadow:0 0 0 10px #111,0 20px 50px rgba(0,0,0,.25);margin:10px;background:var(--bg);color:var(--ink)}
 
 /* Tokens. Light is unchanged from C. Night is "graphite": warm near-black, dim stone ink, muted sage accent. No red. */
-.light{--feed:#6E2A9C;--bottle:#08664C;--wet:#1F6FD6;--dirty:#7F7410;--pump:#C2367A;--bg:#ECEFF1;--panel:#FFFFFF;--ink:#1F2A33;--dim:#5B6670;--line:#D9DEE2;--acc:#2E6A8E;--accInk:#FFFFFF;--band:#D6E4EC;--flag:#A8552F;--flagSoft:#F7EBE3;--well:#FFFFFF}
+.light{--feed:#6E2A9C;--bottle:#08664C;--wet:#1F6FD6;--dirty:#7F7410;--pump:#C2367A;--bg:#ECEFF1;--panel:#FFFFFF;--ink:#1F2A33;--dim:#5B6670;--line:#D9DEE2;--acc:#2E6A8E;--accInk:#FFFFFF;--band:#D6E4EC;--flag:#A0502B;--flagSoft:#F7EBE3;--well:#FFFFFF}
 .night{--feed:#B880D8;--bottle:#25876B;--wet:#4C8EF0;--dirty:#ABA53A;--pump:#DA7AA0;--bg:#0D0C0B;--panel:#161513;--ink:#ADA59A;--dim:#8A8378;--line:#252320;--acc:#6F8F84;--accInk:#0D0C0B;--band:#1E2925;--flag:#C29A62;--flagSoft:#1B1712;--well:#1C1A17}
 
 .sb{height:50px;display:flex;justify-content:space-between;align-items:flex-end;padding:0 30px 6px;font:600 15px -apple-system,system-ui,sans-serif}
 .lab{font:500 15px ui-monospace,Menlo,monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--dim)}
 .top{display:flex;justify-content:space-between;align-items:baseline;padding:16px 24px 0}
 .top b{font:600 17px -apple-system,system-ui,sans-serif}
+.top .act{font:500 20px -apple-system,system-ui,sans-serif;color:var(--acc);font-variant-numeric:tabular-nums}
 .num{font-variant-numeric:tabular-nums}
 
 /* home */
@@ -35,7 +36,7 @@ body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:4
 .quiet{text-align:center;margin-top:18px;font-size:17px;color:var(--dim)}
 .quiet b{color:var(--ink);font-weight:500}
 .chips{position:absolute;left:12px;right:12px;bottom:236px;display:flex;gap:6px}
-.chips div{flex:1;height:48px;border-radius:12px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink)}
+.chips div{flex:1;height:52px;border-radius:12px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 20px -apple-system,system-ui,sans-serif;color:var(--ink)}
 .rail{position:absolute;left:0;right:0;bottom:0;padding:10px 12px 30px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:88px 88px;gap:8px;background:var(--bg)}
 .rail>div{--ev:var(--line);border-radius:16px;background:var(--panel);border:2px solid var(--ev);display:flex;flex-direction:column;justify-content:flex-end;padding:10px 12px;font:600 20px/1.1 -apple-system,system-ui,sans-serif}
 .rail .tall{grid-row:span 2}
@@ -51,8 +52,8 @@ body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:4
 .g.g-wet{background:var(--wet);border-radius:50%}
 .g.g-dirty{background:var(--dirty)}
 .g.g-pump{background:var(--pump);transform:rotate(45deg) scale(.85)}
-.toast{position:absolute;left:16px;right:16px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;font-size:17px;background:var(--panel)}
-.toast b{font-weight:600}
+.toast{position:absolute;left:16px;right:16px;border:1px solid var(--line);border-radius:12px;padding:0 14px;height:52px;display:flex;justify-content:space-between;align-items:center;font-size:17px;background:var(--panel)}
+.toast b{font:600 20px -apple-system,system-ui,sans-serif}
 .toast .acts{display:flex;gap:18px}
 
 /* shared controls */
@@ -73,10 +74,11 @@ body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:4
 /* diaper */
 .well{margin:14px 16px 0;border-radius:18px;padding:14px;background:var(--well);border:1px solid var(--line)}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.tile{height:84px;border-radius:12px;position:relative;padding:8px 10px;font:500 15px/1.1 -apple-system,system-ui,sans-serif;display:flex;align-items:flex-end;color:rgba(0,0,0,.66)}
-.tile.dk{color:rgba(255,255,255,.82)}
-.tile.sm{height:58px}
-.tile.fl::after{content:"!";position:absolute;top:6px;right:9px;font:700 15px ui-monospace,Menlo,monospace}
+/* Swatch labels are solid black or white, whichever passes 4.5:1 on that swatch. Never an opacity. */
+.tile{height:84px;border-radius:12px;position:relative;padding:8px 10px;font:500 20px/1.1 -apple-system,system-ui,sans-serif;display:flex;align-items:flex-end;color:#000}
+.tile.dk{color:#FFF}
+.tile.sm{height:60px}
+.tile.fl::after{content:"!";position:absolute;top:6px;right:9px;font:700 20px ui-monospace,Menlo,monospace}
 .flagnote{margin:16px 2px 8px;color:var(--flag)}
 .toggle{display:flex;justify-content:space-between;align-items:center;margin:16px 16px 0;padding:0 16px;height:56px;border-radius:14px;background:var(--panel);border:1px solid var(--line);font-size:20px}
 .sw{width:50px;height:30px;border-radius:15px;background:var(--line);position:relative}
@@ -86,6 +88,7 @@ body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:4
 .done{display:flex;align-items:center;gap:12px;margin:18px 16px 0;padding:14px 16px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
 .done .chip{width:34px;height:34px;border-radius:8px}
 .done div{flex:1;font-size:17px}
+.done.tap div{font-size:20px}
 .done small{display:block;color:var(--dim);font-size:15px;margin-top:2px}
 
 /* bottle + pump */
@@ -120,7 +123,7 @@ body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:4
 .verdict p{font-size:17px;color:var(--dim)}
 .verdict.flag{background:var(--flagSoft);border:1.5px solid var(--flag)}
 .verdict.flag .lab{color:var(--flag)}
-.verdict .more{display:flex;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:17px;font-weight:600}
+.verdict .more{display:flex;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:20px;font-weight:600}
 .verdict.flag .more{border-top-color:color-mix(in srgb,var(--flag) 35%,transparent)}
 .gauge{margin:10px 16px 0;padding:16px 18px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
 .gauge .r{display:flex;justify-content:space-between;align-items:baseline}
@@ -141,16 +144,16 @@ body{background:#D3D8DC;font-family:-apple-system,system-ui,sans-serif;padding:4
 .day{margin:20px 24px 6px}
 .ev{display:grid;grid-template-columns:62px 1fr 30px;align-items:center;gap:10px;padding:13px 24px;border-bottom:1px solid var(--line)}
 .ev .t{font:500 15px ui-monospace,Menlo,monospace;color:var(--dim)}
-.ev .k{font-size:17px}
+.ev .k{font-size:20px}
 .ev .k small{display:block;color:var(--dim);font-size:15px;margin-top:2px}
 .ev .who{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 15px ui-monospace,Menlo,monospace;color:var(--dim)}
 .ev .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:0}
 .list{margin:0 16px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
-.list div{display:flex;justify-content:space-between;align-items:center;padding:0 16px;height:56px;font-size:17px}
+.list div{display:flex;justify-content:space-between;align-items:center;padding:0 16px;height:56px;font-size:20px}
 .list div+div{border-top:1px solid var(--line)}
 .list span{color:var(--dim);font-size:15px}
 .field{margin:0 16px 0;padding:10px 16px 12px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
-.field b{display:block;font:400 19px -apple-system,system-ui,sans-serif;margin-top:4px}
+.field b{display:block;font:400 20px -apple-system,system-ui,sans-serif;margin-top:4px}
 .field+.field{margin-top:8px}
 .keys{position:absolute;left:12px;right:12px;bottom:110px;display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .keys div{height:58px;border-radius:12px;background:var(--panel);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:400 24px -apple-system,system-ui,sans-serif}
@@ -163,6 +166,8 @@ const SW={normal:[["Yellow","#E6C24A"],["Mustard","#C9A227"],["Green","#6F7F2E"]
           flag:[["Pale yellow","#EFE6B8"],["Clay","#BDB3A1"],["White","#F4F1EA"],["Red","#9E2A22",1]]};
 const sb=`<div class="sb"><span class="num">2:59</span><span>●●● ▮</span></div>`;
 const hdr=(t,r)=>`<div class="top"><b>${t}</b><span class="lab">${r}</span></div>`;
+// Tappable header: the left side goes back, the right side edits the time. Both are controls, so 20 px.
+const hdrA=(t,r,back)=>`<div class="top">${back?`<span class="act">${t}</span>`:`<b>${t}</b>`}${r?`<span class="act">${r}</span>`:''}</div>`;
 
 function pt(h,r,c=150){const a=(h/24)*2*Math.PI-Math.PI/2;return[c+r*Math.cos(a),c+r*Math.sin(a)]}
 function dialSvg(running){
@@ -198,24 +203,24 @@ ${legend(9)}
 <div class="chips"><div>Weight</div><div>History</div><div>Readings</div></div>
 ${rail(true)}`,
 
-feed:()=>`${sb}${hdr('Breastfeed','Started 2:51 AM ›')}
+feed:()=>`${sb}${hdrA('Breastfeed','Started 2:51 AM ›')}
 <div class="big"><span class="lab">Right side</span><div class="v">08:42</div><span class="lab">Total 08:42 · last feed left</span></div>
 <div class="sides"><div>Left<small>—</small></div><div class="on">Right<small>08:42</small></div></div>
 <div class="go2">Type a duration instead</div>
 <div class="go">Stop · log 8 min</div>`,
 
-diaperColor:()=>`${sb}${hdr('Dirty diaper','Now · 2:59 AM ›')}
+diaperColor:()=>`${sb}${hdrA('Dirty diaper','Now · 2:59 AM ›')}
 <div class="steps"><i class="on"></i><i></i></div>
 <div class="toggle"><span>Also wet <span style="color:var(--dim)">· mixed</span></span><span class="sw"></span></div>
 <div class="well"><div class="lab">Color · true in every mode</div>
 <div class="grid" style="margin-top:10px">${SW.normal.map(([n,c,d])=>`<div class="tile ${d?'dk':''}" style="background:${c}">${n}</div>`).join('')}</div>
 <div class="lab flagnote">! Consider talking to your pediatrician</div>
-<div class="grid" style="grid-template-columns:repeat(4,1fr)">${SW.flag.map(([n,c,d])=>`<div class="tile sm fl ${d?'dk':''}" style="background:${c}">${n}</div>`).join('')}</div></div>
+<div class="grid" style="grid-template-columns:repeat(2,1fr)">${SW.flag.map(([n,c,d])=>`<div class="tile sm fl ${d?'dk':''}" style="background:${c}">${n}</div>`).join('')}</div></div>
 <div class="hint lab">Tap a color to log · details are optional</div>`,
 
 diaperDetails:()=>`${sb}${hdr('Details','Optional')}
 <div class="steps"><i class="on"></i><i class="on"></i></div>
-<div class="done"><span class="chip" style="background:#C9A227"></span><div>Logged · dirty, mustard<small>2:59 AM</small></div><b style="font-size:15px">Undo</b></div>
+<div class="done"><span class="chip" style="background:#C9A227"></span><div>Logged · dirty, mustard<small>2:59 AM</small></div><b style="font-size:20px">Undo</b></div>
 <div class="sec lab">Texture</div><div class="opts" style="grid-template-columns:repeat(4,1fr)"><div>Seedy</div><div class="on">Soft</div><div>Watery</div><div>Hard</div></div>
 <div class="sec lab">Size</div><div class="opts" style="grid-template-columns:repeat(3,1fr)"><div>Small</div><div class="on">Medium</div><div>Large</div></div>
 <div class="sec lab">Also noticed</div><div class="opts" style="grid-template-columns:repeat(3,1fr)"><div>Blood</div><div>Mucus</div><div>Other</div></div>
@@ -224,7 +229,7 @@ diaperDetails:()=>`${sb}${hdr('Details','Optional')}
 bottle:()=>{const H=400,at=v=>H-(v/240)*H;
  const ml=[0,60,120,180,240].map(v=>`<div style="top:${at(v)}px" class="${v==60?'hi':''}">${v}</div>`).join('');
  const oz=[0,2,4,6,8].map(v=>`<div style="top:${at(v*29.57)}px" class="${v==2?'hi':''}">${v}</div>`).join('');
- return `${sb}${hdr('Bottle','Now · 2:59 AM ›')}
+ return `${sb}${hdrA('Bottle','Now · 2:59 AM ›')}
 <div class="seg"><div class="on">Breast milk</div><div>Formula</div></div>
 <div style="display:flex;justify-content:space-between;margin:18px 30px -10px"><span class="lab">mL</span><span class="lab">oz</span></div>
 <div class="bottle" style="height:${H}px"><div class="scale l">${ml}</div><div class="vessel"><div class="fill" style="height:${(60/240)*H}px"></div><div class="grip" style="top:${at(60)}px"></div></div><div class="scale r">${oz}</div></div>
@@ -238,23 +243,23 @@ readingsOk:()=>`${sb}${hdr('Readings','Day 12 · 24 h')}
 <div class="verdict"><div class="lab">3 checks · fully logged · synced</div><h3>Diapers and weight are in the expected range</h3><p>Total intake is not assessed. See below.</p></div>
 ${gauges()}`,
 
-why:()=>`${sb}${hdr('‹ Readings','Why this flag')}
+why:()=>`${sb}${hdrA('‹ Readings','',1)}
 <div class="prose"><div class="lab" style="color:var(--flag)">! Call your pediatrician promptly</div><h2>Clay-colored stool</h2>
 <p>In young babies, pale, clay or white stool can be a sign of a liver problem. The AAP says to bring it to a doctor's attention as soon as possible, even once.</p>
 <p style="color:var(--dim)">The app can't tell what caused it. Your pediatrician can.</p></div>
-<div class="done" style="margin-top:8px"><span class="chip" style="background:#BDB3A1"></span><div>Dirty diaper · clay<small>Today 4:10 PM · K</small></div><span class="lab">›</span></div>
+<div class="done tap" style="margin-top:8px"><span class="chip" style="background:#BDB3A1"></span><div>Dirty diaper · clay<small>Today 4:10 PM · K</small></div><span class="lab">›</span></div>
 <div class="src"><b style="color:var(--ink)">Sources</b><br>AAP, “The Many Colors of Poop” (healthychildren.org)<br>NHS, “Jaundice in newborns” (nhs.uk)<br>From docs/CLINICAL_REFERENCE.md · red-flag colours</div>
 <div class="go2">Edit the diaper</div>
 <div class="go">Talked to the pediatrician</div>`,
 
-pump:()=>`${sb}${hdr('Pump','Now · 2:59 AM ›')}
+pump:()=>`${sb}${hdrA('Pump','Now · 2:59 AM ›')}
 <div class="pair">${[["Left",45],["Right",38]].map(([s,v])=>`<div><div class="vessel"><div class="fill" style="height:${v/150*100}%"></div><div class="grip" style="top:${100-v/150*100}%"></div></div><div class="cap2"><span class="lab">${s}</span><b>${v} <span style="font-size:15px;color:var(--dim)">mL</span></b></div></div>`).join('')}</div>
 <div class="toggle" style="margin-top:22px"><span>Right after a feed</span><span class="sw on"></span></div>
 <div class="go">Log 83 mL · 2.8 oz</div>`,
 
-weight:()=>`${sb}${hdr('Weight','Now · 2:59 AM ›')}
+weight:()=>`${sb}${hdrA('Weight','Now · 2:59 AM ›')}
 <div class="seg"><div class="on">Home scale</div><div>Clinic</div></div>
-<div class="readout" style="margin-top:44px"><div class="v" style="font-size:64px">3 64<span style="color:var(--ink);font-size:64px;opacity:.35">0</span> <span>g</span></div><div class="lab" style="margin-top:6px">8 lb 0.4 oz · birth 3 530 g</div></div>
+<div class="readout" style="margin-top:44px"><div class="v" style="font-size:64px">3 64<span style="color:var(--dim);font-size:64px;font-weight:200">0</span> <span>g</span></div><div class="lab" style="margin-top:6px">8 lb 0.4 oz · birth 3 530 g</div></div>
 <div class="keys">${[1,2,3,4,5,6,7,8,9].map(n=>`<div>${n}</div>`).join('')}<div class="ghost">lb/oz</div><div>0</div><div class="ghost">⌫</div></div>
 <div class="go">Log 3 640 g</div>`,
 
@@ -289,7 +294,7 @@ function gauges(){return [["Wet diapers","7",[50,100],72,"6+ from day 5"],["Dirt
 +`<div class="gauge"><div class="r"><span class="k">Recorded bottle intake</span><span class="v">≈410 mL</span></div><div style="margin-top:10px;font-size:15px;font-weight:500">Not enough information to assess total intake</div><div class="lab" style="margin-top:4px;letter-spacing:.02em;text-transform:none;font-size:15px">≈410 mL recorded from bottles. 9 breastfeeds not measured.</div></div>`}
 
 const BOARDS={
- home:{h:"Home · glanceable (#20)",s:"Owner feedback after real-phone use: the dial read as black and white, the labels were too small, and the buttons should say when each thing was last logged. Each event type now has its own saturated colour and its own shape (feed bar, bottle ring, wet dot, dirty square), so the dial still reads without colour. Night colours are outlines and marks, never fills, and none is brighter than the night text. Buttons carry a coloured outline, the time since the last log, and the last side for Feed and Pump. No text is under 15 px.",cols:[["Home · idle","home","home"],["Home · feeding","homeFeeding","homeFeeding"]]},
+ home:{h:"Home · glanceable (#20)",s:"Owner feedback after real-phone use: the dial read as black and white, the labels were too small, and the buttons should say when each thing was last logged. Each event type now has its own saturated colour and its own shape (feed bar, bottle ring, wet dot, dirty square), so the dial still reads without colour. Night colours are outlines and marks, never fills, and none is brighter than the night text. Buttons carry a coloured outline, the time since the last log, and the last side for Feed and Pump. Anything tappable is 20 px; no text is under 15 px, and all text passes 4.5:1.",cols:[["Home · idle","home","home"],["Home · feeding","homeFeeding","homeFeeding"]]},
  core:{h:"Instrument · core screens",cols:[["Home · 24 h dial","home","home"],["Breastfeed timer","feed","feed"],["Diaper 1 · color","diaperColor","diaperColor"],["Diaper 2 · details","diaperDetails","diaperDetails"],["Bottle","bottle","bottle"],["Readings","readingsFlag","readingsOk"],["Why?","why","why"]]},
  rest:{h:"Instrument · remaining screens",cols:[["Pump","pump","pump"],["Weight","weight","weight"],["History","history","history"],["Add a baby","addBaby","addBaby"],["Household","settings","settings"],["Sign in","signin","signin"]]},
 };

@@ -33,15 +33,20 @@ This applies to every screen, not only Home (#20).
 
 | Text | Minimum |
 |---|---|
-| Button labels (quick-log keys, primary and secondary actions, segmented controls, options) | 20 px |
-| Body text, list rows, toasts, readings values | 17 px |
-| Secondary text (captions, monospaced labels, "last logged" lines, hints) | 15 px |
+| Anything tappable: quick-log keys, primary and secondary actions, segmented controls, options, stool swatches, Undo, the Home chips (Weight, History, Readings), Why?, header actions (the time edit, back), list rows that open something, form fields | 20 px |
+| Body text that is not a control: titles, toast messages, readings values | 17 px |
+| Non-interactive captions: monospaced labels, "last logged" lines, a row's second line, hints | 15 px |
 
+- If you can tap it, its label is 20 px. Only text that does nothing when
+  tapped may be smaller. A caption inside a tappable row (the "Clinic ·
+  3 610 g" line under "Weight") is a caption.
 - Nothing a parent has to read is smaller than 15 px. Phone OS chrome (the
   status bar) is not ours.
-- Any text a parent has to read meets WCAG AA (4.5:1) on the surface it sits on.
-  That is why `dim` changed in #20: the old values were 3.84:1 (light) and
-  3.03:1 (night) on the panel.
+- All text meets WCAG AA (4.5:1) in both themes, measured after any opacity
+  is blended in. There are no exceptions, so text never uses opacity. De-emphasis
+  comes from the `dim` token, a lighter weight or a smaller size (see Text
+  contrast). That is also why `dim` changed in #20: the old values were 3.84:1
+  (light) and 3.03:1 (night) on the panel.
 - Long lines may wrap, but a line must never truncate a number or a side.
 
 ## Tokens
@@ -55,7 +60,7 @@ This applies to every screen, not only Home (#20).
 | line | `#D9DEE2` | `#252320` |
 | accent | `#2E6A8E` | `#6F8F84` |
 | band (expected range) | `#D6E4EC` | `#1E2925` |
-| flag | `#A8552F` | `#C29A62` |
+| flag | `#A0502B` | `#C29A62` |
 
 Night is "graphite": warm near-black, dim stone text and a muted sage accent.
 There is no red or amber tint, because red reads as an emergency in a medical
@@ -94,9 +99,48 @@ apart without colour.
 | Dirty | 4.13 | 4.76 | 7.61 | 7.10 |
 | Pump | 4.43 | 5.12 | 6.77 | 6.32 |
 
-  Text: ink on panel is 14.61 (light) and 7.50 (night). The new `dim` is 5.87
-  and 4.86 on the panel, and 5.08 and 5.21 on the background. On the tinted
-  running key, text is ink: 11.15 (light) and 5.95 (night).
+  Text contrast has its own table below.
+- **Text contrast** (measured, both themes). Every text node in
+  `direction.html` was measured in Chrome after blending opacity and stacked
+  backgrounds. The lowest is 4.75 (light) and 4.63 (night).
+
+| Text | On | Light | Night |
+|---|---|---|---|
+| ink | panel | 14.61 | 7.50 |
+| ink | bg | 12.65 | 8.03 |
+| dim | panel | 5.87 | 4.86 |
+| dim | bg | 5.08 | 5.21 |
+| dim | diaper well | 5.87 | 4.63 |
+| ink | running key (16% tint) | 11.15 | 5.95 |
+| accent (header actions) | bg | 5.10 | 5.53 |
+| button text (accInk) | accent | 5.89 | 5.53 |
+| flag | flag panel | 4.88 | 6.87 |
+| flag | bg (Why screen) | 4.95 | 7.53 |
+| Weight last digit (dim, weight 200) | bg | 5.08 | 5.21 |
+
+  Light `flag` moved from `#A8552F` to `#A0502B`: the old value was 4.48 on
+  the flag panel. The Weight screen used to fade the last digit to 35% ink
+  (2.03 light, 1.94 night). It is now `dim` at a lighter weight.
+
+- **Stool swatch labels** are solid black or white, whichever passes on that
+  swatch, never an opacity. They are the same in both themes because the
+  swatches are true colour.
+
+| Swatch | Label | Ratio |
+|---|---|---|
+| Yellow `#E6C24A` | black | 12.18 |
+| Mustard `#C9A227` | black | 8.68 |
+| Green `#6F7F2E` | black | 4.75 |
+| Brown `#7A5230` | white | 6.82 |
+| Black `#2A2420` | white | 15.31 |
+| Pale yellow `#EFE6B8` | black | 16.68 |
+| Clay `#BDB3A1` | black | 10.13 |
+| White `#F4F1EA` | black | 18.62 |
+| Red `#9E2A22` | white | 7.48 |
+
+  Green used 66% black (3.31). Ink (3.31) and white (4.42) also fail on it, so
+  it takes pure black.
+
 - **Colour vision.** The palette was checked under a deuteranopia simulation
   (Machado et al. 2009, severity 1). The closest pair is 0.089 apart in OKLab
   (night feed and wet), against 0.047 for an Okabe-Ito-style set. Feed and wet
