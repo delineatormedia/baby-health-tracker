@@ -30,6 +30,9 @@ pnpm --filter @bht/server dev   # API on http://127.0.0.1:8787
 pnpm --filter @bht/web dev      # PWA, proxies /api to the server
 ```
 
+To see the app full of fake data, open the dev server with `?seed=healthy-month` or
+`?seed=incidents-month`. See [apps/web/README.md](apps/web/README.md#test-data-dev-only).
+
 | Path                | What                                           |
 | ------------------- | ---------------------------------------------- |
 | `apps/web`          | SvelteKit PWA (static adapter, service worker) |

@@ -31,6 +31,7 @@ export const KEYS = {
   homeNoteDismissed: 'bht.homeNoteDismissed',
   account: 'bht.account',
   joining: 'bht.joining',
+  seeded: 'bht.seeded',
 } as const;
 
 type KV = Pick<Storage, 'getItem' | 'setItem'>;
@@ -155,4 +156,15 @@ export const loadHomeNoteDismissed = (kv: KV): boolean =>
 
 export function saveHomeNoteDismissed(kv: KV): void {
   kv.setItem(KEYS.homeNoteDismissed, '1');
+}
+
+/**
+ * Set once dev test data (#58) has been loaded into this browser. Nothing in the app clears
+ * it, so only clearing the browser's site data does. The app badges the screen while it is
+ * set, and sync must refuse any server but localhost (#55).
+ */
+export const loadSeeded = (kv: KV): boolean => kv.getItem(KEYS.seeded) === '1';
+
+export function markSeeded(kv: KV): void {
+  kv.setItem(KEYS.seeded, '1');
 }
