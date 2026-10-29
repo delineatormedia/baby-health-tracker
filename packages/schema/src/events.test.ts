@@ -287,6 +287,47 @@ describe('diaper', () => {
   });
 });
 
+describe('breastfeed pause (#29)', () => {
+  const running = {
+    side: 'left',
+    durationSeconds: null,
+    segments: [{ side: 'left', seconds: null }],
+  };
+
+  test('a paused running feed, a resumed one, and a finished feed with paused time', () => {
+    expectValid(
+      event('breastfeed', { ...running, pausedSeconds: 0, pausedAt: '2026-10-29T03:05:00.000Z' }),
+    );
+    expectValid(event('breastfeed', { ...running, pausedSeconds: 120 }));
+    expectValid(
+      event('breastfeed', {
+        side: 'left',
+        durationSeconds: 600,
+        segments: [{ side: 'left', seconds: 600 }],
+        pausedSeconds: 120,
+      }),
+    );
+  });
+
+  test('feeds from before pausing stay valid', () => {
+    expectValid(event('breastfeed', { side: 'right', durationSeconds: 900 }));
+    expectValid(event('breastfeed', running));
+  });
+
+  test.each([
+    [
+      'a finished feed still paused',
+      { side: 'left', durationSeconds: 600, pausedAt: '2026-10-29T03:05:00.000Z' },
+    ],
+    ['negative pause', { ...running, pausedSeconds: -1 }],
+    ['fractional pause', { ...running, pausedSeconds: 1.5 }],
+    ['pause past 24 h', { ...running, pausedSeconds: 86_401 }],
+    ['local pausedAt', { ...running, pausedAt: '2026-10-29T03:05:00' }],
+  ])('rejects %s', (_, data) => {
+    expectInvalid(event('breastfeed', data));
+  });
+});
+
 describe('pump', () => {
   test('one side, and an empty pump after a feed', () => {
     expectValid(event('pump', { leftMl: 60, rightMl: null, afterFeed: false }));

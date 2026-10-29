@@ -94,9 +94,33 @@ export function currentSide(f: Breastfeed): Breast | null {
   return feedSegments(f)?.at(-1)?.side ?? null;
 }
 
-/** When the side being fed now started: the feed's start plus every earlier side. */
+/** Whether a running feed's timer is paused (#29). */
+export const isPaused = (f: Breastfeed) => f.data.pausedAt !== undefined;
+
+const pausedMs = (f: Breastfeed) => (f.data.pausedSeconds ?? 0) * 1000;
+
+/** Where a running feed's clock stands: `now`, or when the current pause began. */
+function clockAt(f: Breastfeed, now: number): number {
+  return f.data.pausedAt === undefined ? now : Date.parse(f.data.pausedAt);
+}
+
+/** Feeding time so far in ms: the start to now (or the pause), less every finished pause. */
+export function feedElapsed(f: Breastfeed, now: number): number {
+  return Math.max(0, clockAt(f, now) - Date.parse(f.occurredAt) - pausedMs(f));
+}
+
+/**
+ * When the side being fed now started, on the paused-time-free clock: the feed's start plus
+ * every earlier side and every finished pause. Pauses before a switch were already left out
+ * of that side's seconds, so they shift this the same way.
+ */
 export function segmentStart(f: Breastfeed): number {
-  return Date.parse(f.occurredAt) + closedSeconds(feedSegments(f) ?? []) * 1000;
+  return Date.parse(f.occurredAt) + closedSeconds(feedSegments(f) ?? []) * 1000 + pausedMs(f);
+}
+
+/** Feeding time on the side being fed now, frozen while paused. */
+export function sideElapsed(f: Breastfeed, now: number): number {
+  return Math.max(0, clockAt(f, now) - segmentStart(f));
 }
 
 /** Milliseconds on each breast so far; the running side counts up to `now`. */
@@ -104,9 +128,31 @@ export function sideTimes(f: Breastfeed, now: number): Record<Breast, number> | 
   const segs = feedSegments(f);
   if (!segs) return null;
   const t = { left: 0, right: 0 };
-  const open = Math.max(0, now - segmentStart(f));
+  const open = sideElapsed(f, now);
   for (const s of segs) t[s.side] += s.seconds === null ? open : s.seconds * 1000;
   return t;
+}
+
+/** Pauses a running feed now. Unchanged if it is already paused. */
+export function pauseFeedData(f: Breastfeed, now: number): Breastfeed['data'] {
+  if (isPaused(f)) return f.data;
+  return { ...f.data, pausedAt: new Date(now).toISOString() };
+}
+
+/** Same as the schema bound: a pause past it was a forgotten timer. */
+export const MAX_PAUSE_SECONDS = 24 * 60 * 60;
+
+/**
+ * Resumes a paused feed now: the pause joins pausedSeconds. Null when the total pause passes
+ * the schema bound, so the parent types the real duration instead.
+ */
+export function resumeFeedData(f: Breastfeed, now: number): Breastfeed['data'] | null {
+  const { pausedAt, ...data } = f.data;
+  if (pausedAt === undefined) return f.data;
+  const paused =
+    (data.pausedSeconds ?? 0) + Math.max(0, Math.round((now - Date.parse(pausedAt)) / 1000));
+  if (paused > MAX_PAUSE_SECONDS) return null;
+  return { ...data, pausedSeconds: paused };
 }
 
 /**
@@ -114,10 +160,14 @@ export function sideTimes(f: Breastfeed, now: number): Record<Breast, number> | 
  * Null when there is no side to switch from (an old "both" timer) or the timer has overrun.
  */
 export function switchFeedData(f: Breastfeed, now: number): Breastfeed['data'] | null {
+  // Switching sides while paused resumes on the new side.
+  const resumed = resumeFeedData(f, now);
+  if (resumed === null) return null;
+  f = { ...f, data: resumed };
   const segs = feedSegments(f);
   const open = segs?.at(-1);
   if (!segs || !open || open.seconds !== null) return null;
-  const seconds = Math.max(0, Math.round((now - segmentStart(f)) / 1000));
+  const seconds = Math.round(sideElapsed(f, now) / 1000);
   if (closedSeconds(segs) + seconds > MAX_FEED_SECONDS) return null;
   const next: Breast = open.side === 'left' ? 'right' : 'left';
   const segments = [
@@ -125,22 +175,26 @@ export function switchFeedData(f: Breastfeed, now: number): Breastfeed['data'] |
     { side: open.side, seconds },
     { side: next, seconds: null },
   ];
-  return { side: segmentsSide(segments), durationSeconds: null, segments };
+  return { ...f.data, side: segmentsSide(segments), durationSeconds: null, segments };
 }
 
 /**
  * The finished feed when the timer stops now, or null past the 4-hour bound (see stopSeconds).
- * The side being fed takes whatever the total leaves after the earlier sides.
+ * Paused time is left out; stopping while paused ends the feed when the pause began. The side
+ * being fed takes whatever the total leaves after the earlier sides.
  */
 export function finishFeedData(f: Breastfeed, now: number): Breastfeed['data'] | null {
-  const total = stopSeconds(f.occurredAt, now);
+  const data = { ...f.data };
+  delete data.pausedAt;
+  const start = Date.parse(f.occurredAt) + pausedMs(f);
+  const total = stopSeconds(new Date(start).toISOString(), clockAt(f, now));
   if (total === null) return null;
-  const segs = f.data.segments;
-  if (!segs) return { ...f.data, durationSeconds: total };
+  const segs = data.segments;
+  if (!segs) return { ...data, durationSeconds: total };
   const closed = closedSeconds(segs.slice(0, -1));
   const last = Math.max(0, total - closed);
   const segments = [...segs.slice(0, -1), { side: segs.at(-1)!.side, seconds: last }];
-  return { side: segmentsSide(segments), durationSeconds: closed + last, segments };
+  return { ...data, side: segmentsSide(segments), durationSeconds: closed + last, segments };
 }
 
 /** Elapsed time as "08:42", or "1:08:42" past an hour. */
@@ -394,7 +448,8 @@ export function describe(e: BabyEvent, volume: (ml: number) => string): string {
       return `Bottle · ${e.data.contents === 'formula' ? 'formula' : 'breast milk'} · ${volume(e.data.volumeMl)}`;
     case 'breastfeed': {
       const d = e.data.durationSeconds;
-      if (d === null) return `Breastfeed · ${currentSide(e) ?? e.data.side} · running`;
+      if (d === null)
+        return `Breastfeed · ${currentSide(e) ?? e.data.side} · ${isPaused(e) ? 'paused' : 'running'}`;
       const segs = e.data.segments;
       if (segs && segs.length > 1) {
         // Finished, so no side is open and the clock does not matter.
@@ -453,10 +508,13 @@ export function latestStart(e: BabyEvent, now: number): number | undefined {
     return d === undefined || d === null ? undefined : now - d * 1000;
   }
   if (e.type !== 'breastfeed') return undefined;
-  if (e.data.durationSeconds !== null) return now - e.data.durationSeconds * 1000;
-  // A running feed's earlier sides already happened, so they must fit before now.
-  const closed = closedSeconds(e.data.segments ?? []);
-  return closed > 0 ? now - closed * 1000 : undefined;
+  // Paused time is part of the feed's span, so it has to fit before now too.
+  const paused = pausedMs(e);
+  if (e.data.durationSeconds !== null) return now - e.data.durationSeconds * 1000 - paused;
+  // A running feed's earlier sides and pauses already happened, so they must fit before its
+  // clock: now, or when the current pause began.
+  const used = closedSeconds(e.data.segments ?? []) * 1000 + paused;
+  return used > 0 || isPaused(e) ? clockAt(e, now) - used : undefined;
 }
 
 /**

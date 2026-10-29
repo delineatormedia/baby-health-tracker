@@ -11,6 +11,8 @@
     countMarks,
     currentSide,
     dayMarks,
+    feedElapsed,
+    isPaused,
     finishFeedData,
     hm,
     DEFAULT_BOTTLE_ML,
@@ -77,9 +79,18 @@
   >
     <Dial {marks} running={running?.occurredAt ?? null} now={app.now}>
       {#if running}
-        <span class="lab">Feeding · {currentSide(running) ?? running.data.side}</span>
-        <span class="v num">{clock(app.now - Date.parse(running.occurredAt))}</span>
-        <span class="lab">since {time(running.occurredAt)}</span>
+        <span class="lab"
+          >{isPaused(running) ? 'Paused' : 'Feeding'} · {currentSide(running) ??
+            running.data.side}</span
+        >
+        <span class="v num" class:held={isPaused(running)}
+          >{clock(feedElapsed(running, app.now))}</span
+        >
+        <span class="lab"
+          >{isPaused(running) && running.data.pausedAt
+            ? `paused at ${time(running.data.pausedAt)}`
+            : `since ${time(running.occurredAt)}`}</span
+        >
       {:else if lastFeed}
         <span class="lab">Last feed</span>
         <span class="v num">{hm(app.now - Date.parse(lastFeed.occurredAt))}</span>
@@ -130,11 +141,10 @@
     </nav>
     <div class="rail">
       {#if running}
-        <button class="run" onclick={stopFeed}>
+        <button class="run" class:paused={isPaused(running)} onclick={stopFeed}>
           Stop<small class="num"
-            >{(currentSide(running) ?? running.data.side)[0]?.toUpperCase()} · {clock(
-              app.now - Date.parse(running.occurredAt),
-            )}</small
+            >{isPaused(running) ? 'Paused · ' : ''}{(currentSide(running) ??
+              running.data.side)[0]?.toUpperCase()} · {clock(feedElapsed(running, app.now))}</small
           >
         </button>
       {:else}
@@ -278,6 +288,17 @@
     background: var(--acc);
     color: var(--acc-ink);
     border-color: var(--acc);
+  }
+  .held {
+    color: var(--dim);
+  }
+  .rail .run.paused {
+    background: var(--panel);
+    color: var(--ink);
+    border: 2px dashed var(--acc);
+  }
+  .rail .run.paused small {
+    color: var(--ink);
   }
   .rail .run small {
     color: var(--acc-ink);

@@ -6,6 +6,8 @@ const MAX_FEED_ML = 500;
 const MIN_BABY_GRAMS = 300;
 const MAX_BABY_GRAMS = 30_000;
 const MAX_FEED_SECONDS = 4 * 60 * 60;
+/** Paused time on one feed. A longer pause was a forgotten timer, not a burp. */
+const MAX_PAUSE_SECONDS = 24 * 60 * 60;
 
 const Ml = (min: 'positive' | 'nonnegative') =>
   v.pipe(
@@ -42,6 +44,9 @@ function segmentsAgree(d: {
   side: Side;
   durationSeconds: number | null;
   segments?: FeedSegment[] | undefined;
+  // Unread here; listed so the check keeps them in the parsed type.
+  pausedSeconds?: number | undefined;
+  pausedAt?: string | undefined;
 }): boolean {
   const segs = d.segments;
   if (segs === undefined) return true;
@@ -69,7 +74,20 @@ export const BreastfeedData = v.pipe(
      * feeds logged before per-side timing. Finished, the seconds add up to durationSeconds.
      */
     segments: v.optional(v.pipe(v.array(FeedSegment), v.minLength(1))),
+    /**
+     * Paused time so far (#29), left out of durationSeconds and the segments. The feed ends
+     * at occurredAt + durationSeconds + pausedSeconds. Absent on feeds never paused.
+     */
+    pausedSeconds: v.optional(
+      v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(MAX_PAUSE_SECONDS)),
+    ),
+    /** Set while the running timer is paused: when the current pause began. */
+    pausedAt: v.optional(Timestamp),
   }),
+  v.check(
+    (d) => d.pausedAt === undefined || d.durationSeconds === null,
+    'Only a running feed can be paused',
+  ),
   v.check(segmentsAgree, 'Feed segments must alternate sides and add up to the feed'),
 );
 
