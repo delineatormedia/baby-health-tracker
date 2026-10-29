@@ -8,13 +8,18 @@
     ago,
     clock,
     currentSide,
+    feedElapsed,
     finishFeedData,
+    isPaused,
     lastSide,
     latestStart,
     MAX_FEED_SECONDS,
     minutes as mins,
+    pauseFeedData,
+    pickSideData,
+    resumeFeedData,
     runningFeed,
-    segmentStart,
+    sideElapsed,
     sideTimes,
     startFeedData,
     suggestSide,
@@ -28,9 +33,10 @@
   const running = $derived(runningFeed(app.events));
   const previous = $derived(lastSide(app.events));
   const next = $derived(suggestSide(app.events));
-  const elapsed = $derived(running ? app.now - Date.parse(running.occurredAt) : 0);
+  const elapsed = $derived(running ? feedElapsed(running, app.now) : 0);
+  const paused = $derived(running ? isPaused(running) : false);
   const on = $derived(running ? currentSide(running) : null);
-  const onSide = $derived(running ? app.now - segmentStart(running) : 0);
+  const onSide = $derived(running ? sideElapsed(running, app.now) : 0);
   const perSide = $derived(running ? sideTimes(running, app.now) : null);
 
   /**
@@ -74,10 +80,14 @@
         await app.log('breastfeed', startFeedData(side), `Breastfeed started · ${side}`);
         return;
       }
-      if (on === side) return;
+      if (on === side) {
+        // Tapping the paused side resumes it.
+        if (paused) await pauseOrResume();
+        return;
+      }
       // An old "both" timer has no side to switch from; the tap says which side it is.
       if (on === null) {
-        await app.store.edit(running.id, { data: startFeedData(side) });
+        await app.store.edit(running.id, { data: pickSideData(running, side) });
         return;
       }
       const data = switchFeedData(running, Date.now());
@@ -85,6 +95,22 @@
       const change = await app.store.edit(running.id, { data });
       app.showUndo(`Switched to ${side}`, change);
     });
+
+  /** Pause or resume (#29). An edit like a switch, so Undo puts it back. */
+  async function pauseOrResume() {
+    if (!running) return;
+    const now = Date.now();
+    if (!paused) {
+      const change = await app.store.edit(running.id, { data: pauseFeedData(running, now) });
+      app.showUndo('Feed paused', change);
+      return;
+    }
+    const data = resumeFeedData(running, now);
+    if (data === null) return startTyping();
+    const change = await app.store.edit(running.id, { data });
+    app.showUndo('Feed resumed', change);
+  }
+  const togglePause = () => once(pauseOrResume);
 
   const stop = () =>
     once(async () => {
@@ -209,8 +235,8 @@
   {:else}
     <div class="big">
       {#if running}
-        <span class="lab">{on ? `${on} side` : 'Both sides'}</span>
-        <div class="v num">{clock(on ? onSide : elapsed)}</div>
+        <span class="lab">{paused ? 'Paused · ' : ''}{on ? `${on} side` : 'Both sides'}</span>
+        <div class="v num" class:held={paused}>{clock(on ? onSide : elapsed)}</div>
         <span class="lab"
           >Total {clock(elapsed)} · {previous ? `last feed ${previous}` : 'first feed'}</span
         >
@@ -230,7 +256,9 @@
                 ? 'Start · next'
                 : 'Start'
               : on === side
-                ? clock(perSide?.[side] ?? 0)
+                ? paused
+                  ? 'Resume'
+                  : clock(perSide?.[side] ?? 0)
                 : on === null
                   ? 'This side'
                   : `Switch${perSide?.[side] ? ` · ${clock(perSide[side])}` : ''}`}</small
@@ -241,6 +269,9 @@
     <div class="toast"><Toast /></div>
 
     {#if running}
+      <button class="go2 pause" aria-pressed={paused} onclick={togglePause}
+        >{paused ? 'Resume' : 'Pause'}</button
+      >
       <button class="go2" onclick={startTyping}>Type a duration instead</button>
       <button class="go" onclick={stop}
         >{overrun ? 'Stop · set the duration' : `Stop · log ${mins(elapsed / 1000)}`}</button
@@ -274,6 +305,17 @@
     font: 200 clamp(72px, 24vw, 96px) / 1 var(--sans);
     letter-spacing: -0.03em;
     margin: 12px 0;
+  }
+  .held {
+    color: var(--dim);
+  }
+  .pause {
+    margin-top: 10px;
+    margin-bottom: 10px;
+  }
+  .pause[aria-pressed='true'] {
+    background: var(--ink);
+    color: var(--bg);
   }
   .overrun {
     margin: 6vh 24px 0;

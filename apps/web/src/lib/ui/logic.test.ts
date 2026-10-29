@@ -9,6 +9,7 @@ import {
   dayMarks,
   describe as describeEvent,
   editLink,
+  feedElapsed,
   finishFeedData,
   followsFeed,
   lastPump,
@@ -19,6 +20,10 @@ import {
   startPumpData,
   stopPumpData,
   stoppedPump,
+  isPaused,
+  pauseFeedData,
+  pickSideData,
+  resumeFeedData,
   hm,
   intake24h,
   lastSide,
@@ -206,6 +211,175 @@ describe('per-side timing (#19)', () => {
     );
     expect(suggestSide([switched])).toBe('left');
     expect(lastSide([switched])).toBe('both');
+  });
+});
+
+describe('pause (#29)', () => {
+  function feed(data: Breastfeed['data'], minutesAgo: number): Breastfeed {
+    const e = ev('breastfeed', data, minutesAgo) as Breastfeed;
+    const r = parseEvent(e);
+    if (!r.ok) throw new Error(r.errors.join('; '));
+    return e;
+  }
+  const MIN = 60_000;
+  /** Reloading means reading the stored event back; nothing else carries timer state. */
+  const reload = (f: Breastfeed) =>
+    feed(JSON.parse(JSON.stringify(f.data)), (NOW - Date.parse(f.occurredAt)) / MIN);
+
+  test('start, pause 2 min, resume, stop: the 2 min are not in the feed', () => {
+    // Started 12 min ago, paused at -8 for 2 min, resumed at -6, stopped now.
+    let f = feed(startFeedData('left'), 12);
+    f = feed(pauseFeedData(f, NOW - 8 * MIN), 12);
+    expect(isPaused(f)).toBe(true);
+    f = feed(resumeFeedData(f, NOW - 6 * MIN)!, 12);
+    expect(isPaused(f)).toBe(false);
+    expect(f.data.pausedSeconds).toBe(120);
+    expect(feedElapsed(f, NOW)).toBe(10 * MIN);
+    const done = feed(finishFeedData(f, NOW)!, 12);
+    expect(done.data).toEqual({
+      side: 'left',
+      durationSeconds: 600,
+      segments: [{ side: 'left', seconds: 600 }],
+      pausedSeconds: 120,
+    });
+  });
+
+  test('the same holds after a reload mid-pause, and the clock stands still while paused', () => {
+    let f = feed(startFeedData('left'), 12);
+    f = reload(feed(pauseFeedData(f, NOW - 8 * MIN), 12));
+    expect(feedElapsed(f, NOW - 7 * MIN)).toBe(4 * MIN);
+    expect(feedElapsed(f, NOW - 6 * MIN)).toBe(4 * MIN);
+    expect(sideTimes(f, NOW - 6 * MIN)).toEqual({ left: 4 * MIN, right: 0 });
+    f = reload(feed(resumeFeedData(f, NOW - 6 * MIN)!, 12));
+    expect(feed(finishFeedData(f, NOW)!, 12).data.durationSeconds).toBe(600);
+  });
+
+  test('paused time stays out of every side, including a pause before a switch', () => {
+    // Left 4 min, pause 3 min, left 2 more, switch, right 5 min.
+    let f = feed(startFeedData('left'), 14);
+    f = feed(pauseFeedData(f, NOW - 10 * MIN), 14);
+    f = feed(resumeFeedData(f, NOW - 7 * MIN)!, 14);
+    f = feed(switchFeedData(f, NOW - 5 * MIN)!, 14);
+    expect(f.data.segments).toEqual([
+      { side: 'left', seconds: 360 },
+      { side: 'right', seconds: null },
+    ]);
+    expect(sideTimes(f, NOW)).toEqual({ left: 6 * MIN, right: 5 * MIN });
+    const done = feed(finishFeedData(f, NOW)!, 14);
+    expect(done.data.durationSeconds).toBe(660);
+    expect(done.data.segments).toEqual([
+      { side: 'left', seconds: 360 },
+      { side: 'right', seconds: 300 },
+    ]);
+  });
+
+  test('switching while paused resumes on the other side', () => {
+    let f = feed(startFeedData('left'), 10);
+    f = feed(pauseFeedData(f, NOW - 6 * MIN), 10);
+    f = feed(switchFeedData(f, NOW - 2 * MIN)!, 10);
+    expect(isPaused(f)).toBe(false);
+    expect(f.data.pausedSeconds).toBe(240);
+    expect(f.data.segments?.[0]).toEqual({ side: 'left', seconds: 240 });
+    expect(sideTimes(f, NOW)).toEqual({ left: 4 * MIN, right: 2 * MIN });
+  });
+
+  test('stopping while paused ends the feed when the pause began', () => {
+    let f = feed(startFeedData('right'), 10);
+    f = feed(pauseFeedData(f, NOW - 4 * MIN), 10);
+    const done = feed(finishFeedData(f, NOW)!, 10);
+    expect(done.data).toEqual({
+      side: 'right',
+      durationSeconds: 360,
+      segments: [{ side: 'right', seconds: 360 }],
+    });
+  });
+
+  test('pause and resume are idempotent, and a pause past 24 h asks for the duration', () => {
+    const f = feed(pauseFeedData(feed(startFeedData('left'), 10), NOW - 5 * MIN), 10);
+    expect(pauseFeedData(f, NOW)).toBe(f.data);
+    const running = feed(startFeedData('left'), 10);
+    expect(resumeFeedData(running, NOW)).toBe(running.data);
+    const forgotten = feed(
+      pauseFeedData(feed(startFeedData('left'), 25 * 60), NOW - (24 * 60 + 1) * MIN),
+      25 * 60,
+    );
+    expect(resumeFeedData(forgotten, NOW)).toBeNull();
+  });
+
+  test('a long pause does not make an active feed overrun', () => {
+    // 5 hours on the wall clock, 4 of them paused: 1 hour of feeding stops normally.
+    let f = feed(startFeedData('left'), 5 * 60);
+    f = feed(pauseFeedData(f, NOW - 4.5 * 60 * MIN), 5 * 60);
+    f = feed(resumeFeedData(f, NOW - 30 * MIN)!, 5 * 60);
+    expect(feed(finishFeedData(f, NOW)!, 5 * 60).data.durationSeconds).toBe(3600);
+  });
+
+  test('start can move no later than the sides and pauses already fit', () => {
+    let f = feed(startFeedData('left'), 10);
+    f = feed(pauseFeedData(f, NOW - 6 * MIN), 10);
+    // Paused 4 min into the feed: the start can move up to the pause itself.
+    expect(latestStart(f, NOW)).toBe(NOW - 6 * MIN);
+    f = feed(resumeFeedData(f, NOW - 2 * MIN)!, 10);
+    expect(latestStart(f, NOW)).toBe(NOW - 4 * MIN);
+    const done = feed(finishFeedData(f, NOW)!, 10);
+    // Finished: 6 min fed plus 4 min paused must end by now.
+    expect(latestStart(done, NOW)).toBe(NOW - 10 * MIN);
+  });
+
+  describe('an old "both" timer told its side keeps its pauses', () => {
+    // Fed 4 min, paused 3 min; the side is picked at -7 (still paused) or after Resume.
+    const legacy = () => feed({ side: 'both', durationSeconds: null }, 11);
+
+    test('picked while paused: stays paused, and the pause stays out', () => {
+      let f = feed(pauseFeedData(legacy(), NOW - 7 * MIN), 11);
+      f = reload(feed(pickSideData(f, 'left'), 11));
+      expect(isPaused(f)).toBe(true);
+      expect(currentSide(f)).toBe('left');
+      expect(sideTimes(f, NOW)).toEqual({ left: 4 * MIN, right: 0 });
+      // The repro: Stop at -4 saves 240, not 420.
+      expect(feed(finishFeedData(f, NOW - 4 * MIN)!, 11).data).toEqual({
+        side: 'left',
+        durationSeconds: 240,
+        segments: [{ side: 'left', seconds: 240 }],
+      });
+      // Resume at -4, feed 4 more: 480, with the 3 min pause recorded.
+      f = feed(resumeFeedData(f, NOW - 4 * MIN)!, 11);
+      expect(feed(finishFeedData(f, NOW)!, 11).data).toEqual({
+        side: 'left',
+        durationSeconds: 480,
+        segments: [{ side: 'left', seconds: 480 }],
+        pausedSeconds: 180,
+      });
+    });
+
+    test('picked after Resume: the finished pause stays out', () => {
+      let f = feed(pauseFeedData(legacy(), NOW - 7 * MIN), 11);
+      f = feed(resumeFeedData(f, NOW - 4 * MIN)!, 11);
+      f = reload(feed(pickSideData(f, 'right'), 11));
+      expect(f.data.pausedSeconds).toBe(180);
+      expect(sideTimes(f, NOW)).toEqual({ left: 0, right: 8 * MIN });
+      f = feed(switchFeedData(f, NOW - 2 * MIN)!, 11);
+      expect(f.data.segments).toEqual([
+        { side: 'right', seconds: 360 },
+        { side: 'left', seconds: null },
+      ]);
+      expect(feed(finishFeedData(f, NOW)!, 11).data.durationSeconds).toBe(480);
+    });
+
+    test('a pause past 24 h on a picked feed still asks for the duration', () => {
+      let f = feed({ side: 'both', durationSeconds: null }, 25 * 60);
+      f = feed(pauseFeedData(f, NOW - (24 * 60 + 1) * MIN), 25 * 60);
+      f = feed(pickSideData(f, 'left'), 25 * 60);
+      expect(resumeFeedData(f, NOW)).toBeNull();
+      expect(switchFeedData(f, NOW)).toBeNull();
+      // Stopping ends at the pause: 59 min fed, no clamp.
+      expect(feed(finishFeedData(f, NOW)!, 25 * 60).data.durationSeconds).toBe(59 * 60);
+    });
+  });
+
+  test('describe says paused', () => {
+    const f = feed(pauseFeedData(feed(startFeedData('left'), 3), NOW), 3);
+    expect(describeEvent(f, String)).toBe('Breastfeed · left · paused');
   });
 });
 
