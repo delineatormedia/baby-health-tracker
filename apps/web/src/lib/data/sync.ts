@@ -1,13 +1,15 @@
-import { SCHEMA_VERSION, type BabyEvent } from '@bht/schema';
+import { SCHEMA_VERSION, type BabyEvent, type HouseholdDevice } from '@bht/schema';
 import type { EventStore } from './store.ts';
 import {
   HttpError,
   MAX_PUSH_BATCH,
   MAX_PUSH_BYTES,
+  type PushResponse,
   type PushResult,
   type SyncTransport,
 } from './protocol.ts';
 import { SeededRefusal } from './seeded.ts';
+import type { ClockSample } from './watermarks.ts';
 
 export type SyncStatus = 'idle' | 'syncing' | 'offline' | 'signed_out';
 
@@ -28,6 +30,13 @@ export interface SyncOptions {
   prepare?: (batch: BabyEvent[]) => Promise<void>;
   /** The household this client syncs; its pull cursor is kept under this id. */
   household?: string;
+  /**
+   * Called once a pull reaches through, with the device list from its first page and that
+   * page's clock sample (step 3b). Not called for a pull that was interrupted.
+   */
+  onAdopt?: (devices: HouseholdDevice[], sample: ClockSample) => void;
+  /** Wall and monotonic clocks, for the clock sample; tests replace them. */
+  clock?: { wall: () => number; mono: () => number };
 }
 
 /** Thrown inside a run that stop() has fenced off; the run ends without touching anything. */
@@ -53,8 +62,10 @@ export class SyncClient {
   #again = false;
   #timer: ReturnType<typeof setTimeout> | null = null;
   readonly #listeners = new Set<(s: SyncStatus) => void>();
-  readonly #opts: Required<Omit<SyncOptions, 'onRejected' | 'prepare'>> &
-    Pick<SyncOptions, 'onRejected' | 'prepare'>;
+  /** The latest serverNow received: a barrier's `at` must come from before its snapshot. */
+  #serverNow: number | null = null;
+  readonly #opts: Required<Omit<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt'>> &
+    Pick<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt'>;
 
   constructor(
     readonly store: EventStore,
@@ -69,6 +80,7 @@ export class SyncClient {
       maxPushBytes: MAX_PUSH_BYTES,
       random: Math.random,
       household: '',
+      clock: { wall: () => Date.now(), mono: () => performance.now() },
       ...opts,
     };
   }
@@ -163,6 +175,7 @@ export class SyncClient {
     try {
       await this.#push(epoch);
       await this.#pull(epoch);
+      await this.#barrier(epoch);
       this.#fence(epoch);
       this.#failures = 0;
       this.#setStatus('idle');
@@ -198,9 +211,9 @@ export class SyncClient {
       }
       await this.#opts.prepare?.(batch);
       this.#fence(epoch);
-      let results: PushResult[];
+      let response: PushResponse;
       try {
-        ({ results } = await this.transport.push(batch));
+        response = await this.transport.push(batch);
       } catch (err) {
         this.#fence(epoch);
         if (!(err instanceof HttpError && err.status === 413)) throw err;
@@ -211,7 +224,9 @@ export class SyncClient {
         else throw err;
         continue;
       }
+      const { results } = response;
       this.#fence(epoch);
+      this.#heard(response.serverNow);
       const rejected = await this.#write(this.store.applyPushResults(batch, results));
       this.#fence(epoch);
       if (rejected.length > 0) this.#opts.onRejected?.(rejected);
@@ -229,19 +244,66 @@ export class SyncClient {
   /**
    * Pages until the server's `through` from the first page. Versions pushed while this pull
    * runs land past it and wait for the next pull, so one pull reads one snapshot's worth.
+   *
+   * The clock sample is read just before the first page is sent: the server reads serverNow
+   * after that, so serverNow − tSend bounds the clock offset from above however slow either
+   * leg is (step 3b). The whole pull keeps the first page's sample and device list, and both
+   * are adopted with the page that reaches through.
    */
   async #pull(epoch: number) {
-    const { household, pullLimit } = this.#opts;
+    const { household, pullLimit, clock } = this.#opts;
     let through: number | undefined;
+    let first: { devices?: HouseholdDevice[]; sample?: ClockSample } | undefined;
     for (;;) {
       const after = await this.store.cursor(household);
       this.#fence(epoch);
+      const sent = first ? null : { tSend: clock.wall(), pSend: clock.mono() };
       const page = await this.transport.pull(after, pullLimit, through);
       this.#fence(epoch);
+      this.#heard(page.serverNow);
       through ??= page.through;
-      await this.#write(this.store.applyPull(page, household));
-      if (!page.more) return;
+      first ??= {
+        devices: page.devices,
+        sample:
+          sent && page.serverNow !== undefined ? { ...sent, serverNow: page.serverNow } : undefined,
+      };
+      await this.#write(this.store.applyPull(page, household, first.devices));
+      if (page.more) continue;
+      this.#fence(epoch);
+      if (first.devices && first.sample) this.#opts.onAdopt?.(first.devices, first.sample);
+      return;
     }
+  }
+
+  /**
+   * The acknowledged write barrier (step 3b). Reads the write generation with the pending rows,
+   * pushes them, and once the server has answered for every one, tells it everything up to
+   * that generation is there, as of a serverNow received before the snapshot. Sends nothing
+   * while any version is unanswered or an entry stays refused: other phones cannot see it.
+   */
+  async #barrier(epoch: number) {
+    const at = this.#serverNow;
+    if (at === null) return;
+    const snapshot = await this.store.snapshot();
+    this.#fence(epoch);
+    if (snapshot.pending.length > 0) await this.#push(epoch);
+    const acked = await this.store.acknowledged(snapshot.pending);
+    this.#fence(epoch);
+    if (!acked) return;
+    const refused = await this.store.rejectedCount();
+    this.#fence(epoch);
+    if (refused > 0) return;
+    const { serverNow } = await this.transport.barrier({
+      deviceId: this.store.authorId,
+      gen: snapshot.gen,
+      at,
+    });
+    this.#fence(epoch);
+    this.#heard(serverNow);
+  }
+
+  #heard(serverNow: number | undefined) {
+    if (serverNow !== undefined) this.#serverNow = serverNow;
   }
 
   /** Records a store write in progress for stop() to wait on. Call only right after #fence. */

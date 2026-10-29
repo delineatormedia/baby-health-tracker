@@ -12,6 +12,7 @@
     marksIn,
     reasonText,
     statusText,
+    waitingText,
   } from '../../lib/ui/readings.ts';
 
   const counts = $derived(countMarks(dayMarks(app.events, app.now)));
@@ -21,9 +22,13 @@
   // time: a minute-floored cutoff would leave out a log made earlier this minute.
   const start = $derived(loggingStart(app.setupAt, app.events));
   const minute = $derived(Math.floor(app.now / 60_000));
-  const results = $derived.by(() => {
+  const clock = $derived.by(() => {
     void minute;
-    const now = Date.now();
+    return { wall: Date.now(), mono: performance.now() };
+  });
+  const results = $derived.by(() => {
+    const now = clock.wall;
+    const synced = app.syncedThrough(now, clock.mono);
     return evaluate({
       baby: { birthAt: app.baby!.birthAt, sex: app.baby!.sex },
       events: app.events,
@@ -31,10 +36,19 @@
       // From where logging began, every period counts as fully logged except the ones marked
       // "We missed some" (#24).
       fullyLogged: fullyLogged(app.baby!.birthAt, now, app.events, start),
-      // This phone does not sync yet, so its log is the whole log.
-      syncedThrough: new Date(now).toISOString(),
+      // A window is assessed once every other phone has uploaded what it recorded in it
+      // (step 3b). A phone that is not signed in holds the whole log.
+      syncedThrough: synced === null ? null : new Date(synced).toISOString(),
     });
   });
+  /** Why a check waits on the other phones, or its usual reason. */
+  const why = (r: CheckResult) =>
+    r.status === 'not_enough_data' && r.reason === 'not_synced' && app.account
+      ? waitingText(app.waitingOn(Date.parse(r.window.end), clock.wall, clock.mono))
+      : reasonText(r, start);
+  const waiting = $derived(
+    app.account && app.waitingOn(clock.wall, clock.wall, clock.mono).length > 0,
+  );
 
   let busy = false;
   async function once(fn: () => Promise<unknown>) {
@@ -101,7 +115,9 @@
     {/if}
   {:else}
     <section class="verdict">
-      <div class="lab">{assessed} of {results.length} checks assessed · this phone only</div>
+      <div class="lab">
+        {assessed} of {results.length} checks assessed{app.account ? '' : ' · this phone only'}
+      </div>
       <h2>{inRange ?? 'Not enough data to assess'}</h2>
       <p>
         {inRange
@@ -122,7 +138,7 @@
           <b class:flagged={r.status === 'flag'} class="num">{statusText(r, app.volume)}</b>
         </summary>
         {#if r.status === 'not_enough_data'}
-          <p class="why">{reasonText(r, start)}.</p>
+          <p class="why">{why(r)}.</p>
           {#if r.reason === 'not_fully_logged' && marksIn(app.events, r.window).length > 0}
             <div><button class="mark" onclick={() => unmark(r)}>We logged everything</button></div>
           {/if}
@@ -147,7 +163,7 @@
     <p class="lab small">
       ≈{app.volume(intake.bottleMl)} recorded from bottles.{intake.unmeasured > 0
         ? ` ${intake.unmeasured} breastfeed${intake.unmeasured === 1 ? '' : 's'} not measured.`
-        : ''} The other phone's logs are not synced yet.
+        : ''}{waiting ? ' Some logs from the other phones are not synced yet.' : ''}
     </p>
   </section>
 

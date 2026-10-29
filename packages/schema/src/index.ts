@@ -4,7 +4,7 @@
  * version is newer than its own (protocol.ts), and schema-version.test.ts fails if a wire
  * schema changes without a bump.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export * from './events.ts';
 export * from './model.ts';

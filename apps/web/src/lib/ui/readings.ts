@@ -1,4 +1,4 @@
-import type { BabyEvent } from '@bht/schema';
+import type { BabyEvent, HouseholdDevice } from '@bht/schema';
 import {
   CHECK_LABEL,
   inExpectedRange,
@@ -55,7 +55,9 @@ export function observedText(o: Observed, volume: (ml: number) => string): strin
 /** The short status shown on a check's row. */
 export function statusText(r: CheckResult, volume: (ml: number) => string): string {
   if (r.status === 'not_enough_data') {
-    return r.reason === 'not_fully_logged' ? 'Not assessed' : 'Not enough data';
+    return r.reason === 'not_fully_logged' || r.reason === 'not_synced'
+      ? 'Not assessed'
+      : 'Not enough data';
   }
   // One sighting is the warning for these, so there is no range to show.
   if (NONE_LOGGED_CHECKS.has(r.check)) {
@@ -131,6 +133,34 @@ export function reasonText(r: CheckResult, start: number | null): string | null 
     return 'Before you started logging';
   }
   return REASON_TEXT[r.reason];
+}
+
+// --- Waiting on other phones (#5 step 3b) ---
+
+/**
+ * "Waiting for Sam’s phone (last synced Tue 9:14 PM)". `waiting` is empty when this phone has
+ * no device list yet, before its first full pull. `time` formats a watermark, which is on the
+ * server's clock: close enough to show, never used to decide.
+ */
+export function waitingText(
+  waiting: readonly HouseholdDevice[],
+  time: (ms: number) => string = lastSyncedTime,
+): string {
+  if (waiting.length === 0) return 'Waiting for the first sync with your household';
+  const phones = waiting.map(
+    (d) =>
+      `${d.memberName}’s phone (${d.watermark === null ? 'not synced yet' : `last synced ${time(d.watermark)}`})`,
+  );
+  return `Waiting for ${phones.length === 1 ? phones[0] : `${phones.slice(0, -1).join(', ')} and ${phones.at(-1)}`}`;
+}
+
+/** "Tue 9:14 PM". */
+export function lastSyncedTime(ms: number): string {
+  return new Date(ms).toLocaleString('en-US', {
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();

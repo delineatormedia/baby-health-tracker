@@ -85,6 +85,11 @@ export const MIGRATIONS: string[] = [
      expires_at TEXT NOT NULL
    ) STRICT;
    ALTER TABLE event_versions ADD COLUMN member_id TEXT REFERENCES members (id);`,
+  // 3: device watermarks (#5 step 3b, #17). watermark is the server time, in epoch ms, before
+  // which every entry the phone recorded is on the server; null until its first barrier. gen is
+  // the phone's write generation that barrier covered. Both only ever move forward.
+  `ALTER TABLE devices ADD COLUMN watermark INTEGER;
+   ALTER TABLE devices ADD COLUMN gen INTEGER;`,
 ];
 
 /** Opens the SQLite database, applies pragmas and runs pending migrations. ':memory:' for tests. */
@@ -132,4 +137,26 @@ export function ensureHousehold(
      VALUES (?, ?, 'Test baby', ?, 'unspecified', ?)`,
   );
   for (const b of babyIds) baby.run(b, id, at, at);
+}
+
+/**
+ * Adds a member with one phone to a household that ensureHousehold created, for tests that
+ * inject a session with that deviceId. In production both come from a passkey ceremony.
+ */
+export function ensureDevice(
+  db: DatabaseSync,
+  householdId: string,
+  deviceId: string,
+  memberName = 'Test parent',
+  now = new Date(),
+): void {
+  const at = now.toISOString();
+  const memberId = `m-${deviceId}`;
+  db.prepare(
+    `INSERT OR IGNORE INTO members (id, household_id, display_name, webauthn_user_id, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(memberId, householdId, memberName, memberId, at);
+  db.prepare(
+    `INSERT OR IGNORE INTO devices (id, member_id, created_at, last_seen_at) VALUES (?, ?, ?, ?)`,
+  ).run(deviceId, memberId, at, at);
 }

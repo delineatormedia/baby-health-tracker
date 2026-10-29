@@ -7,6 +7,9 @@ import {
 } from '@bht/schema';
 import {
   HttpError,
+  type BarrierRequest,
+  type BarrierResponse,
+  type HouseholdDevice,
   type PullResponse,
   type PushResponse,
   type PushResult,
@@ -16,21 +19,51 @@ import {
 /** In-memory implementation of the /api/sync contract, for client tests. */
 export class FakeServer {
   readonly log: { seq: number; event: BabyEvent }[] = [];
+  /** The household's phones, by device id. A phone joins on its first barrier. */
+  readonly devices = new Map<string, HouseholdDevice>();
+  /** Every barrier as received. */
+  readonly barriers: BarrierRequest[] = [];
+  /** The server's clock (epoch ms); tests move it. */
+  now = Date.parse('2026-10-29T12:00:00.000Z');
   #seq = 0;
 
   push(events: unknown[]): PushResponse {
-    return { results: events.map((e) => this.#accept(e)) };
+    return { results: events.map((e) => this.#accept(e)), serverNow: this.now };
   }
 
-  pull(after: number, limit: number, through = this.#seq): PullResponse {
-    const page = this.log.filter((v) => v.seq > after && v.seq <= through).slice(0, limit);
+  /** A first page (no through) carries the device list, read with its through. */
+  pull(after: number, limit: number, through?: number): PullResponse {
+    const top = through ?? this.#seq;
+    const page = this.log.filter((v) => v.seq > after && v.seq <= top).slice(0, limit);
     const next = page.at(-1)?.seq ?? after;
     return {
       versions: page,
       next,
-      more: this.log.some((v) => v.seq > next && v.seq <= through),
-      through,
+      more: this.log.some((v) => v.seq > next && v.seq <= top),
+      through: top,
+      serverNow: this.now,
+      ...(through === undefined && { devices: structuredClone([...this.devices.values()]) }),
     };
+  }
+
+  /** Adds a phone that has never sent a barrier. */
+  addDevice(deviceId: string, memberName: string): void {
+    this.devices.set(deviceId, {
+      deviceId,
+      memberName,
+      watermark: null,
+      lastSeenAt: this.now,
+      removedAt: null,
+    });
+  }
+
+  barrier(req: BarrierRequest): BarrierResponse {
+    this.barriers.push(req);
+    if (!this.devices.has(req.deviceId)) this.addDevice(req.deviceId, 'Parent');
+    const d = this.devices.get(req.deviceId)!;
+    d.watermark = Math.max(d.watermark ?? 0, Math.min(req.at, this.now));
+    d.lastSeenAt = this.now;
+    return { watermark: d.watermark, serverNow: this.now };
   }
 
   current(id: string): BabyEvent | undefined {
@@ -101,15 +134,27 @@ export class FakeTransport implements SyncTransport {
   /** Pull requests as sent, so tests can check the through a pull carries. */
   readonly pulls: { after: number; limit: number; through?: number }[] = [];
   /** Runs after each pull is answered, as when another phone pushes between pages. */
-  afterPull: (() => void) | null = null;
+  afterPull: (() => void | Promise<void>) | null = null;
 
   async pull(after: number, limit: number, through?: number): Promise<PullResponse> {
     this.#check();
     if (this.failPulls) throw new TypeError('network connection lost');
     this.pulls.push({ after, limit, through });
     const page = structuredClone(this.server.pull(after, limit, through));
-    this.afterPull?.();
+    await this.afterPull?.();
     return page;
+  }
+
+  /** Barriers as sent, including ones that failed. */
+  readonly barriersSent: BarrierRequest[] = [];
+  /** Runs before each barrier is answered, as when another tab writes meanwhile. */
+  beforeBarrier: (() => Promise<void>) | null = null;
+
+  async barrier(req: BarrierRequest): Promise<BarrierResponse> {
+    this.#check();
+    this.barriersSent.push(req);
+    await this.beforeBarrier?.();
+    return structuredClone(this.server.barrier(req));
   }
 
   #check() {

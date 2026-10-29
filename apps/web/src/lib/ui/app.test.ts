@@ -579,3 +579,59 @@ describe('a seeded dev browser stays off real servers', () => {
     await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
   });
 });
+
+describe('Readings waits on the other phones (#5 step 3b)', () => {
+  const W = Date.parse('2026-10-29T12:00:00.000Z');
+  const sam = (watermark: number | null) => ({
+    deviceId: newId(),
+    memberName: 'Sam',
+    watermark,
+    lastSeenAt: W,
+    removedAt: null,
+  });
+
+  test('after a reload the kept list names the phone, and windows wait until a pull', async () => {
+    const home = baby();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    const kept = sam(W - 60_000);
+    await (await openDatabase()).put('meta', [kept], `devices:${home.householdId}`);
+    const pull = held();
+    serve(async (url) => (url.startsWith('/api/sync?') ? pull.response : json({})));
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.devices).toEqual([kept]));
+    const now = W + 60_000;
+    expect(app.syncedThrough(now, 0)).toBeNull();
+    expect(app.waitingOn(W - 3_600_000, now, 0)).toEqual([kept]);
+
+    // The pull reaches through: the new list and its clock sample are adopted together.
+    const fresh = { ...kept, watermark: W };
+    pull.release(json({ ...emptyPull(), serverNow: W, devices: [fresh] }));
+    await vi.waitFor(() => expect(app.devices).toEqual([fresh]));
+    const sample = app.clockSample!;
+    expect(sample.serverNow).toBe(W);
+    const through = app.syncedThrough(sample.tSend, sample.pSend)!;
+    expect(through).toBe(W - (W - sample.tSend) - 2_000);
+    expect(app.waitingOn(through + 1, sample.tSend, sample.pSend)).toEqual([fresh]);
+    expect(app.waitingOn(through, sample.tSend, sample.pSend)).toEqual([]);
+  });
+
+  test('signed out, the phone’s own log is the whole log', async () => {
+    const home = baby();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    serve(async (url) =>
+      url.startsWith('/api/sync?')
+        ? json({ ...emptyPull(), serverNow: W, devices: [sam(null)] })
+        : json({ ok: true }),
+    );
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.devices).toHaveLength(1));
+    expect(app.syncedThrough(W, 0)).toBeNull();
+    await app.signOut();
+    expect(app.devices).toBeNull();
+    expect(app.clockSample).toBeNull();
+    expect(app.syncedThrough(W, 0)).toBe(W);
+    expect(app.waitingOn(W, W, 0)).toEqual([]);
+  });
+});

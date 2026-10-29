@@ -7,6 +7,7 @@ import {
   type BabyEvent,
   type EventData,
   type EventType,
+  type HouseholdDevice,
   type StoredVersion,
 } from '@bht/schema';
 import type { IDBPTransaction } from 'idb';
@@ -31,6 +32,20 @@ export interface EditFields {
  * another household starts that one at 0, and signing back in to the first resumes it.
  */
 const cursorKey = (household: string) => (household ? `cursor:${household}` : 'cursor');
+const devicesKey = (household: string) => `devices:${household}`;
+
+/**
+ * The write generation's meta key (step 3b). Every local write bumps it in the transaction that
+ * adds its row. All tabs share one IndexedDB, so they share the counter: a barrier that reads
+ * gen G with the pending rows covers every write numbered G or below.
+ */
+const GEN_KEY = 'gen';
+
+/** The pending rows and write generation read in one transaction, for a write barrier. */
+export interface Snapshot {
+  gen: number;
+  pending: BabyEvent[];
+}
 
 /**
  * Local-first event log in IndexedDB. Every write lands here first and is visible at once;
@@ -106,12 +121,36 @@ export class EventStore {
 
   /** Versions waiting to be pushed, oldest first: never a rejected or local-only row. */
   async pending(limit: number): Promise<BabyEvent[]> {
-    const rows = await this.db.getAllFromIndex('versions', 'byPending', 1);
-    return rows
-      .filter((r) => r.rejected !== 1 && r.localOnly !== 1)
-      .map((r) => r.event)
-      .sort((a, b) => (a.recordedAt < b.recordedAt ? -1 : a.recordedAt > b.recordedAt ? 1 : 0))
-      .slice(0, limit);
+    return uploadable(await this.db.getAllFromIndex('versions', 'byPending', 1)).slice(0, limit);
+  }
+
+  /**
+   * The write generation and every version waiting to be pushed, read in one transaction. A
+   * write that commits after it has a higher gen, so a barrier for this snapshot never claims it.
+   */
+  async snapshot(): Promise<Snapshot> {
+    const tx = this.db.transaction(['versions', 'meta']);
+    const gen = ((await tx.objectStore('meta').get(GEN_KEY)) as number | undefined) ?? 0;
+    const rows = await tx.objectStore('versions').index('byPending').getAll(1);
+    await tx.done;
+    return { gen, pending: uploadable(rows) };
+  }
+
+  /** Whether the server has answered for every version in `events`: none is still pending. */
+  async acknowledged(events: readonly BabyEvent[]): Promise<boolean> {
+    const tx = this.db.transaction('versions');
+    let all = true;
+    for (const e of events) {
+      const row = await tx.store.get(rowKey(e, null));
+      if (row && row.pending === 1) all = false;
+    }
+    await tx.done;
+    return all;
+  }
+
+  /** The device list last adopted from `household`'s pulls; null before the first. */
+  async devices(household: string): Promise<HouseholdDevice[] | null> {
+    return ((await this.db.get('meta', devicesKey(household))) as HouseholdDevice[]) ?? null;
   }
 
   /**
@@ -146,12 +185,18 @@ export class EventStore {
     return rejected;
   }
 
-  /** Stores pulled versions and advances `household`'s cursor in one transaction. */
-  async applyPull(page: PullResponse, household = ''): Promise<void> {
+  /**
+   * Stores pulled versions and advances `household`'s cursor in one transaction. `devices` is
+   * the list from the pull's first page: it is adopted here, with the page that reaches
+   * through, so an interrupted pull adopts nothing (step 3b).
+   */
+  async applyPull(page: PullResponse, household = '', devices?: HouseholdDevice[]): Promise<void> {
     const tx = this.db.transaction(['versions', 'meta'], 'readwrite');
     const versions = tx.objectStore('versions');
     for (const { seq, event } of page.versions) await versions.put(toRow(event, seq));
-    await tx.objectStore('meta').put(page.next, cursorKey(household));
+    const meta = tx.objectStore('meta');
+    await meta.put(page.next, cursorKey(household));
+    if (devices && !page.more) await meta.put(devices, devicesKey(household));
     await tx.done;
     if (page.versions.length > 0) this.#emit();
   }
@@ -183,13 +228,14 @@ export class EventStore {
    * Any failure aborts the whole move.
    */
   async moveBaby(from: string, to: string): Promise<number> {
-    const tx = this.db.transaction('versions', 'readwrite');
+    const tx = this.db.transaction(['versions', 'meta'], 'readwrite');
+    const store = tx.objectStore('versions');
     const recordedAt = this.now().toISOString();
     let moved = 0;
     try {
-      const ids = new Set((await tx.store.index('byBaby').getAll(from)).map((r) => r.id));
+      const ids = new Set((await store.index('byBaby').getAll(from)).map((r) => r.id));
       for (const id of ids) {
-        const rows = await tx.store.index('byId').getAll(id);
+        const rows = await store.index('byId').getAll(id);
         const current = resolveCurrent(rows.map(toStored))?.event;
         if (!current || current.babyId !== from) continue;
         const parsed = parseEvent({
@@ -200,10 +246,11 @@ export class EventStore {
           version: nextVersion(Math.max(...rows.map((r) => r.event.version))),
         });
         if (!parsed.ok) throw new Error(`Cannot move ${id}: ${parsed.errors.join('; ')}`);
-        for (const r of rows) await tx.store.put({ ...r, pending: 0, localOnly: 1 });
-        await tx.store.add({ ...toRow(parsed.value, null), pending: 1 });
+        for (const r of rows) await store.put({ ...r, pending: 0, localOnly: 1 });
+        await store.add({ ...toRow(parsed.value, null), pending: 1 });
         moved += 1;
       }
+      if (moved > 0) await bumpGen(tx);
     } catch (e) {
       tx.abort();
       await tx.done.catch(() => {});
@@ -229,7 +276,7 @@ export class EventStore {
   }
 
   async cursor(household = ''): Promise<number> {
-    return (await this.db.get('meta', cursorKey(household))) ?? 0;
+    return ((await this.db.get('meta', cursorKey(household))) as number | undefined) ?? 0;
   }
 
   /** Forgets how far this phone has pulled from `household`. Called at sign-out. */
@@ -283,8 +330,8 @@ export class EventStore {
     id: string,
     fields: EditFields & { deleted: boolean },
   ): Promise<{ prev: BabyEvent; event: BabyEvent }> {
-    const tx = this.db.transaction('versions', 'readwrite');
-    const rows = await tx.store.index('byId').getAll(id);
+    const tx = this.db.transaction(['versions', 'meta'], 'readwrite');
+    const rows = await tx.objectStore('versions').index('byId').getAll(id);
     const prev = resolveCurrent(rows.map(toStored))?.event;
     if (!prev) {
       tx.abort();
@@ -308,11 +355,14 @@ export class EventStore {
   }
 
   #write(candidate: unknown): Promise<BabyEvent> {
-    return this.#append(this.db.transaction('versions', 'readwrite'), candidate);
+    return this.#append(this.db.transaction(['versions', 'meta'], 'readwrite'), candidate);
   }
 
-  /** Adds a pending version and commits `tx`. `add` refuses to replace an existing row. */
-  async #append(tx: VersionsTx, candidate: unknown): Promise<BabyEvent> {
+  /**
+   * Adds a pending version, bumps the write generation and commits `tx`. `add` refuses to
+   * replace an existing row.
+   */
+  async #append(tx: WriteTx, candidate: unknown): Promise<BabyEvent> {
     const parsed = parseEvent(candidate);
     if (!parsed.ok) {
       tx.abort();
@@ -320,14 +370,28 @@ export class EventStore {
       throw new Error(`Invalid event: ${parsed.errors.join('; ')}`);
     }
     const event = parsed.value;
-    await tx.store.add({ ...toRow(event, null), pending: 1 });
+    await tx.objectStore('versions').add({ ...toRow(event, null), pending: 1 });
+    await bumpGen(tx);
     await tx.done;
     this.#emit(true);
     return event;
   }
 }
 
-type VersionsTx = IDBPTransaction<BhtDB, ['versions'], 'readwrite'>;
+type WriteTx = IDBPTransaction<BhtDB, ['versions', 'meta'], 'readwrite'>;
+
+async function bumpGen(tx: WriteTx): Promise<void> {
+  const meta = tx.objectStore('meta');
+  await meta.put((((await meta.get(GEN_KEY)) as number | undefined) ?? 0) + 1, GEN_KEY);
+}
+
+/** Pending rows a push may carry, oldest first: never a rejected or local-only row. */
+function uploadable(rows: VersionRow[]): BabyEvent[] {
+  return rows
+    .filter((r) => r.rejected !== 1 && r.localOnly !== 1)
+    .map((r) => r.event)
+    .sort((a, b) => (a.recordedAt < b.recordedAt ? -1 : a.recordedAt > b.recordedAt ? 1 : 0));
+}
 
 function toRow(event: BabyEvent, seq: number | null): VersionRow {
   return { key: rowKey(event, seq), id: event.id, babyId: event.babyId, seq, pending: 0, event };

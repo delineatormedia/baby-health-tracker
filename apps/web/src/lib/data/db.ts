@@ -1,4 +1,4 @@
-import type { BabyEvent } from '@bht/schema';
+import type { BabyEvent, HouseholdDevice } from '@bht/schema';
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 
 /** One stored version. seq is null until the server accepts it. */
@@ -31,7 +31,11 @@ export interface BhtDB extends DBSchema {
     value: VersionRow;
     indexes: { byId: string; byBaby: string; byPending: number; byRejected: number };
   };
-  meta: { key: string; value: number };
+  /**
+   * Pull cursors (cursor:<household>), the write generation (gen) and each household's adopted
+   * device list (devices:<household>).
+   */
+  meta: { key: string; value: number | HouseholdDevice[] };
 }
 
 export type Database = IDBPDatabase<BhtDB>;

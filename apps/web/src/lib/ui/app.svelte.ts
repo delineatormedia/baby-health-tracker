@@ -4,6 +4,7 @@ import {
   type BabyEvent,
   type EventData,
   type EventType,
+  type HouseholdDevice,
   type SignedIn,
 } from '@bht/schema';
 import { Account, AccountError, browserPasskeys, httpAccount } from '../data/account.ts';
@@ -11,6 +12,7 @@ import { openDatabase } from '../data/db.ts';
 import { httpTransport } from '../data/protocol.ts';
 import { EventStore, type Change } from '../data/store.ts';
 import { failureReason, SyncClient, type SyncStatus } from '../data/sync.ts';
+import { syncedThrough, waitingOn, type ClockSample, type SyncView } from '../data/watermarks.ts';
 import {
   authorId,
   DEFAULT_PREFS,
@@ -93,6 +95,13 @@ class AppState {
   syncError = $state<string | null>(null);
   /** The account transition running now; Settings holds back the other one meanwhile. */
   transition = $state<'signIn' | 'signOut' | null>(null);
+  /**
+   * The household's phones from the last complete pull, kept across reloads for the "last
+   * synced" text (step 3b). Null until one is adopted for the signed-in household.
+   */
+  devices = $state.raw<HouseholdDevice[] | null>(null);
+  /** That pull's clock sample. In memory only: after a reload, windows wait for a pull. */
+  clockSample = $state.raw<ClockSample | null>(null);
 
   #store: EventStore | null = null;
   #kv: Storage | null = null;
@@ -365,7 +374,36 @@ class AppState {
     const stop = this.#stopSync;
     this.#stopSync = null;
     this.#sync = null;
+    this.devices = null;
+    this.clockSample = null;
     await stop?.();
+  }
+
+  /**
+   * What Readings knows about the other phones, at this wall and monotonic time. Null when
+   * this phone is not signed in: its log is then the whole log.
+   */
+  syncView(wall: number, mono: number): SyncView | null {
+    if (!this.account) return null;
+    return {
+      devices: this.devices,
+      self: this.store.authorId,
+      sample: this.clockSample,
+      wall,
+      mono,
+    };
+  }
+
+  /** Readings' syncedThrough (ms): now when not signed in, else what the watermarks cover. */
+  syncedThrough(wall: number, mono: number): number | null {
+    const view = this.syncView(wall, mono);
+    return view ? syncedThrough(view) : wall;
+  }
+
+  /** The phones a window ending at `end` waits on. */
+  waitingOn(end: number, wall: number, mono: number): HouseholdDevice[] {
+    const view = this.syncView(wall, mono);
+    return view ? waitingOn(view, end) : [];
   }
 
   /** Starts syncing the signed-in household, or resumes after a retried placement. */
@@ -374,8 +412,16 @@ class AppState {
       void this.#sync.resume();
       return;
     }
+    const household = this.account?.householdId ?? '';
+    let adopted = false;
     const sync = new SyncClient(this.store, httpTransport(), {
-      household: this.account?.householdId,
+      household,
+      onAdopt: (devices, sample) => {
+        if (this.#sync !== sync) return;
+        adopted = true;
+        this.devices = devices;
+        this.clockSample = sample;
+      },
       prepare: babyPreparer(
         (b) => this.#api.addBaby(b),
         this.#knownBabies,
@@ -392,6 +438,10 @@ class AppState {
     });
     this.#sync = sync;
     this.#stopSync = sync.start();
+    // The list kept from an earlier session shows "last synced" until this client's first pull.
+    void this.store.devices(household).then((devices) => {
+      if (this.#sync === sync && !adopted) this.devices = devices;
+    });
   }
 
   setBaby(baby: Baby): void {

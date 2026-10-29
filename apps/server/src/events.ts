@@ -3,6 +3,8 @@ import {
   parseEvent,
   resolveCurrent,
   type BabyEvent,
+  type BarrierRequest,
+  type HouseholdDevice,
   type PullResponse,
   type PushResult,
 } from '@bht/schema';
@@ -90,10 +92,12 @@ export function pullVersions(
   db: DatabaseSync,
   householdId: string,
   page: { after: number; limit: number; through: number | null },
+  now = new Date(),
 ): PullResponse {
   const { after, limit } = page;
   db.exec('BEGIN');
   try {
+    const first = page.through === null;
     const through =
       page.through ??
       (
@@ -108,6 +112,7 @@ export function pullVersions(
          ORDER BY seq LIMIT ?`,
       )
       .all(householdId, after, through, limit + 1) as { seq: number; body: string }[];
+    const devices = first ? householdDevices(db, householdId) : undefined;
     db.exec('COMMIT');
     const versions = rows.slice(0, limit);
     return {
@@ -115,11 +120,69 @@ export function pullVersions(
       next: versions.at(-1)?.seq ?? after,
       more: rows.length > limit,
       through,
+      serverNow: now.getTime(),
+      ...(devices && { devices }),
     };
   } catch (e) {
     db.exec('ROLLBACK');
     throw e;
   }
+}
+
+/** Every phone of the household and its watermark. Call inside the pull's read transaction. */
+function householdDevices(db: DatabaseSync, householdId: string): HouseholdDevice[] {
+  const rows = db
+    .prepare(
+      `SELECT d.id, m.display_name, d.watermark, d.last_seen_at, d.removed_at
+       FROM devices d JOIN members m ON m.id = d.member_id
+       WHERE m.household_id = ? ORDER BY d.created_at, d.id`,
+    )
+    .all(householdId) as {
+    id: string;
+    display_name: string;
+    watermark: number | null;
+    last_seen_at: string;
+    removed_at: string | null;
+  }[];
+  return rows.map((r) => ({
+    deviceId: r.id,
+    memberName: r.display_name,
+    watermark: r.watermark,
+    lastSeenAt: Date.parse(r.last_seen_at),
+    removedAt: r.removed_at === null ? null : Date.parse(r.removed_at),
+  }));
+}
+
+/**
+ * Records a write barrier for the session's own device (step 3b) and returns its watermark.
+ * `at` is clamped to the server's clock and the watermark never moves back, so a delayed or
+ * replayed barrier changes nothing. The versions it covers were committed by earlier requests,
+ * so they are on disk before this row is. Null if the device is not this household's, or
+ * removed.
+ */
+export function recordBarrier(
+  db: DatabaseSync,
+  householdId: string,
+  barrier: BarrierRequest,
+  now = new Date(),
+): number | null {
+  const row = db
+    .prepare(
+      `UPDATE devices
+       SET watermark = max(coalesce(watermark, 0), ?), gen = max(coalesce(gen, 0), ?),
+           last_seen_at = ?
+       WHERE id = ? AND removed_at IS NULL
+         AND member_id IN (SELECT id FROM members WHERE household_id = ?)
+       RETURNING watermark`,
+    )
+    .get(
+      Math.min(barrier.at, now.getTime()),
+      barrier.gen,
+      now.toISOString(),
+      barrier.deviceId,
+      householdId,
+    ) as { watermark: number } | undefined;
+  return row?.watermark ?? null;
 }
 
 function verdict(
