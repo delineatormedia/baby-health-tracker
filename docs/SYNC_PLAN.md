@@ -266,6 +266,9 @@ The server uses `resolveCurrent`.
 - Sign-in, create-household and join-with-code screens.
 - Start `SyncClient` in `app.svelte.ts` and call `resume()` after sign-in.
 - Replace "Saved on this phone · not synced" with the real status.
+- While `status` is `offline`, Settings shows `SyncClient.error` (for example
+  "Server rejected upload size" when a proxy caps uploads below ours), with a
+  component test that renders it.
 - Surface `onRejected`.
 - Load the baby from the server.
 - The Vite `/api` proxy already exists (`vite.config.ts:18`).

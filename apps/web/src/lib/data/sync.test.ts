@@ -302,13 +302,43 @@ describe('SyncClient', () => {
     const mom = await phone(server);
     const { event } = await mom.store.log(babyId, 'diaper', { kind: 'wet' });
     mom.transport.maxBytes = 50; // a misconfigured proxy, not an oversized version
+    const seen: [string, string | null][] = [];
+    mom.sync.onStatus((st) => seen.push([st, mom.sync.error]));
     await mom.sync.sync();
     expect(mom.sync.status).toBe('offline');
     expect(await mom.store.pending(10)).toEqual([event]);
     expect(await mom.store.rejectedCount()).toBe(0);
+    // Not silent: the reason is there for Settings while the client backs off.
+    expect(mom.sync.error).toBe('Server rejected upload size');
+    expect(seen).toEqual([
+      ['syncing', null],
+      ['offline', 'Server rejected upload size'],
+    ]);
     mom.transport.maxBytes = null;
     await mom.sync.sync();
     expect(server.current(event.id)).toEqual(event);
+    expect(mom.sync.status).toBe('idle');
+    expect(mom.sync.error).toBeNull();
+  });
+
+  test('a failed run reports a readable reason, and the next failure updates it', async () => {
+    const server = new FakeServer();
+    const mom = await phone(server);
+    await mom.store.log(babyId, 'diaper', { kind: 'wet' });
+    mom.transport.online = false;
+    await mom.sync.sync();
+    expect(mom.sync.error).toBe('No connection to the server');
+    mom.transport.online = true;
+    mom.transport.status = 409;
+    let calls = 0;
+    mom.sync.onStatus(() => (calls += 1));
+    await mom.sync.sync();
+    expect(mom.sync.status).toBe('offline');
+    expect(mom.sync.error).toBe('Server needs an update before this app can sync');
+    expect(calls).toBe(2); // syncing, then offline with the new reason
+    mom.transport.status = 500;
+    await mom.sync.sync();
+    expect(mom.sync.error).toBe('Server error (HTTP 500)');
   });
 
   test('401 stops syncing until sign-in', async () => {

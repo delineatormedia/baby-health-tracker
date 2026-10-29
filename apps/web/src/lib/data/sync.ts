@@ -30,6 +30,7 @@ export interface SyncOptions {
  */
 export class SyncClient {
   #status: SyncStatus = 'idle';
+  #error: string | null = null;
   #stopped = false;
   #failures = 0;
   #running: Promise<void> | null = null;
@@ -56,6 +57,14 @@ export class SyncClient {
 
   get status(): SyncStatus {
     return this.#status;
+  }
+
+  /**
+   * Why the last run failed, in words Settings can show while the client backs off; null
+   * unless status is 'offline'. Status listeners also fire when this changes.
+   */
+  get error(): string | null {
+    return this.#error;
   }
 
   /** Delay before retry number `failures` (1-based): base·2^(n-1), capped, scaled by 0.5–1. */
@@ -133,7 +142,7 @@ export class SyncClient {
         return;
       }
       this.#failures += 1;
-      this.#setStatus('offline');
+      this.#setStatus('offline', failureReason(err));
       if (this.#stopped) return;
       this.#timer = setTimeout(() => void this.sync(), this.backoffMs(this.#failures));
     }
@@ -195,9 +204,10 @@ export class SyncClient {
     }
   }
 
-  #setStatus(s: SyncStatus) {
-    if (s === this.#status) return;
+  #setStatus(s: SyncStatus, error: string | null = null) {
+    if (s === this.#status && error === this.#error) return;
     this.#status = s;
+    this.#error = error;
     for (const l of this.#listeners) l(s);
   }
 
@@ -205,6 +215,14 @@ export class SyncClient {
     if (this.#timer !== null) clearTimeout(this.#timer);
     this.#timer = null;
   }
+}
+
+/** A failed run's reason as Settings shows it. */
+export function failureReason(err: unknown): string {
+  if (!(err instanceof HttpError)) return 'No connection to the server';
+  if (err.status === 413) return 'Server rejected upload size';
+  if (err.status === 409) return 'Server needs an update before this app can sync';
+  return `Server error (HTTP ${err.status})`;
 }
 
 /** Error recorded on a version refused on this phone because no push can carry it. */
