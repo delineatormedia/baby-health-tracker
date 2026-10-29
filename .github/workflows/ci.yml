@@ -37,3 +37,11 @@ jobs:
       - run: nix flake check --print-build-logs
       - name: flake.lock is committed and current
         run: git diff --exit-code flake.lock
+      - name: Smoke-test the Nix outputs
+        run: |
+          nix build .#bht-server .#bht-web
+          PORT=8787 DATABASE_PATH="$RUNNER_TEMP/bht.db" ./result/bin/bht-server &
+          sleep 2
+          curl -fsS http://127.0.0.1:8787/api/health
+          test -f result-1/index.html
+          test -f result-1/service-worker.js
