@@ -97,12 +97,12 @@ export function otherDevices(view: SyncView): HouseholdDevice[] {
  * Without a sample that still holds, only the marks count: they are on this phone's clock.
  */
 export function deviceSpans(view: SyncView, d: HouseholdDevice): Spans {
-  if (d.signedOutAt !== null) return ALL;
+  if (isMs(d.signedOutAt)) return ALL;
   const spans: Spans = [];
   const w = coveredThrough(view, d);
   if (w !== null) spans.push([-Infinity, w]);
   const s = view.sample;
-  if (d.removedAt !== null && s && sampleHolds(s, view.wall, view.mono)) {
+  if (isMs(d.removedAt) && s && sampleHolds(s, view.wall, view.mono)) {
     spans.push([localLater(d.removedAt, s), Infinity]);
   }
   for (const v of view.vouches ?? []) {
@@ -134,7 +134,7 @@ export function syncedThrough(view: SyncView): number | null {
 
 /** W_local(D), or null when it is unknown. */
 export function coveredThrough(view: SyncView, d: HouseholdDevice): number | null {
-  if (d.watermark === null || !view.sample) return null;
+  if (!isMs(d.watermark) || !view.sample) return null;
   if (!sampleHolds(view.sample, view.wall, view.mono)) return null;
   return localWatermark(d.watermark, view.sample);
 }
@@ -144,6 +144,15 @@ export function waitingOn(view: SyncView, end: number, start = -Infinity): House
   return otherDevices(view).filter(
     (d) => !deviceSpans(view, d).some(([s, e]) => s <= start && end <= e),
   );
+}
+
+/**
+ * Whether a device row's time is a real one. The pull rejects malformed rows; this keeps a row
+ * that slips past it (a cached list, a missing field) waiting instead of synced: only a finite
+ * number counts, never undefined, a string, NaN or Infinity.
+ */
+function isMs(t: unknown): t is number {
+  return typeof t === 'number' && Number.isFinite(t);
 }
 
 function merge(spans: Spans): Spans {

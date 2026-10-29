@@ -1,4 +1,9 @@
-import { SCHEMA_VERSION, type BabyEvent, type HouseholdDevice } from '@bht/schema';
+import {
+  isHouseholdDevice,
+  SCHEMA_VERSION,
+  type BabyEvent,
+  type HouseholdDevice,
+} from '@bht/schema';
 import type { EventStore } from './store.ts';
 import {
   HttpError,
@@ -260,6 +265,9 @@ export class SyncClient {
       const sent = first ? null : { tSend: clock.wall(), pSend: clock.mono() };
       const page = await this.transport.pull(after, pullLimit, through);
       this.#fence(epoch);
+      if (page.devices !== undefined && !page.devices.every(isHouseholdDevice)) {
+        throw new MalformedDevices();
+      }
       this.#heard(page.serverNow);
       through ??= page.through;
       first ??= {
@@ -338,7 +346,7 @@ export class SyncClient {
 
 /** A failed run's reason as Settings shows it. */
 export function failureReason(err: unknown): string {
-  if (err instanceof SeededRefusal) return err.message;
+  if (err instanceof SeededRefusal || err instanceof MalformedDevices) return err.message;
   if (!(err instanceof HttpError)) return 'No connection to the server';
   if (err.status === 413) return 'Server rejected upload size';
   if (err.status === 409) return 'Server needs an update before this app can sync';
@@ -373,4 +381,14 @@ export function takeBatch(pending: BabyEvent[], cap: number, budget: number): Ba
     n += 1;
   }
   return pending.slice(0, n);
+}
+
+/**
+ * A pull page whose device list has a row without the wire shape. The page is rejected before
+ * anything from it is written or adopted, so Readings keeps waiting (step 3b).
+ */
+export class MalformedDevices extends Error {
+  constructor() {
+    super('Server sent an unreadable device list');
+  }
 }
