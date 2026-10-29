@@ -1,0 +1,102 @@
+-- A family server's database as main 6422a95 (#63) leaves it: schema user_version 2.
+-- Produced by `sqlite3 bht.db .dump` after a test run against 6422a95's createApp, clock
+-- pinned to 2026-10-29T12:00:00Z: Maya registers on phone A with babies Pip and Bo, invites
+-- Sam, who joins on phone B; A pushes wet, bottle and dirty, then a bottle edit and a wet
+-- delete; B pushes one wet for Bo. upgrade-from-main.json holds the phones' passkeys and
+-- session cookies and main's pull response. Regenerate only from a shipped build; never
+-- edit by hand.
+PRAGMA foreign_keys=OFF;
+BEGIN TRANSACTION;
+CREATE TABLE households (
+     id TEXT PRIMARY KEY,
+     created_at TEXT NOT NULL
+   ) STRICT;
+INSERT INTO households VALUES('01M64RD6TPJPC7A47N04D2TGAJ','2026-10-29T12:00:00.000Z');
+CREATE TABLE event_versions (
+     seq INTEGER PRIMARY KEY AUTOINCREMENT,
+     household_id TEXT NOT NULL REFERENCES households (id),
+     event_id TEXT NOT NULL,
+     version INTEGER NOT NULL,
+     baby_id TEXT NOT NULL,
+     body TEXT NOT NULL,
+     received_at TEXT NOT NULL, member_id TEXT REFERENCES members (id),
+     UNIQUE (event_id, version, body)
+   ) STRICT;
+INSERT INTO event_versions VALUES(1,'01M64RD6TPJPC7A47N04D2TGAJ','01M64RD6VD2CJM65KWMW3RJZYF',1,'01M64RD6TPJPC7A47N04D2TGAK','{"authorId":"01M64RD6V9ERQVP3ES638C7YVV","babyId":"01M64RD6TPJPC7A47N04D2TGAK","data":{"kind":"wet"},"deleted":false,"id":"01M64RD6VD2CJM65KWMW3RJZYF","notes":null,"occurredAt":"2026-10-29T03:00:00.000Z","recordedAt":"2026-10-29T03:00:00.000Z","type":"diaper","version":1}','2026-10-29T12:00:00.000Z','01M64RD6V9ERQVP3ES638C7YVV');
+INSERT INTO event_versions VALUES(2,'01M64RD6TPJPC7A47N04D2TGAJ','01M64RD6VD2CJM65KWMW3RJZYG',1,'01M64RD6TPJPC7A47N04D2TGAK','{"authorId":"01M64RD6V9ERQVP3ES638C7YVV","babyId":"01M64RD6TPJPC7A47N04D2TGAK","data":{"contents":"formula","volumeMl":60},"deleted":false,"id":"01M64RD6VD2CJM65KWMW3RJZYG","notes":null,"occurredAt":"2026-10-29T03:00:00.000Z","recordedAt":"2026-10-29T03:00:00.000Z","type":"bottle","version":1}','2026-10-29T12:00:00.000Z','01M64RD6V9ERQVP3ES638C7YVV');
+INSERT INTO event_versions VALUES(3,'01M64RD6TPJPC7A47N04D2TGAJ','01M64RD6VD2CJM65KWMW3RJZYH',1,'01M64RD6TPJPC7A47N04D2TGAK','{"authorId":"01M64RD6V9ERQVP3ES638C7YVV","babyId":"01M64RD6TPJPC7A47N04D2TGAK","data":{"kind":"dirty","stool":{"color":"yellow","consistency":"seedy","flags":[],"size":null}},"deleted":false,"id":"01M64RD6VD2CJM65KWMW3RJZYH","notes":null,"occurredAt":"2026-10-29T03:00:00.000Z","recordedAt":"2026-10-29T03:00:00.000Z","type":"diaper","version":1}','2026-10-29T12:00:00.000Z','01M64RD6V9ERQVP3ES638C7YVV');
+INSERT INTO event_versions VALUES(4,'01M64RD6TPJPC7A47N04D2TGAJ','01M64RD6VD2CJM65KWMW3RJZYG',2,'01M64RD6TPJPC7A47N04D2TGAK','{"authorId":"01M64RD6V9ERQVP3ES638C7YVV","babyId":"01M64RD6TPJPC7A47N04D2TGAK","data":{"contents":"formula","volumeMl":90},"deleted":false,"id":"01M64RD6VD2CJM65KWMW3RJZYG","notes":null,"occurredAt":"2026-10-29T03:00:00.000Z","recordedAt":"2026-10-29T03:00:00.000Z","type":"bottle","version":2}','2026-10-29T12:00:00.000Z','01M64RD6V9ERQVP3ES638C7YVV');
+INSERT INTO event_versions VALUES(5,'01M64RD6TPJPC7A47N04D2TGAJ','01M64RD6VD2CJM65KWMW3RJZYF',2,'01M64RD6TPJPC7A47N04D2TGAK','{"authorId":"01M64RD6V9ERQVP3ES638C7YVV","babyId":"01M64RD6TPJPC7A47N04D2TGAK","data":{"kind":"wet"},"deleted":true,"id":"01M64RD6VD2CJM65KWMW3RJZYF","notes":null,"occurredAt":"2026-10-29T03:00:00.000Z","recordedAt":"2026-10-29T03:00:00.000Z","type":"diaper","version":2}','2026-10-29T12:00:00.000Z','01M64RD6V9ERQVP3ES638C7YVV');
+INSERT INTO event_versions VALUES(6,'01M64RD6TPJPC7A47N04D2TGAJ','01M64RD6VD2CJM65KWMW3RJZYJ',1,'01M64RD6VA9XX70VBHPNN74QTC','{"authorId":"01M64RD6VD2CJM65KWMW3RJZYE","babyId":"01M64RD6VA9XX70VBHPNN74QTC","data":{"kind":"wet"},"deleted":false,"id":"01M64RD6VD2CJM65KWMW3RJZYJ","notes":null,"occurredAt":"2026-10-29T03:00:00.000Z","recordedAt":"2026-10-29T03:00:00.000Z","type":"diaper","version":1}','2026-10-29T12:00:00.000Z','01M64RD6VD2CJM65KWMW3RJZYE');
+CREATE TABLE members (
+     id TEXT PRIMARY KEY,
+     household_id TEXT NOT NULL REFERENCES households (id),
+     display_name TEXT NOT NULL,
+     webauthn_user_id TEXT NOT NULL UNIQUE,
+     created_at TEXT NOT NULL
+   ) STRICT;
+INSERT INTO members VALUES('01M64RD6V9ERQVP3ES638C7YVV','01M64RD6TPJPC7A47N04D2TGAJ','Maya','vJz8qie4ccOcDuJpiLP7Ig','2026-10-29T12:00:00.000Z');
+INSERT INTO members VALUES('01M64RD6VD2CJM65KWMW3RJZYE','01M64RD6TPJPC7A47N04D2TGAJ','Sam','-shkTdtk8stGHrNym7pH_g','2026-10-29T12:00:00.000Z');
+CREATE TABLE credentials (
+     id TEXT PRIMARY KEY,
+     member_id TEXT NOT NULL REFERENCES members (id),
+     public_key BLOB NOT NULL,
+     counter INTEGER NOT NULL,
+     transports TEXT NOT NULL,
+     created_at TEXT NOT NULL,
+     last_used_at TEXT
+   ) STRICT;
+INSERT INTO credentials VALUES('qJlK7Q255dpxto-fwYFmig','01M64RD6V9ERQVP3ES638C7YVV',X'a50102032620012158207ee50b70bd731f966612fd5efe00628f574d623b28b7870b5fd3760fc441d848225820c0e7c9b334d09b876be62b1fd58f4ca542b14f3cfab7e59ee755ac3075f6a833',0,'["internal"]','2026-10-29T12:00:00.000Z',NULL);
+INSERT INTO credentials VALUES('Xt6X-yn61nxXHTv_TN_NQA','01M64RD6VD2CJM65KWMW3RJZYE',X'a5010203262001215820fde672bd5fbba9e0b5c6cefde5721b377e7210fd7e286feacea34bc31808bf7e2258206556e8a7798b030b9c3037365383ac834a9fc3f4bbc685d23323d59ea88859b0',0,'["internal"]','2026-10-29T12:00:00.000Z',NULL);
+CREATE TABLE babies (
+     id TEXT PRIMARY KEY,
+     household_id TEXT NOT NULL REFERENCES households (id),
+     name TEXT NOT NULL,
+     birth_at TEXT NOT NULL,
+     sex TEXT NOT NULL,
+     created_at TEXT NOT NULL
+   ) STRICT;
+INSERT INTO babies VALUES('01M64RD6TPJPC7A47N04D2TGAK','01M64RD6TPJPC7A47N04D2TGAJ','Pip','2026-10-20T08:15:00.000Z','female','2026-10-29T12:00:00.000Z');
+INSERT INTO babies VALUES('01M64RD6VA9XX70VBHPNN74QTC','01M64RD6TPJPC7A47N04D2TGAJ','Bo','2026-10-20T08:20:00.000Z','male','2026-10-29T12:00:00.000Z');
+CREATE TABLE devices (
+     id TEXT PRIMARY KEY,
+     member_id TEXT NOT NULL REFERENCES members (id),
+     created_at TEXT NOT NULL,
+     last_seen_at TEXT NOT NULL,
+     removed_at TEXT
+   ) STRICT;
+INSERT INTO devices VALUES('01M64RD6TNDZAFWQ918SJPRADE','01M64RD6V9ERQVP3ES638C7YVV','2026-10-29T12:00:00.000Z','2026-10-29T12:00:00.000Z',NULL);
+INSERT INTO devices VALUES('01M64RD6VBMJKQ3D0WKZFZT8RG','01M64RD6VD2CJM65KWMW3RJZYE','2026-10-29T12:00:00.000Z','2026-10-29T12:00:00.000Z',NULL);
+CREATE TABLE invites (
+     code_hash TEXT PRIMARY KEY,
+     household_id TEXT NOT NULL REFERENCES households (id),
+     created_by TEXT NOT NULL REFERENCES members (id),
+     created_at TEXT NOT NULL,
+     expires_at TEXT NOT NULL,
+     used_at TEXT,
+     used_by TEXT REFERENCES members (id)
+   ) STRICT;
+INSERT INTO invites VALUES('9e94a1e5e9cfabfa0120b04046cd2b73c87adcdde9bcadd642de93c868cf33f3','01M64RD6TPJPC7A47N04D2TGAJ','01M64RD6V9ERQVP3ES638C7YVV','2026-10-29T12:00:00.000Z','2026-10-30T12:00:00.000Z','2026-10-29T12:00:00.000Z','01M64RD6VD2CJM65KWMW3RJZYE');
+CREATE TABLE sessions (
+     token_hash TEXT PRIMARY KEY,
+     member_id TEXT NOT NULL REFERENCES members (id),
+     device_id TEXT NOT NULL REFERENCES devices (id),
+     created_at TEXT NOT NULL,
+     expires_at TEXT NOT NULL,
+     revoked_at TEXT
+   ) STRICT;
+INSERT INTO sessions VALUES('b978e344a1df8c089d9ffec1605020bbb42f116c90be7e13acf6212cc59b3d7a','01M64RD6V9ERQVP3ES638C7YVV','01M64RD6TNDZAFWQ918SJPRADE','2026-10-29T12:00:00.000Z','2027-04-27T12:00:00.000Z',NULL);
+INSERT INTO sessions VALUES('6e3c776307ae6bce066a3ccee016c94dec76fb036b29fbec25a5aed261b8d44f','01M64RD6VD2CJM65KWMW3RJZYE','01M64RD6VBMJKQ3D0WKZFZT8RG','2026-10-29T12:00:00.000Z','2027-04-27T12:00:00.000Z',NULL);
+CREATE TABLE auth_flows (
+     id TEXT PRIMARY KEY,
+     challenge TEXT NOT NULL,
+     purpose TEXT NOT NULL,
+     payload TEXT NOT NULL,
+     browser_hash TEXT NOT NULL,
+     expires_at TEXT NOT NULL
+   ) STRICT;
+INSERT INTO sqlite_sequence VALUES('event_versions',6);
+CREATE INDEX event_versions_by_household ON event_versions (household_id, seq);
+CREATE INDEX babies_by_household ON babies (household_id);
+COMMIT;
+PRAGMA user_version = 2;

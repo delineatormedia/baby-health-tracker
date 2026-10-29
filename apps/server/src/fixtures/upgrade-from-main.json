@@ -1,0 +1,255 @@
+{
+  "producedBy": "main 6422a95 (#63), clock 2026-10-29T12:00:00Z; see upgrade-from-main.sql",
+  "householdId": "01M64RD6TPJPC7A47N04D2TGAJ",
+  "babies": ["01M64RD6TPJPC7A47N04D2TGAK", "01M64RD6VA9XX70VBHPNN74QTC"],
+  "members": ["01M64RD6V9ERQVP3ES638C7YVV", "01M64RD6VD2CJM65KWMW3RJZYE"],
+  "phones": {
+    "a": {
+      "deviceId": "01M64RD6TNDZAFWQ918SJPRADE",
+      "cookie": "bht_session=ooBit1QQuL7VOMHouxfiuBxREJIxxHwYK9YRMU2PBPQ",
+      "keys": [
+        {
+          "id": "qJlK7Q255dpxto-fwYFmig",
+          "jwk": {
+            "kty": "EC",
+            "x": "fuULcL1zH5ZmEv1e_gBij1dNYjsot4cLX9N2D8RB2Eg",
+            "y": "wOfJszTQm4dr5isf1Y9MpUKxTzz6t-We51WsMHX2qDM",
+            "crv": "P-256",
+            "d": "cnqQEQaTHyQpEKJRn_d4xgXL92ydmR8IYcW--Fgwq9Q"
+          },
+          "userHandle": "vJz8qie4ccOcDuJpiLP7Ig",
+          "counter": 0
+        }
+      ]
+    },
+    "b": {
+      "deviceId": "01M64RD6VBMJKQ3D0WKZFZT8RG",
+      "cookie": "bht_session=DaY1dbluEqaHaVf4uZz0bxb6s-Zo-OYycx04N3Z1RJU",
+      "keys": [
+        {
+          "id": "Xt6X-yn61nxXHTv_TN_NQA",
+          "jwk": {
+            "kty": "EC",
+            "x": "_eZyvV-7qeC1xs795XIbN35yEP1-KG_qzqNLwxgIv34",
+            "y": "ZVbop3mLAwucMDc2U4Osg0qfw_S7xoXSMyPVnqiIWbA",
+            "crv": "P-256",
+            "d": "73lod3sqqwCAhiZyYINIu7YT0rv0L0HQBcA3rU9Qhrk"
+          },
+          "userHandle": "-shkTdtk8stGHrNym7pH_g",
+          "counter": 0
+        }
+      ]
+    }
+  },
+  "events": [
+    {
+      "id": "01M64RD6VD2CJM65KWMW3RJZYF",
+      "babyId": "01M64RD6TPJPC7A47N04D2TGAK",
+      "authorId": "01M64RD6V9ERQVP3ES638C7YVV",
+      "occurredAt": "2026-10-29T03:00:00.000Z",
+      "recordedAt": "2026-10-29T03:00:00.000Z",
+      "version": 1,
+      "deleted": false,
+      "notes": null,
+      "type": "diaper",
+      "data": {
+        "kind": "wet"
+      }
+    },
+    {
+      "id": "01M64RD6VD2CJM65KWMW3RJZYG",
+      "babyId": "01M64RD6TPJPC7A47N04D2TGAK",
+      "authorId": "01M64RD6V9ERQVP3ES638C7YVV",
+      "occurredAt": "2026-10-29T03:00:00.000Z",
+      "recordedAt": "2026-10-29T03:00:00.000Z",
+      "version": 1,
+      "deleted": false,
+      "notes": null,
+      "type": "bottle",
+      "data": {
+        "contents": "formula",
+        "volumeMl": 60
+      }
+    },
+    {
+      "id": "01M64RD6VD2CJM65KWMW3RJZYH",
+      "babyId": "01M64RD6TPJPC7A47N04D2TGAK",
+      "authorId": "01M64RD6V9ERQVP3ES638C7YVV",
+      "occurredAt": "2026-10-29T03:00:00.000Z",
+      "recordedAt": "2026-10-29T03:00:00.000Z",
+      "version": 1,
+      "deleted": false,
+      "notes": null,
+      "type": "diaper",
+      "data": {
+        "kind": "dirty",
+        "stool": {
+          "color": "yellow",
+          "consistency": "seedy",
+          "size": null,
+          "flags": []
+        }
+      }
+    },
+    {
+      "id": "01M64RD6VD2CJM65KWMW3RJZYG",
+      "babyId": "01M64RD6TPJPC7A47N04D2TGAK",
+      "authorId": "01M64RD6V9ERQVP3ES638C7YVV",
+      "occurredAt": "2026-10-29T03:00:00.000Z",
+      "recordedAt": "2026-10-29T03:00:00.000Z",
+      "version": 2,
+      "deleted": false,
+      "notes": null,
+      "type": "bottle",
+      "data": {
+        "contents": "formula",
+        "volumeMl": 90
+      }
+    },
+    {
+      "id": "01M64RD6VD2CJM65KWMW3RJZYF",
+      "babyId": "01M64RD6TPJPC7A47N04D2TGAK",
+      "authorId": "01M64RD6V9ERQVP3ES638C7YVV",
+      "occurredAt": "2026-10-29T03:00:00.000Z",
+      "recordedAt": "2026-10-29T03:00:00.000Z",
+      "version": 2,
+      "deleted": true,
+      "notes": null,
+      "type": "diaper",
+      "data": {
+        "kind": "wet"
+      }
+    },
+    {
+      "id": "01M64RD6VD2CJM65KWMW3RJZYJ",
+      "babyId": "01M64RD6VA9XX70VBHPNN74QTC",
+      "authorId": "01M64RD6VD2CJM65KWMW3RJZYE",
+      "occurredAt": "2026-10-29T03:00:00.000Z",
+      "recordedAt": "2026-10-29T03:00:00.000Z",
+      "version": 1,
+      "deleted": false,
+      "notes": null,
+      "type": "diaper",
+      "data": {
+        "kind": "wet"
+      }
+    }
+  ],
+  "pulled": {
+    "versions": [
+      {
+        "seq": 1,
+        "event": {
+          "authorId": "01M64RD6V9ERQVP3ES638C7YVV",
+          "babyId": "01M64RD6TPJPC7A47N04D2TGAK",
+          "data": {
+            "kind": "wet"
+          },
+          "deleted": false,
+          "id": "01M64RD6VD2CJM65KWMW3RJZYF",
+          "notes": null,
+          "occurredAt": "2026-10-29T03:00:00.000Z",
+          "recordedAt": "2026-10-29T03:00:00.000Z",
+          "type": "diaper",
+          "version": 1
+        }
+      },
+      {
+        "seq": 2,
+        "event": {
+          "authorId": "01M64RD6V9ERQVP3ES638C7YVV",
+          "babyId": "01M64RD6TPJPC7A47N04D2TGAK",
+          "data": {
+            "contents": "formula",
+            "volumeMl": 60
+          },
+          "deleted": false,
+          "id": "01M64RD6VD2CJM65KWMW3RJZYG",
+          "notes": null,
+          "occurredAt": "2026-10-29T03:00:00.000Z",
+          "recordedAt": "2026-10-29T03:00:00.000Z",
+          "type": "bottle",
+          "version": 1
+        }
+      },
+      {
+        "seq": 3,
+        "event": {
+          "authorId": "01M64RD6V9ERQVP3ES638C7YVV",
+          "babyId": "01M64RD6TPJPC7A47N04D2TGAK",
+          "data": {
+            "kind": "dirty",
+            "stool": {
+              "color": "yellow",
+              "consistency": "seedy",
+              "flags": [],
+              "size": null
+            }
+          },
+          "deleted": false,
+          "id": "01M64RD6VD2CJM65KWMW3RJZYH",
+          "notes": null,
+          "occurredAt": "2026-10-29T03:00:00.000Z",
+          "recordedAt": "2026-10-29T03:00:00.000Z",
+          "type": "diaper",
+          "version": 1
+        }
+      },
+      {
+        "seq": 4,
+        "event": {
+          "authorId": "01M64RD6V9ERQVP3ES638C7YVV",
+          "babyId": "01M64RD6TPJPC7A47N04D2TGAK",
+          "data": {
+            "contents": "formula",
+            "volumeMl": 90
+          },
+          "deleted": false,
+          "id": "01M64RD6VD2CJM65KWMW3RJZYG",
+          "notes": null,
+          "occurredAt": "2026-10-29T03:00:00.000Z",
+          "recordedAt": "2026-10-29T03:00:00.000Z",
+          "type": "bottle",
+          "version": 2
+        }
+      },
+      {
+        "seq": 5,
+        "event": {
+          "authorId": "01M64RD6V9ERQVP3ES638C7YVV",
+          "babyId": "01M64RD6TPJPC7A47N04D2TGAK",
+          "data": {
+            "kind": "wet"
+          },
+          "deleted": true,
+          "id": "01M64RD6VD2CJM65KWMW3RJZYF",
+          "notes": null,
+          "occurredAt": "2026-10-29T03:00:00.000Z",
+          "recordedAt": "2026-10-29T03:00:00.000Z",
+          "type": "diaper",
+          "version": 2
+        }
+      },
+      {
+        "seq": 6,
+        "event": {
+          "authorId": "01M64RD6VD2CJM65KWMW3RJZYE",
+          "babyId": "01M64RD6VA9XX70VBHPNN74QTC",
+          "data": {
+            "kind": "wet"
+          },
+          "deleted": false,
+          "id": "01M64RD6VD2CJM65KWMW3RJZYJ",
+          "notes": null,
+          "occurredAt": "2026-10-29T03:00:00.000Z",
+          "recordedAt": "2026-10-29T03:00:00.000Z",
+          "type": "diaper",
+          "version": 1
+        }
+      }
+    ],
+    "next": 6,
+    "more": false,
+    "through": 6
+  }
+}
