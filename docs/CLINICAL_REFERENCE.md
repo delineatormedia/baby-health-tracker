@@ -21,15 +21,32 @@ emergency services regardless of what the app shows.
 
 - **Age.** `age_range.from_days` is inclusive and `to_days` exclusive, both in
   completed days since birth. "Day of life 1" means age 0–1 days, so "day 5"
-  means `from_days: 4`.
+  means `from_days: 4`. Where a source gives exact hours (ABM's 120 h), the
+  entry uses `from_hours`/`to_hours` instead and the day convention does not
+  apply. An entry never uses both.
+- **Where a window comes from.** `age_range.basis` is `source` when the source
+  states the window and `app_choice` when this file chose it (for example, how
+  long a rule stays active after the source's trigger age). Informational
+  entries do not claim a validated clinical window.
+- **Measurement interval vs. eligibility.** WHO weight-velocity entries carry an
+  `interval` (the span the weight gain is measured over) separately from
+  `age_range` (when the rule may be evaluated). The rule is evaluated only after
+  the whole interval has been observed, so the 0–4 week increment is checked
+  from day 28.
 - **Units.** Volumes are in mL and weights in grams. For human milk, 1 g ≈
   0.97 mL (density about 1.03 g/mL, [Cheema 2022](https://pmc.ncbi.nlm.nih.gov/articles/PMC8911220/)).
-  Studies that report grams are listed in mL with that caveat.
-- **Directions.**
-  - `below_min_flag`: flag when the observed value is below `value`, or below
-    `value.min` for a range.
-  - `above_max_flag`: flag when the observed value is above `value`.
-  - `red_flag_any`: flag on any occurrence.
+  Entries from studies that report grams keep the original figure in
+  `source_value`/`source_unit` and record the division by 1.03 in `conversion`,
+  marked approximate. Per-feed, per-day and population figures stay in
+  separate metrics.
+- **Directions and operators.** Every flagging entry states its comparison in
+  `op` (`lt`, `lte`, `gt`, `gte`), copied from the source's wording: "fewer
+  than", "1 or 2", "more than" and "8% or more" are not interchangeable.
+  - `below_min_flag`: the observed value is compared with `value` using `op`.
+  - `above_max_flag`: the same, for an upper bound or a count that should not
+    be reached (for example, 2 or more downward centile crossings).
+  - `red_flag_any`: flag when the count of occurrences meets `value` (one
+    occurrence unless the source says more).
   - `expected_range`: the normal span; use it to give context or to suppress
     flags.
   - `informational`: never flags on its own.
@@ -37,8 +54,20 @@ emergency services regardless of what the app shows.
   - `sex` (`male`/`female`) appears only on WHO growth-velocity entries.
   - `condition` appears on the NICE centile entries, which depend on birth-weight
     centile.
+- **Deferred entries.** `status: deferred` means the entry is recorded but must
+  not run until its missing inputs exist (see NEWT in section 3).
 - **Overlapping entries.** Where sources disagree, both entries are kept. The
   engine should show the stricter flag and cite both sources under "why?".
+  Two exceptions take precedence over that policy:
+  - **Source exceptions win.** If a source exempts a case, its entry does not
+    apply to that case, and no other entry may flag it in that source's name.
+    `suppressed_by` lists the entries that switch a flag off and when.
+  - **Low-confidence entries never win.** Entries marked informational, such as
+    the legacy 7% weight-loss rule, are never selected as the stricter flag.
+- **Missing logs are not evidence.** A gap in the log means nothing was logged,
+  not that the baby did not feed or urinate. Count-based rules must only run
+  on periods the parents marked as fully logged, and otherwise say "not enough
+  data".
 
 ## 1. Wet diapers
 
@@ -74,6 +103,8 @@ Urgent signs:
 - **Only 1–2 wet diapers in a day.** The AAP lists this as a sign of severe
   dehydration
   ([AAP](https://www.healthychildren.org/English/health-issues/injuries-emergencies/Pages/dehydration.aspx)).
+  The entry uses `lte 2`, so exactly two flags. The source counts urinations;
+  the app counts logged wet diapers, which can hold more than one.
 
 Urine colour: dark urine or uric acid crystals ("brick dust", pinkish staining)
 can be normal in the first days
@@ -102,16 +133,29 @@ Formula-fed babies have tan-yellow, firmer stools, at least one a day (AAP).
 **Still passing meconium on day 5.** Meconium stools on day 5 (120 h), or fewer
 than 4 stools on day 4, are reasons to evaluate the baby
 ([ABM Protocol #3, 2017](https://www.bfmed.org/assets/DOCUMENTS/PROTOCOLS/3-supplementation-protocol-english.pdf)).
+ABM gives exact hours, so the meconium entry starts at 120 h of age. It stays
+active until 168 h, a cut-off this file chose.
 
 **Fewer stools later is normal.** From about 3–6 weeks, some breastfed babies
 pass soft stools only once every 4–7 days, and that can be normal
 ([AAP](https://www.healthychildren.org/English/ages-stages/baby/Pages/babys-first-days-bowel-movements-and-urination.aspx)).
-The low-stool-count flag therefore stops after day 42 for breastfed babies.
+Each source keeps its own ages:
+
+- The AAP KidsDoc low-count flag (fewer than 3 a day) ends at 4 weeks, because
+  KidsDoc exempts low stool frequency after that age.
+- The NHS low-count flag runs to day 42 (this file's choice, matching NHS and
+  CDC "after about 6 weeks").
+- From day 21, both are switched off when stools are soft and weight gain is
+  adequate (the breastfed-interval entry). A thriving five-week-old with soft,
+  infrequent stools is not flagged.
 
 ### Red-flag colours
 
 - **Pale, clay, chalky, grey or white stool.** Flag on any occurrence and
-  prompt the parent to call the pediatrician promptly.
+  prompt the parent to call the pediatrician promptly. AAP KidsDoc's own rule
+  is narrower (call during office hours if it happens 2 or more times); the
+  data file keeps that entry with its count of 2, and the single-occurrence
+  entry controls what the app does.
   - The AAP says white poop needs to be brought to a doctor's attention "as soon
     as possible"
     ([AAP](https://www.healthychildren.org/English/ages-stages/baby/Pages/The-Many-Colors-of-Poop.aspx)).
@@ -164,7 +208,12 @@ More than 20% of healthy breastfed babies lose more than 7%
 - **8–10% or more lost on day 5 or later, or loss above the 75th percentile on
   the NEWT nomogram.** ABM calls for a careful assessment. It also says 10% is
   "an indicator for infant evaluation", not an automatic trigger for
-  supplementation.
+  supplementation. The 8% entry is inclusive (exactly 8% flags) and starts at
+  120 h, as ABM states.
+- **More than 7% lost (older AAP figure).** Kept as informational only: the
+  primary statement could not be verified and later work criticises it
+  ([Mazzoni 2022](https://pmc.ncbi.nlm.nih.gov/articles/PMC9021796/)). It is
+  never chosen over the NICE, AAP and ABM rules.
 - **Still losing weight after about day 5.** The AAP says babies "should start
   gaining weight steadily" from about 5 days
   ([AAP](https://www.healthychildren.org/English/ages-stages/baby/Pages/First-Month-Physical-Appearance-and-Growth.aspx)).
@@ -177,14 +226,19 @@ More than 20% of healthy breastfed babies lose more than 7%
 - More than 25% of babies delivered by caesarean have lost 10% or more by 72 h.
 
 A single fixed cut-off therefore flags many healthy caesarean babies. The
-nomogram curves themselves are not in this file; the 75th-percentile rule needs
-them.
+curves cover only 6–72 h after vaginal delivery and 6–96 h after caesarean
+delivery, in babies born at 36 weeks or later. The 75th-percentile entry is
+deferred: it needs delivery mode, exact hours and the matching curve, none of
+which are in this file, and it must never be extrapolated past the curves. The
+study's population is not the same as the app's own eligibility rules.
 
 **Regaining birth weight.**
 
 - **Average.** ABM gives a mean of 8.3 days, with 97.5% regained by 21 days.
 - **Population data.** In
-  [Paul et al., Pediatrics 2016](https://pubmed.ncbi.nlm.nih.gov/27940721/):
+  [Paul et al., Pediatrics 2016](https://pubmed.ncbi.nlm.nih.gov/27940721/)
+  (singletons born at 36 weeks or later; the abstract does not limit the
+  cohort to exclusive breastfeeding):
   - Half of babies were back to birth weight by day 9 (vaginal) or day 10
     (caesarean).
   - At 14 days, 14% of vaginal and 24% of caesarean babies were still below
@@ -194,6 +248,12 @@ them.
   days.
 - **NICE.** Consider referral if birth weight is not regained by 3 weeks. This
   is the firm flag at 21 days.
+
+Both regain flags measure the baby's current age while birth weight has not yet
+been regained (`gte` 14 and 21 days), so a baby still below birth weight at
+exactly 21 days flags. Once birth weight is regained the flags clear. This is
+separate from a completed time-to-regain, which is what the ABM mean
+describes.
 
 ## 4. Weight gain and growth standards (0–24 months)
 
@@ -219,7 +279,13 @@ Values are the 5th percentile and median, in grams gained over the interval:
 How to use these values:
 
 - A gain below the 5th percentile is a soft "mention it at the next visit"
-  flag. By definition, 5% of healthy babies fall below it.
+  flag. By definition, 5% of healthy babies fall below it. Using the 5th
+  percentile as a flag is this app's policy; the WHO tables describe the
+  distribution and do not prescribe an action.
+- Each increment is evaluated once its whole interval has been observed (the
+  0–4 week gain from day 28), using the weights nearest each end of the
+  interval. Calendar months are treated as WHO's 1-month intervals; there is
+  no interpolation, and too few weights means "not enough data".
 - From about 7 months the 5th percentile is near or below zero. Percentile
   tracking replaces velocity flags from that age.
 
@@ -228,8 +294,14 @@ How to use these values:
 often labelled 2nd and 98th
 ([CDC MMWR 2010](https://www.cdc.gov/mmwr/preview/mmwrhtml/rr5909a1.htm);
 [CDC 2024](https://www.cdc.gov/growth-chart-training/hcp/using-growth-charts/who-using.html)).
+The high cut-off screens weight-for-length, not weight-for-age. High
+weight-for-age alone does not indicate excess weight, so that entry is
+informational. A weight-for-length rule needs length measurements, which are
+outside v1.
 
-**Falling percentiles.** Two rules apply:
+**Falling percentiles.** Two rules apply. Both count downward crossings and
+flag when the count reaches the cited number (`gte`); zero crossings never
+flags.
 
 - **AAP.** Assess a baby whose weight gain drops across 2 major percentile lines
   ([AAP Undernutrition](https://www.aap.org/en/patient-care/newborn-infant-and-early-childhood-nutrition/undernutrition)).
@@ -261,12 +333,14 @@ for the whole day
 
 - **Day 5:** about 415–500 mL
   ([Neville 1988](https://pubmed.ncbi.nlm.nih.gov/3202087/): 498 ± 129;
-  [Kent 2016](https://pmc.ncbi.nlm.nih.gov/articles/PMC5188411/): 415 ± 123).
-- **Week 2:** about 650 mL.
+  [Kent 2016](https://pmc.ncbi.nlm.nih.gov/articles/PMC5188411/): 415 ± 123 g,
+  pooled from seven earlier studies cited in Kent's introduction, not Kent's
+  own sample).
+- **Week 2:** about 650 mL (one small cited study of 10 mothers).
 - **1–6 months:** a mean of 788 mL, with a normal range of 478–1356 mL
   (Kent 2006).
 - **WHO-commissioned meta-analysis:** 624 mL at 1 month, 735 mL at 3 months and
-  729 mL at 6 months
+  729 mL at 6 months, in infants exclusively breastfed through 6 months
   ([Rios-Leyvraz 2023](https://pubmed.ncbi.nlm.nih.gov/36763610/)).
 
 **Breast milk per feed.** At 1–6 months a feed averages 76 mL but ranges from 0
@@ -312,25 +386,37 @@ in mL.
   weighings, error is within ±5 g
   ([Haase 2009](https://pubmed.ncbi.nlm.nih.gov/19739951/)) or a mean of 1.7 g
   ([Kinoshita 2025](https://pubmed.ncbi.nlm.nih.gov/39630512/)). These studies
-  are in preterm infants, which is the only population in which accuracy has
-  been validated.
-- **In routine use.** A single test weight had 95% limits of about −12 to +15 mL
-  against known intake, and the authors advised against using it clinically
-  ([Savenije & Brand 2006](https://pubmed.ncbi.nlm.nih.gov/16717082/)).
-- **For the app.** Show a single home test weight as a value ± about 15 mL, not
-  as an exact number.
+  are in preterm infants.
+- **Parents at home.** A 2024 study had parents test-weigh in the community,
+  mostly older infants and toddlers, using a specific scale and protocol with
+  researchers involved
+  ([Esquerra-Zwiers 2024](https://link.springer.com/article/10.1186/s40795-024-00911-4)).
+  It does not show that unsupervised home test weights of newborn breastfeeds
+  are accurate.
+- **In routine use.** A single test weight in newborns fed by bottle, cup or
+  tube had 95% limits of about −12 to +15 mL against known intake, and the
+  authors advised against using it clinically
+  ([Savenije & Brand 2006](https://pubmed.ncbi.nlm.nih.gov/16717082/)). Those
+  limits describe that study's setting, not the error of any home scale, age,
+  feed size or technique.
+- **For the app.** Show home test weights as approximate. No validated
+  uncertainty exists for home test weighing, so the app does not draw error
+  bars until a measurement contract (scale, technique, uncertainty model) is
+  defined and checked.
 
 **Scale precision.**
 
-- Validation studies used infant scales that read to 2 g up to 6 kg
-  ([Esquerra-Zwiers 2024](https://pubmed.ncbi.nlm.nih.gov/39054548/)).
+- The 2024 community study used an infant scale that reads to 2 g up to 6 kg
+  ([Esquerra-Zwiers 2024](https://pubmed.ncbi.nlm.nih.gov/39054548/)). That is
+  the scale it used, not a stated minimum.
 - No allowed source states a minimum resolution. The common claim that
   "10 g kitchen or baby scales are inadequate" could not be verified.
 - The engine should widen uncertainty in proportion to the scale's resolution.
 
 **Insensible water loss.** Babies lose some water to evaporation during a feed.
-Research studies multiply test weights by 1.05 to correct for this
-([MILQ 2025](https://pubmed.ncbi.nlm.nih.gov/41167837/)).
+The MILQ research protocol multiplies test weights by 1.05 to correct for this
+([MILQ 2025](https://pubmed.ncbi.nlm.nih.gov/41167837/)). That factor belongs to
+that protocol; it is not an established correction for every home feed.
 
 **Clinical use.**
 
@@ -351,8 +437,9 @@ Pump output is a poor estimate of what a baby drinks:
 - **Pumps vary.** A pump at maximum comfortable vacuum removes about 65% of
   available milk, and less at lower vacuum
   ([Kent 2008](https://pubmed.ncbi.nlm.nih.gov/18333764/)).
-- **Pumping overestimates intake.** A 3-hour pumping protocol estimated
-  1,085 mL a day, against 717 mL a day of measured infant intake. The authors
+- **Pumping overestimates intake.** In 16 paired measurements, a 3-hour pumping
+  protocol estimated 1,085 g a day, against 717 g a day of measured infant
+  intake. The authors
   call it valid for maternal production capacity "but … not accurate for
   evaluating infant intake"
   ([Roznowski 2020](https://pubmed.ncbi.nlm.nih.gov/32700964/)).
@@ -425,7 +512,7 @@ as weighted feeds and weigh-ins accumulate.
   ([Kent 2016](https://pmc.ncbi.nlm.nih.gov/articles/PMC5188411/);
   [Jin 2025](https://pubmed.ncbi.nlm.nih.gov/41305574/)).
 - **Residual milk.** Milk left in the breast after feeds is real, about 109 g
-  a day in the DARLING study. That study measured it as milk extracted by
+  a day at 3 months in the DARLING study (other ages were not reported). That study measured it as milk extracted by
   expression on a separate day minus test-weighed intake
   ([Dewey 1991](https://pubmed.ncbi.nlm.nih.gov/2034486/)).
 - **Day-to-day variation.** A mother's daily total varies by about 9% from day
@@ -447,8 +534,9 @@ as weighted feeds and weigh-ins accumulate.
    ([Kent 2006](https://pubmed.ncbi.nlm.nih.gov/16510619/)). A few daytime test
    weights give a biased estimate, not just a noisy one. The method is
    validated only with every feed weighed over 24 h, repeated for 2–4 days.
-4. **Home test weights are imprecise.** A single home test weight carries about
-   ±15 mL of error and needs correcting for evaporative loss (see section 7).
+4. **Home test weights are imprecise, by an unknown amount.** No study gives a
+   validated error for unsupervised home test weights of newborn breastfeeds
+   (see section 7).
 5. **The narrowing range is unvalidated.** No study validates an interval that
    narrows as sparse home measurements accumulate. Such an interval would
    reflect sampling noise only. It would leave out the ~9% day-to-day variation,
@@ -458,8 +546,9 @@ as weighted feeds and weigh-ins accumulate.
 
 **What the app can show safely in v1:**
 
-- Observed direct-breast intake from weighted feeds, each shown as a value ± its
-  uncertainty, kept separate from pumped volume and bottle volume.
+- Observed direct-breast intake from weighted feeds, shown as approximate and
+  kept separate from pumped volume and bottle volume. Error bars wait for a
+  validated uncertainty model.
 - A total of milk removed over 24 hours, only when every feed and pumping
   session in that window was weighed or measured. Label it "milk removed in this
   period", not "supply".
@@ -490,7 +579,7 @@ as weighted feeds and weigh-ins accumulate.
 | 32 oz formula cap | AAP: a ceiling (960 mL as stated) | CDC: uses 32 oz only as a vitamin D cut-off |
 | Breastfeeds per day | CDC and AAP 2015: 8–12 | AAP 2024: 10–12 is the norm |
 | Breast milk on day 5 | Neville 1988: 498 mL | Kent 2016: 415 mL |
-| Test-weighing reliability | Savenije 2006: unreliable (±15 mL), do not use | Meier 1990, Haase 2009, Kinoshita 2025: accurate with protocol and scale (±2–5 g), preterm only |
+| Test-weighing reliability | Savenije 2006: single test weights unreliable in that newborn setting (−12 to +15 mL), do not use clinically | Meier 1990, Haase 2009, Kinoshita 2025: accurate with protocol and scale (±2–5 g) in preterm infants; Esquerra-Zwiers 2024: parent-performed with a set scale and protocol, mostly older infants |
 | Low supply | Hoban 2018: 500 mL a day by day 14 (preterm, pump-dependent) | Jin 2025: 708 mL a day (term, 4–26 weeks); not interchangeable |
 
 ## Verification notes

@@ -6,7 +6,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 0,
-      "to_days": 1
+      "to_days": 1,
+      "basis": "source"
     },
     "direction": "below_min_flag",
     "source": {
@@ -16,7 +17,8 @@
       "url": "https://www.cdc.gov/infant-toddler-nutrition/breastfeeding/newborn-basics.html"
     },
     "confidence": "high",
-    "notes": "CDC minimum wet diapers on day of life 1 (age 0-1 completed days). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "CDC minimum wet diapers on day of life 1 (age 0-1 completed days). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "wet_diapers_min_cdc_dol2",
@@ -25,7 +27,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 1,
-      "to_days": 2
+      "to_days": 2,
+      "basis": "source"
     },
     "direction": "below_min_flag",
     "source": {
@@ -35,7 +38,8 @@
       "url": "https://www.cdc.gov/infant-toddler-nutrition/breastfeeding/newborn-basics.html"
     },
     "confidence": "high",
-    "notes": "CDC minimum wet diapers on day of life 2 (age 1-2 completed days). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "CDC minimum wet diapers on day of life 2 (age 1-2 completed days). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "wet_diapers_min_cdc_dol3",
@@ -44,7 +48,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 2,
-      "to_days": 3
+      "to_days": 3,
+      "basis": "source"
     },
     "direction": "below_min_flag",
     "source": {
@@ -54,7 +59,8 @@
       "url": "https://www.cdc.gov/infant-toddler-nutrition/breastfeeding/newborn-basics.html"
     },
     "confidence": "moderate",
-    "notes": "CDC minimum wet diapers on day of life 3 (age 2-3 completed days). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants. Disputed: AAP KidsDoc says 3 wet diapers a day can be normal while milk is coming in, and exempts counts below 6 before day 5. Prefer a soft flag."
+    "notes": "CDC minimum wet diapers on day of life 3 (age 2-3 completed days). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants. Disputed: AAP KidsDoc says 3 wet diapers a day can be normal while milk is coming in, and exempts counts below 6 before day 5. Prefer a soft flag.",
+    "op": "lt"
   },
   {
     "id": "wet_diapers_min_cdc_dol4",
@@ -63,7 +69,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 3,
-      "to_days": 4
+      "to_days": 4,
+      "basis": "source"
     },
     "direction": "below_min_flag",
     "source": {
@@ -73,7 +80,8 @@
       "url": "https://www.cdc.gov/infant-toddler-nutrition/breastfeeding/newborn-basics.html"
     },
     "confidence": "moderate",
-    "notes": "CDC minimum wet diapers on day of life 4 (age 3-4 completed days). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants. Disputed: AAP clinician page expects 6+ by day 4-5; AAP parent page and NHS by day 5-7 / from day 5."
+    "notes": "CDC minimum wet diapers on day of life 4 (age 3-4 completed days). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants. Disputed: AAP clinician page expects 6+ by day 4-5; AAP parent page and NHS by day 5-7 / from day 5.",
+    "op": "lt"
   },
   {
     "id": "wet_diapers_min_cdc_dol5_7",
@@ -82,7 +90,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 4,
-      "to_days": 7
+      "to_days": 7,
+      "basis": "source"
     },
     "direction": "below_min_flag",
     "source": {
@@ -92,7 +101,8 @@
       "url": "https://www.cdc.gov/infant-toddler-nutrition/breastfeeding/newborn-basics.html"
     },
     "confidence": "high",
-    "notes": "CDC minimum 6 wet diapers on days of life 5-7; CDC also says call if fewer than 6 pees per day by 5 days old. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "CDC minimum 6 wet diapers on days of life 5-7; CDC also says call if fewer than 6 pees per day by 5 days old. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "wet_diapers_min_aap_kidsdoc_from_dol5",
@@ -101,7 +111,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 4,
-      "to_days": 183
+      "to_days": 183,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -111,7 +122,8 @@
       "url": "https://www.healthychildren.org/English/tips-tools/symptom-checker/Pages/symptomviewer.aspx?symptom=Breast-Feeding+Questions"
     },
     "confidence": "high",
-    "notes": "AAP KidsDoc triage: 'Wet diapers are less than 6 per day' -> contact doctor within 24 hours; exception before 5 days of life while milk is coming in. Upper bound of 183 days is this file's choice (KidsDoc page covers breastfed infants generally). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP KidsDoc triage: 'Wet diapers are less than 6 per day' -> contact doctor within 24 hours; exception before 5 days of life while milk is coming in. Upper bound of 183 days is this file's choice (KidsDoc page covers breastfed infants generally). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "wet_diapers_min_nhs_from_dol5",
@@ -120,7 +132,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 4,
-      "to_days": 42
+      "to_days": 42,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -130,7 +143,8 @@
       "url": "https://www.nhs.uk/baby/breastfeeding-and-bottle-feeding/breastfeeding-problems/enough-milk/"
     },
     "confidence": "high",
-    "notes": "NHS: from day 5 onwards at least 6 heavy wet nappies every 24 hours (first 48 h: only 2-3 wet nappies is typical). 42-day upper bound is this file's choice (page addresses the early weeks). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "NHS: from day 5 onwards at least 6 heavy wet nappies every 24 hours (first 48 h: only 2-3 wet nappies is typical). 42-day upper bound is this file's choice (page addresses the early weeks). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "wet_diapers_min_aap_dehydration",
@@ -139,7 +153,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 4,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -149,7 +164,8 @@
       "url": "https://www.healthychildren.org/English/health-issues/injuries-emergencies/Pages/dehydration.aspx"
     },
     "confidence": "moderate",
-    "notes": "AAP dehydration page lists 'fewer than six wet diapers per day' as a sign of mild-moderate dehydration in infants, alongside dry mouth, fewer tears, sunken soft spot. Page last updated 2019. Applies with the newborn exemption before day 5. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP dehydration page lists 'fewer than six wet diapers per day' as a sign of mild-moderate dehydration in infants, alongside dry mouth, fewer tears, sunken soft spot. Page last updated 2019. Applies with the newborn exemption before day 5. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "wet_diapers_min_aap_general",
@@ -158,7 +174,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 7,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -168,7 +185,8 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/Pages/babys-first-days-bowel-movements-and-urination.aspx"
     },
     "confidence": "low",
-    "notes": "AAP 'Baby's First Days': 'As long as the baby is wetting at least four diapers a day, there probably is no cause for concern.' Disputed: conflicts with the 6/day figure used elsewhere by AAP, CDC and NHS; no age stated (age window here is this file's assumption). Use only as a lower-severity floor. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP 'Baby's First Days': 'As long as the baby is wetting at least four diapers a day, there probably is no cause for concern.' Disputed: conflicts with the 6/day figure used elsewhere by AAP, CDC and NHS; no age stated (age window here is this file's assumption). Use only as a lower-severity floor. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "wet_diapers_severe_dehydration",
@@ -177,7 +195,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 4,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -187,7 +206,8 @@
       "url": "https://www.healthychildren.org/English/health-issues/injuries-emergencies/Pages/dehydration.aspx"
     },
     "confidence": "moderate",
-    "notes": "AAP: urinating only one to two times per day is listed among signs of severe dehydration (with excessive sleepiness, sunken eyes, cool discolored hands/feet). Treat as urgent: prompt the parent to contact the pediatrician now. Page updated 2019. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP: urinating only one to two times per day is a sign of severe dehydration (with excessive sleepiness, sunken eyes, cool discolored hands and feet). Flags at 2 or fewer (inclusive). The source counts urinations; the app counts logged wet diapers, which can undercount (one diaper may hold several voids), so the copy must say 'wet diapers logged' and missing logs give 'not enough data', never a count of zero. The source is a general child dehydration page, not a neonatal rule; applying it from day 5 is this file's choice. Population: healthy term infants. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lte"
   },
   {
     "id": "no_urine_hours_dol2_4",
@@ -196,7 +216,8 @@
     "unit": "hours",
     "age_range": {
       "from_days": 1,
-      "to_days": 4
+      "to_days": 4,
+      "basis": "source"
     },
     "direction": "above_max_flag",
     "source": {
@@ -206,7 +227,8 @@
       "url": "https://www.healthychildren.org/English/tips-tools/symptom-checker/Pages/symptomviewer.aspx?symptom=Breast-Feeding+Questions"
     },
     "confidence": "high",
-    "notes": "AAP KidsDoc: 'Day 2-4 of life and no urine in more than 8 hours' -> contact doctor within 24 hours. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP KidsDoc: 'Day 2-4 of life and no urine in more than 8 hours' -> contact doctor within 24 hours. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "gt"
   },
   {
     "id": "no_urine_hours_dehydration",
@@ -215,7 +237,8 @@
     "unit": "hours",
     "age_range": {
       "from_days": 0,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "above_max_flag",
     "source": {
@@ -225,7 +248,8 @@
       "url": "https://www.healthychildren.org/English/tips-tools/symptom-checker/Pages/symptomviewer.aspx?symptom=Breast-Feeding+Questions"
     },
     "confidence": "high",
-    "notes": "AAP KidsDoc: 'Dehydration suspected. No urine in more than 8 hours, dark urine, no stool for 24 hours, very dry mouth and no tears' -> call doctor or seek care now. The 8-hour gap alone is one component; the source pairs it with other signs. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP KidsDoc: 'Dehydration suspected. No urine in more than 8 hours, dark urine, no stool for 24 hours, very dry mouth and no tears' -> call doctor or seek care now. The 8-hour gap alone is one component; the source pairs it with other signs. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "gt"
   },
   {
     "id": "stools_min_cdc_dol1",
@@ -234,7 +258,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 0,
-      "to_days": 1
+      "to_days": 1,
+      "basis": "source"
     },
     "direction": "below_min_flag",
     "source": {
@@ -244,7 +269,8 @@
       "url": "https://www.cdc.gov/infant-toddler-nutrition/breastfeeding/newborn-basics.html"
     },
     "confidence": "high",
-    "notes": "CDC minimum 1 poop on day of life 1. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "CDC minimum 1 poop on day of life 1. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "stools_min_cdc_dol2_7",
@@ -253,7 +279,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 1,
-      "to_days": 7
+      "to_days": 7,
+      "basis": "source"
     },
     "direction": "below_min_flag",
     "source": {
@@ -263,7 +290,8 @@
       "url": "https://www.cdc.gov/infant-toddler-nutrition/breastfeeding/newborn-basics.html"
     },
     "confidence": "moderate",
-    "notes": "CDC minimum 3 poops per day on days of life 2-7; 'fewer than 3 poops ... by 5 days old' is a call-the-doctor sign. Disputed for days 2-3: AAP says 1-2 stools per day on days 1-3 is normal. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "CDC minimum 3 poops per day on days of life 2-7; 'fewer than 3 poops ... by 5 days old' is a call-the-doctor sign. Disputed for days 2-3: AAP says 1-2 stools per day on days 1-3 is normal. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "stools_expected_aap_dol1_2",
@@ -275,7 +303,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 0,
-      "to_days": 2
+      "to_days": 2,
+      "basis": "source"
     },
     "direction": "expected_range",
     "source": {
@@ -294,7 +323,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 2,
-      "to_days": 4
+      "to_days": 4,
+      "basis": "source"
     },
     "direction": "below_min_flag",
     "source": {
@@ -304,7 +334,8 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/breastfeeding/Pages/How-to-Tell-if-Baby-is-Getting-Enough-Milk.aspx"
     },
     "confidence": "high",
-    "notes": "AAP: at least two stools beginning to appear greenish to yellow on days 3 and 4. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP: at least two stools beginning to appear greenish to yellow on days 3 and 4. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "stools_min_abm_dol4",
@@ -313,7 +344,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 3,
-      "to_days": 4
+      "to_days": 4,
+      "basis": "source"
     },
     "direction": "below_min_flag",
     "source": {
@@ -323,7 +355,8 @@
       "url": "https://www.bfmed.org/assets/DOCUMENTS/PROTOCOLS/3-supplementation-protocol-english.pdf"
     },
     "confidence": "moderate",
-    "notes": "ABM #3 lists 'fewer than four stools on day 4 of life' as an indication for evaluation (not automatic supplementation). Disputed: stricter than AAP (2+ on days 3-4) and NHS (2+ from day 4). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "ABM #3 lists 'fewer than four stools on day 4 of life' as an indication for evaluation (not automatic supplementation). Disputed: stricter than AAP (2+ on days 3-4) and NHS (2+ from day 4). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "stools_min_aap_from_dol5",
@@ -332,7 +365,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 4,
-      "to_days": 42
+      "to_days": 28,
+      "basis": "source"
     },
     "direction": "below_min_flag",
     "source": {
@@ -342,7 +376,14 @@
       "url": "https://www.healthychildren.org/English/tips-tools/symptom-checker/Pages/symptomviewer.aspx?symptom=Breast-Feeding+Questions"
     },
     "confidence": "high",
-    "notes": "AAP KidsDoc: 'Yellow seedy stools are less than 3 per day' -> contact doctor within 24 hours (by day 4-5 expect 3+). AAP parent page says 'at least 3 to 4' yellow stools/day by 5-7 days. Upper bound 42 days because breastfed stool frequency may fall after ~3-6 weeks (see stool_interval_breastfed_normal). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP KidsDoc: 'Yellow seedy stools are less than 3 per day' -> contact doctor within 24 hours (by day 4-5 expect 3+). KidsDoc exempts low stool frequency after 4 weeks, so this entry ends at day 28 (source). From day 21 it is suppressed when stool_interval_breastfed_normal applies. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt",
+    "suppressed_by": [
+      {
+        "id": "stool_interval_breastfed_normal",
+        "when": "stools are soft and weight gain is adequate"
+      }
+    ]
   },
   {
     "id": "stools_min_nhs_from_dol4",
@@ -351,7 +392,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 3,
-      "to_days": 42
+      "to_days": 42,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -361,7 +403,14 @@
       "url": "https://www.nhs.uk/baby/breastfeeding-and-bottle-feeding/breastfeeding-problems/enough-milk/"
     },
     "confidence": "high",
-    "notes": "NHS: from the fourth day, at least 2 soft, yellow poos (about the size of a GBP 2 coin) every day for the first few weeks. Disputed: lower than AAP/CDC (3+). 42-day upper bound is this file's reading of 'first few weeks'. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "NHS: from the fourth day, at least 2 soft, yellow poos (about the size of a GBP 2 coin) every day for the first few weeks. Disputed: lower than AAP/CDC (3+). 42-day upper bound is this file's reading of 'first few weeks'. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants. From day 21 suppressed when stool_interval_breastfed_normal applies (AAP exception for breastfed babies).",
+    "op": "lt",
+    "suppressed_by": [
+      {
+        "id": "stool_interval_breastfed_normal",
+        "when": "stools are soft and weight gain is adequate"
+      }
+    ]
   },
   {
     "id": "stools_typical_cdc_week1_to_6",
@@ -370,7 +419,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 7,
-      "to_days": 42
+      "to_days": 42,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
@@ -392,7 +442,8 @@
     "unit": "days",
     "age_range": {
       "from_days": 21,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "expected_range",
     "source": {
@@ -411,7 +462,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 7,
-      "to_days": 183
+      "to_days": 183,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -421,7 +473,8 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/Pages/babys-first-days-bowel-movements-and-urination.aspx"
     },
     "confidence": "low",
-    "notes": "AAP: 'If your baby is formula-fed, they should have at least one bowel movement a day.' No age window given (this file applies it from week 2 to 6 months); NHS notes formula-fed babies may poo up to 5 times a day when newborn, down to once a day after a few months. Low confidence: single general statement, no triage threshold. Population: healthy term infants, formula-fed. Excludes preterm and medically complex infants, and specialized formulas."
+    "notes": "AAP: 'If your baby is formula-fed, they should have at least one bowel movement a day.' No age window given (this file applies it from week 2 to 6 months); NHS notes formula-fed babies may poo up to 5 times a day when newborn, down to once a day after a few months. Low confidence: single general statement, no triage threshold. Population: healthy term infants, formula-fed. Excludes preterm and medically complex infants, and specialized formulas.",
+    "op": "lt"
   },
   {
     "id": "first_meconium_hours",
@@ -430,7 +483,8 @@
     "unit": "hours",
     "age_range": {
       "from_days": 0,
-      "to_days": 3
+      "to_days": 3,
+      "basis": "app_choice"
     },
     "direction": "above_max_flag",
     "source": {
@@ -440,7 +494,8 @@
       "url": "https://www.nhs.uk/baby/caring-for-a-newborn/how-to-change-your-babys-nappy/"
     },
     "confidence": "moderate",
-    "notes": "NHS: meconium is passed during or after birth, 'or some time in the first 48 hours'. No first stool by 48 h -> flag. NICE NG194 and StatPearls statements on delayed meconium could not be fetched (403/captcha) so the threshold rests on NHS parent guidance. Usually handled in hospital. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "NHS: meconium is passed during or after birth, 'or some time in the first 48 hours'. No first stool by 48 h -> flag. NICE NG194 and StatPearls statements on delayed meconium could not be fetched (403/captcha) so the threshold rests on NHS parent guidance. Usually handled in hospital. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "gt"
   },
   {
     "id": "meconium_persisting_dol5",
@@ -448,8 +503,9 @@
     "value": 1,
     "unit": "occurrences",
     "age_range": {
-      "from_days": 4,
-      "to_days": 5
+      "from_hours": 120,
+      "to_hours": 168,
+      "basis": "app_choice"
     },
     "direction": "red_flag_any",
     "source": {
@@ -459,7 +515,8 @@
       "url": "https://www.bfmed.org/assets/DOCUMENTS/PROTOCOLS/3-supplementation-protocol-english.pdf"
     },
     "confidence": "high",
-    "notes": "ABM #3: 'continued meconium stools on day 5 (120 hours)' is an indication for evaluation (suggests low intake). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "ABM #3 Table 1: 'continued meconium stools on day 5 (120 hours)' is an indication for evaluation (suggests low intake). Active from 120 h (source). The upper bound of 168 h (end of day 7) is this file's choice; after it, stool_black_after_meconium covers black stools. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "gte"
   },
   {
     "id": "stool_pale_white_any",
@@ -468,7 +525,8 @@
     "unit": "occurrences",
     "age_range": {
       "from_days": 0,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "red_flag_any",
     "source": {
@@ -478,7 +536,8 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/Pages/The-Many-Colors-of-Poop.aspx"
     },
     "confidence": "high",
-    "notes": "AAP: 'White poop is quite rare but needs to be brought to the attention of a doctor as soon as possible.' NIDDK: infants with biliary atresia may have pale yellow, gray, or white stools; AAP biliary atresia page: jaundice and pale stools develop by 4-6 weeks. NHS: pale creamy poo in a baby over 24 h old -> urgent GP/111; keep a sample. Matches stool-card colors 1-3 (acholic). Any single occurrence should prompt contacting the pediatrician promptly. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP: 'White poop is quite rare but needs to be brought to the attention of a doctor as soon as possible.' NIDDK: infants with biliary atresia may have pale yellow, gray, or white stools; AAP biliary atresia page: jaundice and pale stools develop by 4-6 weeks. NHS: pale creamy poo in a baby over 24 h old -> urgent GP/111; keep a sample. Matches stool-card colors 1-3 (acholic). Any single occurrence should prompt contacting the pediatrician promptly. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "gte"
   },
   {
     "id": "stool_pale_white_repeated",
@@ -487,7 +546,8 @@
     "unit": "occurrences",
     "age_range": {
       "from_days": 0,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "red_flag_any",
     "source": {
@@ -497,7 +557,8 @@
       "url": "https://www.healthychildren.org/English/tips-tools/symptom-checker/Pages/symptomviewer.aspx?symptom=Stools+-+Unusual+Color"
     },
     "confidence": "moderate",
-    "notes": "AAP KidsDoc: 'Stool is light gray or white and occurs 2 or more times' -> contact doctor during office hours. Disputed urgency: the AAP article and NHS say act on a single pale stool. Keep both; the engine should use the stricter (single-occurrence) rule. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP KidsDoc: 'Stool is light gray or white and occurs 2 or more times' -> contact doctor during office hours. Triggers at 2 or more occurrences (op gte 2). Kept to record the source accurately; stool_pale_white_any (1 occurrence, more urgent copy) controls product behavior. Disputed urgency: the AAP article and NHS treat a single pale stool as urgent. Population: healthy term infants. Excludes preterm, NICU, and medically complex infants.",
+    "op": "gte"
   },
   {
     "id": "stool_black_after_meconium",
@@ -506,7 +567,8 @@
     "unit": "occurrences",
     "age_range": {
       "from_days": 4,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "red_flag_any",
     "source": {
@@ -516,7 +578,8 @@
       "url": "https://www.healthychildren.org/English/tips-tools/symptom-checker/Pages/symptomviewer.aspx?symptom=Breast-Feeding+Questions"
     },
     "confidence": "high",
-    "notes": "AAP KidsDoc: 'By day 5, passing black or dark green stools is not normal' (Breast-Feeding Questions page). AAP 'Many Colors': black color alert 'does not apply to your baby's first few meconium bowel movements'; blood turns red to black in the gut. Iron supplements can darken stool (benign); app should still flag. Source attribution: KidsDoc Breast-Feeding Questions and Unusual Color pages. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP KidsDoc: 'By day 5, passing black or dark green stools is not normal' (Breast-Feeding Questions page). AAP 'Many Colors': black color alert 'does not apply to your baby's first few meconium bowel movements'; blood turns red to black in the gut. Iron supplements can darken stool (benign); app should still flag. Source attribution: KidsDoc Breast-Feeding Questions and Unusual Color pages. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "gte"
   },
   {
     "id": "stool_red_blood_any",
@@ -525,7 +588,8 @@
     "unit": "occurrences",
     "age_range": {
       "from_days": 0,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "red_flag_any",
     "source": {
@@ -535,7 +599,8 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/Pages/The-Many-Colors-of-Poop.aspx"
     },
     "confidence": "high",
-    "notes": "AAP: blood in stool 'should not signal you to panic immediately, but you should bring it to the attention of your pediatrician.' AAP 'Baby's First Days': large amounts of blood, mucus or water -> call immediately. Swallowed maternal blood (delivery, cracked nipple) is a common benign cause in breastfed newborns; the flag remains a 'talk to your pediatrician' signal. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP: blood in stool 'should not signal you to panic immediately, but you should bring it to the attention of your pediatrician.' AAP 'Baby's First Days': large amounts of blood, mucus or water -> call immediately. Swallowed maternal blood (delivery, cracked nipple) is a common benign cause in breastfed newborns; the flag remains a 'talk to your pediatrician' signal. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "gte"
   },
   {
     "id": "stool_red_persistent_days",
@@ -544,7 +609,8 @@
     "unit": "days",
     "age_range": {
       "from_days": 0,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "above_max_flag",
     "source": {
@@ -554,7 +620,8 @@
       "url": "https://www.healthychildren.org/English/health-issues/conditions/abdominal/Pages/red-stools-in-children-common-causes.aspx"
     },
     "confidence": "moderate",
-    "notes": "AAP 'Red Stools in Children': 'If these red poops continue for more than 2 weeks, then please seek medical attention' (page addresses food/medicine causes of red color). Does not replace stool_red_blood_any. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP 'Red Stools in Children': 'If these red poops continue for more than 2 weeks, then please seek medical attention' (page addresses food/medicine causes of red color). Does not replace stool_red_blood_any. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "gt"
   },
   {
     "id": "stool_color_unusual_persisting_hours",
@@ -563,7 +630,8 @@
     "unit": "hours",
     "age_range": {
       "from_days": 0,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "above_max_flag",
     "source": {
@@ -573,7 +641,8 @@
       "url": "https://www.healthychildren.org/English/tips-tools/symptom-checker/Pages/symptomviewer.aspx?symptom=Stools+-+Unusual+Color"
     },
     "confidence": "moderate",
-    "notes": "AAP KidsDoc: 'Strange color without a cause lasts more than 24 hours. Exception: green stools.' -> contact doctor. Green is normal. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP KidsDoc: 'Strange color without a cause lasts more than 24 hours. Exception: green stools.' -> contact doctor. Green is normal. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "gt"
   },
   {
     "id": "weight_loss_typical_pct",
@@ -585,7 +654,8 @@
     "unit": "percent",
     "age_range": {
       "from_days": 0,
-      "to_days": 14
+      "to_days": 14,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -604,7 +674,8 @@
     "unit": "percent",
     "age_range": {
       "from_days": 0,
-      "to_days": 21
+      "to_days": 21,
+      "basis": "app_choice"
     },
     "direction": "above_max_flag",
     "source": {
@@ -614,7 +685,8 @@
       "url": "https://www.nice.org.uk/guidance/ng75/chapter/Recommendations"
     },
     "confidence": "high",
-    "notes": "NICE NG75 rec 1.1.2: if infants in the early days of life lose more than 10% of birth weight, perform a clinical assessment. AAP First Office Visit: 'Weight loss of >10% of birth weight requires further evaluation.' ABM #3: 10% 'is not an automatic marker for the need for supplementation, but is an indicator for infant evaluation.' NICE page fetched via curl (WebFetch 403). Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "NICE NG75 rec 1.1.2: if infants in the early days of life lose more than 10% of birth weight, perform a clinical assessment. AAP First Office Visit: 'Weight loss of >10% of birth weight requires further evaluation.' ABM #3: 10% 'is not an automatic marker for the need for supplementation, but is an indicator for infant evaluation.' NICE page fetched via curl (WebFetch 403). Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "gt"
   },
   {
     "id": "weight_loss_abm_pct_8_from_dol5",
@@ -622,8 +694,9 @@
     "value": 8,
     "unit": "percent",
     "age_range": {
-      "from_days": 4,
-      "to_days": 21
+      "from_hours": 120,
+      "to_hours": 504,
+      "basis": "app_choice"
     },
     "direction": "above_max_flag",
     "source": {
@@ -633,7 +706,8 @@
       "url": "https://www.bfmed.org/assets/DOCUMENTS/PROTOCOLS/3-supplementation-protocol-english.pdf"
     },
     "confidence": "moderate",
-    "notes": "ABM #3: 'Weight loss of >=8-10% (day 5 [120 hours] or later), or weight loss greater than 75th percentile for age' is an indication for careful assessment; 8-10% may be within normal limits if all else is going well. Disputed: lower than NICE/AAP 10%. Use as a soft flag. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "ABM #3 Table 1: 'Weight loss of >=8-10% (day 5 [120 hours] or later), or weight loss greater than 75th percentile for age' is an indication for careful assessment. Inclusive: flags at 8% or more (op gte). Active from 120 h (source); the upper bound of 504 h (21 days) is this file's choice. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "gte"
   },
   {
     "id": "weight_loss_pct_7_legacy",
@@ -642,9 +716,10 @@
     "unit": "percent",
     "age_range": {
       "from_days": 0,
-      "to_days": 14
+      "to_days": 14,
+      "basis": "app_choice"
     },
-    "direction": "above_max_flag",
+    "direction": "informational",
     "source": {
       "title": "Mazzoni et al., Front Pediatr 2022 (secondary citation of AAP 2005 breastfeeding policy, Pediatrics 115:496)",
       "organization": "Frontiers in Pediatrics (peer-reviewed)",
@@ -652,7 +727,7 @@
       "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9021796/"
     },
     "confidence": "low",
-    "notes": "Older guidance (AAP 2005 breastfeeding policy, as cited by Mazzoni 2022): loss >7% indicates need for careful assessment. Low confidence: could not fetch the AAP policy text (publications.aap.org 403); Noel-Weiss 2008 criticises 7% as based on mean loss ignoring SD; >20% of healthy breastfed infants exceed it (ABM #3). Disputed; prefer 8% (ABM, day 5+) and 10% (NICE/AAP). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "Older guidance (AAP 2005 breastfeeding policy, as cited by Mazzoni 2022): loss >7% indicates need for careful assessment. Low confidence: could not fetch the AAP policy text (publications.aap.org 403); Noel-Weiss 2008 criticises 7% as based on mean loss ignoring SD; >20% of healthy breastfed infants exceed it (ABM #3). Disputed; prefer 8% (ABM, day 5+) and 10% (NICE/AAP). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants. Informational only: the primary statement is unverified, so the stricter-rule policy must not select it over the NICE/AAP and ABM rules."
   },
   {
     "id": "weight_loss_newt_75th_percentile",
@@ -660,10 +735,11 @@
     "value": 75,
     "unit": "percentile",
     "age_range": {
-      "from_days": 0,
-      "to_days": 30
+      "from_hours": 6,
+      "to_hours": 96,
+      "basis": "source"
     },
-    "direction": "above_max_flag",
+    "direction": "informational",
     "source": {
       "title": "ABM Clinical Protocol #3: Supplementary Feedings in the Healthy Term Breastfed Neonate, Revised 2017 (Breastfeed Med 2017;12:188-198, PMID 28294631)",
       "organization": "Academy of Breastfeeding Medicine",
@@ -671,7 +747,8 @@
       "url": "https://www.bfmed.org/assets/DOCUMENTS/PROTOCOLS/3-supplementation-protocol-english.pdf"
     },
     "confidence": "moderate",
-    "notes": "ABM #3 flags weight loss greater than the 75th percentile for age on the NEWT nomograms (newbornweight.org; Flaherman 2015). Nomogram curves are not bundled in this file; the engine needs the NEWT data (by delivery mode, hours of age) to apply this. newbornweight.org itself was not fetched. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants. Exclusively breastfed, >=36 weeks."
+    "notes": "ABM #3 flags weight loss above the 75th percentile for age on the NEWT nomograms (Flaherman 2015). Deferred: the curves cover 6-72 h after vaginal delivery and 6-96 h after cesarean delivery only, need delivery mode and exact hours, and are not in this file. Never extrapolate past the curves. Study population: term singletons born at >=36 weeks, exclusively breastfed, Kaiser Permanente Northern California; the app's own eligibility (healthy term babies) is a product choice, not the study's exclusion.",
+    "status": "deferred"
   },
   {
     "id": "weight_loss_newt_vaginal_10pct_48h",
@@ -680,7 +757,8 @@
     "unit": "percent_of_infants",
     "age_range": {
       "from_days": 2,
-      "to_days": 3
+      "to_days": 3,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
@@ -699,7 +777,8 @@
     "unit": "percent_of_infants",
     "age_range": {
       "from_days": 3,
-      "to_days": 4
+      "to_days": 4,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
@@ -718,7 +797,8 @@
     "unit": "g_per_day",
     "age_range": {
       "from_days": 5,
-      "to_days": 14
+      "to_days": 14,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -728,7 +808,8 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/Pages/First-Month-Physical-Appearance-and-Growth.aspx"
     },
     "confidence": "moderate",
-    "notes": "AAP: 'Beginning once they are about 5 days old, they should start gaining weight steadily.' NICE NG75: early weight loss usually stops after about 3 or 4 days. Continued loss after day 5 is a flag. Home-scale noise (+/- tens of grams) means compare across >=2 days. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP: 'Beginning once they are about 5 days old, they should start gaining weight steadily.' NICE NG75: early weight loss usually stops after about 3 or 4 days. Continued loss after day 5 is a flag. Home-scale noise (+/- tens of grams) means compare across >=2 days. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "regain_birth_weight_mean_days",
@@ -737,7 +818,8 @@
     "unit": "days",
     "age_range": {
       "from_days": 0,
-      "to_days": 21
+      "to_days": 21,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -751,12 +833,13 @@
   },
   {
     "id": "regain_birth_weight_aap_days",
-    "metric": "days_to_regain_birth_weight",
+    "metric": "age_days_without_regaining_birth_weight",
     "value": 14,
     "unit": "days",
     "age_range": {
       "from_days": 14,
-      "to_days": 21
+      "to_days": 21,
+      "basis": "app_choice"
     },
     "direction": "above_max_flag",
     "source": {
@@ -766,16 +849,18 @@
       "url": "https://www.aap.org/en/patient-care/newborn-infant-and-early-childhood-nutrition/newborn-and-infant-health-assessment-and-promotion/first-office-visit-3-5-days/"
     },
     "confidence": "moderate",
-    "notes": "AAP: 'Birth weight will likely not be regained until 7 to 14 days after birth, particularly for breastfed newborns'; HealthyChildren: back at birth weight by about 2 weeks, almost all by 3 weeks. Disputed: Paul 2016 found 14% (vaginal) and 24% (cesarean) still below birth weight at 14 days; NICE uses 21 days. Use as a soft flag at day 14. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP: 'Birth weight will likely not be regained until 7 to 14 days after birth, particularly for breastfed newborns'. Soft flag. Metric: the baby's age in completed days while no weight recorded since birth has reached birth weight. Flags at 14 completed days or more (op gte). Once any weight at or above birth weight is recorded the metric is undefined and the rule does not fire, even if a later weight dips (that is the growth rules' job). If no weight has been recorded since day 7 or earlier, the result is 'not enough data', not a flag and not an all-clear. Start age from source; upper bound is this file's choice. Population: healthy term newborns. Excludes preterm, NICU, and medically complex infants.",
+    "op": "gte"
   },
   {
     "id": "regain_birth_weight_nice_days",
-    "metric": "days_to_regain_birth_weight",
+    "metric": "age_days_without_regaining_birth_weight",
     "value": 21,
     "unit": "days",
     "age_range": {
       "from_days": 21,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "above_max_flag",
     "source": {
@@ -785,7 +870,8 @@
       "url": "https://www.nice.org.uk/guidance/ng75/chapter/Recommendations"
     },
     "confidence": "high",
-    "notes": "NICE NG75 rec 1.1.4: consider referral if not returned to birth weight by 3 weeks of age; most infants have returned to birth weight by 3 weeks. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "NICE NG75 rec 1.1.4: consider referral if not returned to birth weight by 3 weeks of age. Firm flag. Metric: the baby's age in completed days while no weight recorded since birth has reached birth weight. Flags at 21 completed days or more (op gte). Once any weight at or above birth weight is recorded the metric is undefined and the rule does not fire, even if a later weight dips (that is the growth rules' job). If no weight has been recorded since day 14 or earlier, the result is 'not enough data', not a flag and not an all-clear. Start age from source; upper bound is this file's choice. Population: healthy term newborns. Excludes preterm, NICU, and medically complex infants.",
+    "op": "gte"
   },
   {
     "id": "regain_birth_weight_paul_share_14d_vaginal",
@@ -794,7 +880,8 @@
     "unit": "percent_of_infants",
     "age_range": {
       "from_days": 14,
-      "to_days": 15
+      "to_days": 15,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
@@ -804,7 +891,7 @@
       "url": "https://pubmed.ncbi.nlm.nih.gov/27940721/"
     },
     "confidence": "high",
-    "notes": "Paul 2016: among vaginally delivered, 14% and 5% not back to birth weight by 14 and 21 days; cesarean 24% and 8%. 50% at/above birth weight by day 9 (vaginal) / 10 (cesarean). Population: exclusively breastfed newborns, >=36 weeks, Kaiser Permanente Northern California."
+    "notes": "Paul 2016: among vaginally delivered singletons born at >=36 weeks (2000-5000 g at birth), 14% and 5% were not back to birth weight by 14 and 21 days; cesarean 24% and 8%. 50% at or above birth weight by day 9 (vaginal) and 10 (cesarean). The abstract does not restrict the cohort to exclusive breastfeeding. Kaiser Permanente Northern California, 2009-2013."
   },
   {
     "id": "weight_gain_typical_first_month",
@@ -813,7 +900,8 @@
     "unit": "g_per_day",
     "age_range": {
       "from_days": 5,
-      "to_days": 30
+      "to_days": 30,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -831,8 +919,9 @@
     "value": 460,
     "unit": "g",
     "age_range": {
-      "from_days": 0,
-      "to_days": 28
+      "from_days": 28,
+      "to_days": 42,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -842,8 +931,13 @@
       "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-velocity/lms_weight_boys_1mon_p.pdf?sfvrsn=e8ae6f73_7"
     },
     "confidence": "high",
-    "notes": "WHO weight-velocity standard, 1-month increment for interval 0-4w: 5th percentile 460 g, median 1023 g. Applies to the weight change across the whole interval (needs weights at both ends, interpolated to exact ages). By definition 5% of healthy infants fall below; use as 'consider discussing at next visit', not urgent. From ~7 months the 5th percentile approaches or drops below 0 g, so use percentile tracking instead. Population: WHO MGRS, healthy term infants of non-smoking mothers, breastfed predominantly (standard applies to all feeding types per CDC/WHO).",
-    "sex": "male"
+    "notes": "WHO weight-velocity standard, 1-month increment for interval 0-4w: 5th percentile 460 g, median 1023 g. Measurement interval: weights at day 0 and day 28 (months converted at 30.4375 days and rounded). The engine needs a weight within 3 days of each end; it does not interpolate or rescale increments to other intervals, and otherwise reports 'not enough data'. Evaluated once the interval has ended, for 14 days (this file's choice). Using the 5th percentile as a 'mention it at the next visit' flag is an application policy; the WHO tables describe the distribution and do not prescribe that action. Population: WHO Multicentre Growth Reference Study, healthy term breastfed infants.",
+    "sex": "male",
+    "op": "lt",
+    "interval": {
+      "from_days": 0,
+      "to_days": 28
+    }
   },
   {
     "id": "weight_gain_who_p5_0_4w_female",
@@ -851,8 +945,9 @@
     "value": 446,
     "unit": "g",
     "age_range": {
-      "from_days": 0,
-      "to_days": 28
+      "from_days": 28,
+      "to_days": 42,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -862,8 +957,13 @@
       "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-velocity/lms_weight_girls_1mon_p.pdf?sfvrsn=e7614a98_11"
     },
     "confidence": "high",
-    "notes": "WHO weight-velocity standard, 1-month increment for interval 0-4w: 5th percentile 446 g, median 879 g. Applies to the weight change across the whole interval (needs weights at both ends, interpolated to exact ages). By definition 5% of healthy infants fall below; use as 'consider discussing at next visit', not urgent. From ~7 months the 5th percentile approaches or drops below 0 g, so use percentile tracking instead. Population: WHO MGRS, healthy term infants of non-smoking mothers, breastfed predominantly (standard applies to all feeding types per CDC/WHO).",
-    "sex": "female"
+    "notes": "WHO weight-velocity standard, 1-month increment for interval 0-4w: 5th percentile 446 g, median 879 g. Measurement interval: weights at day 0 and day 28 (months converted at 30.4375 days and rounded). The engine needs a weight within 3 days of each end; it does not interpolate or rescale increments to other intervals, and otherwise reports 'not enough data'. Evaluated once the interval has ended, for 14 days (this file's choice). Using the 5th percentile as a 'mention it at the next visit' flag is an application policy; the WHO tables describe the distribution and do not prescribe that action. Population: WHO Multicentre Growth Reference Study, healthy term breastfed infants.",
+    "sex": "female",
+    "op": "lt",
+    "interval": {
+      "from_days": 0,
+      "to_days": 28
+    }
   },
   {
     "id": "weight_gain_who_p5_4w_2m_male",
@@ -871,8 +971,9 @@
     "value": 713,
     "unit": "g",
     "age_range": {
-      "from_days": 28,
-      "to_days": 61
+      "from_days": 61,
+      "to_days": 75,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -882,8 +983,13 @@
       "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-velocity/lms_weight_boys_1mon_p.pdf?sfvrsn=e8ae6f73_7"
     },
     "confidence": "high",
-    "notes": "WHO weight-velocity standard, 1-month increment for interval 4w-2m: 5th percentile 713 g, median 1196 g. Applies to the weight change across the whole interval (needs weights at both ends, interpolated to exact ages). By definition 5% of healthy infants fall below; use as 'consider discussing at next visit', not urgent. From ~7 months the 5th percentile approaches or drops below 0 g, so use percentile tracking instead. Population: WHO MGRS, healthy term infants of non-smoking mothers, breastfed predominantly (standard applies to all feeding types per CDC/WHO).",
-    "sex": "male"
+    "notes": "WHO weight-velocity standard, 1-month increment for interval 4w-2m: 5th percentile 713 g, median 1196 g. Measurement interval: weights at day 28 and day 61 (months converted at 30.4375 days and rounded). The engine needs a weight within 3 days of each end; it does not interpolate or rescale increments to other intervals, and otherwise reports 'not enough data'. Evaluated once the interval has ended, for 14 days (this file's choice). Using the 5th percentile as a 'mention it at the next visit' flag is an application policy; the WHO tables describe the distribution and do not prescribe that action. Population: WHO Multicentre Growth Reference Study, healthy term breastfed infants.",
+    "sex": "male",
+    "op": "lt",
+    "interval": {
+      "from_days": 28,
+      "to_days": 61
+    }
   },
   {
     "id": "weight_gain_who_p5_4w_2m_female",
@@ -891,8 +997,9 @@
     "value": 578,
     "unit": "g",
     "age_range": {
-      "from_days": 28,
-      "to_days": 61
+      "from_days": 61,
+      "to_days": 75,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -902,8 +1009,13 @@
       "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-velocity/lms_weight_girls_1mon_p.pdf?sfvrsn=e7614a98_11"
     },
     "confidence": "high",
-    "notes": "WHO weight-velocity standard, 1-month increment for interval 4w-2m: 5th percentile 578 g, median 1011 g. Applies to the weight change across the whole interval (needs weights at both ends, interpolated to exact ages). By definition 5% of healthy infants fall below; use as 'consider discussing at next visit', not urgent. From ~7 months the 5th percentile approaches or drops below 0 g, so use percentile tracking instead. Population: WHO MGRS, healthy term infants of non-smoking mothers, breastfed predominantly (standard applies to all feeding types per CDC/WHO).",
-    "sex": "female"
+    "notes": "WHO weight-velocity standard, 1-month increment for interval 4w-2m: 5th percentile 578 g, median 1011 g. Measurement interval: weights at day 28 and day 61 (months converted at 30.4375 days and rounded). The engine needs a weight within 3 days of each end; it does not interpolate or rescale increments to other intervals, and otherwise reports 'not enough data'. Evaluated once the interval has ended, for 14 days (this file's choice). Using the 5th percentile as a 'mention it at the next visit' flag is an application policy; the WHO tables describe the distribution and do not prescribe that action. Population: WHO Multicentre Growth Reference Study, healthy term breastfed infants.",
+    "sex": "female",
+    "op": "lt",
+    "interval": {
+      "from_days": 28,
+      "to_days": 61
+    }
   },
   {
     "id": "weight_gain_who_p5_2_3m_male",
@@ -911,8 +1023,9 @@
     "value": 446,
     "unit": "g",
     "age_range": {
-      "from_days": 61,
-      "to_days": 91
+      "from_days": 91,
+      "to_days": 105,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -922,8 +1035,13 @@
       "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-velocity/lms_weight_boys_1mon_p.pdf?sfvrsn=e8ae6f73_7"
     },
     "confidence": "high",
-    "notes": "WHO weight-velocity standard, 1-month increment for interval 2-3m: 5th percentile 446 g, median 815 g. Applies to the weight change across the whole interval (needs weights at both ends, interpolated to exact ages). By definition 5% of healthy infants fall below; use as 'consider discussing at next visit', not urgent. From ~7 months the 5th percentile approaches or drops below 0 g, so use percentile tracking instead. Population: WHO MGRS, healthy term infants of non-smoking mothers, breastfed predominantly (standard applies to all feeding types per CDC/WHO).",
-    "sex": "male"
+    "notes": "WHO weight-velocity standard, 1-month increment for interval 2-3m: 5th percentile 446 g, median 815 g. Measurement interval: weights at day 61 and day 91 (months converted at 30.4375 days and rounded). The engine needs a weight within 3 days of each end; it does not interpolate or rescale increments to other intervals, and otherwise reports 'not enough data'. Evaluated once the interval has ended, for 14 days (this file's choice). Using the 5th percentile as a 'mention it at the next visit' flag is an application policy; the WHO tables describe the distribution and do not prescribe that action. Population: WHO Multicentre Growth Reference Study, healthy term breastfed infants.",
+    "sex": "male",
+    "op": "lt",
+    "interval": {
+      "from_days": 61,
+      "to_days": 91
+    }
   },
   {
     "id": "weight_gain_who_p5_2_3m_female",
@@ -931,8 +1049,9 @@
     "value": 369,
     "unit": "g",
     "age_range": {
-      "from_days": 61,
-      "to_days": 91
+      "from_days": 91,
+      "to_days": 105,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -942,8 +1061,13 @@
       "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-velocity/lms_weight_girls_1mon_p.pdf?sfvrsn=e7614a98_11"
     },
     "confidence": "high",
-    "notes": "WHO weight-velocity standard, 1-month increment for interval 2-3m: 5th percentile 369 g, median 718 g. Applies to the weight change across the whole interval (needs weights at both ends, interpolated to exact ages). By definition 5% of healthy infants fall below; use as 'consider discussing at next visit', not urgent. From ~7 months the 5th percentile approaches or drops below 0 g, so use percentile tracking instead. Population: WHO MGRS, healthy term infants of non-smoking mothers, breastfed predominantly (standard applies to all feeding types per CDC/WHO).",
-    "sex": "female"
+    "notes": "WHO weight-velocity standard, 1-month increment for interval 2-3m: 5th percentile 369 g, median 718 g. Measurement interval: weights at day 61 and day 91 (months converted at 30.4375 days and rounded). The engine needs a weight within 3 days of each end; it does not interpolate or rescale increments to other intervals, and otherwise reports 'not enough data'. Evaluated once the interval has ended, for 14 days (this file's choice). Using the 5th percentile as a 'mention it at the next visit' flag is an application policy; the WHO tables describe the distribution and do not prescribe that action. Population: WHO Multicentre Growth Reference Study, healthy term breastfed infants.",
+    "sex": "female",
+    "op": "lt",
+    "interval": {
+      "from_days": 61,
+      "to_days": 91
+    }
   },
   {
     "id": "weight_gain_who_p5_3_4m_male",
@@ -951,8 +1075,9 @@
     "value": 285,
     "unit": "g",
     "age_range": {
-      "from_days": 91,
-      "to_days": 122
+      "from_days": 122,
+      "to_days": 136,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -962,8 +1087,13 @@
       "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-velocity/lms_weight_boys_1mon_p.pdf?sfvrsn=e8ae6f73_7"
     },
     "confidence": "high",
-    "notes": "WHO weight-velocity standard, 1-month increment for interval 3-4m: 5th percentile 285 g, median 617 g. Applies to the weight change across the whole interval (needs weights at both ends, interpolated to exact ages). By definition 5% of healthy infants fall below; use as 'consider discussing at next visit', not urgent. From ~7 months the 5th percentile approaches or drops below 0 g, so use percentile tracking instead. Population: WHO MGRS, healthy term infants of non-smoking mothers, breastfed predominantly (standard applies to all feeding types per CDC/WHO).",
-    "sex": "male"
+    "notes": "WHO weight-velocity standard, 1-month increment for interval 3-4m: 5th percentile 285 g, median 617 g. Measurement interval: weights at day 91 and day 122 (months converted at 30.4375 days and rounded). The engine needs a weight within 3 days of each end; it does not interpolate or rescale increments to other intervals, and otherwise reports 'not enough data'. Evaluated once the interval has ended, for 14 days (this file's choice). Using the 5th percentile as a 'mention it at the next visit' flag is an application policy; the WHO tables describe the distribution and do not prescribe that action. Population: WHO Multicentre Growth Reference Study, healthy term breastfed infants.",
+    "sex": "male",
+    "op": "lt",
+    "interval": {
+      "from_days": 91,
+      "to_days": 122
+    }
   },
   {
     "id": "weight_gain_who_p5_3_4m_female",
@@ -971,8 +1101,9 @@
     "value": 259,
     "unit": "g",
     "age_range": {
-      "from_days": 91,
-      "to_days": 122
+      "from_days": 122,
+      "to_days": 136,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -982,8 +1113,13 @@
       "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-velocity/lms_weight_girls_1mon_p.pdf?sfvrsn=e7614a98_11"
     },
     "confidence": "high",
-    "notes": "WHO weight-velocity standard, 1-month increment for interval 3-4m: 5th percentile 259 g, median 585 g. Applies to the weight change across the whole interval (needs weights at both ends, interpolated to exact ages). By definition 5% of healthy infants fall below; use as 'consider discussing at next visit', not urgent. From ~7 months the 5th percentile approaches or drops below 0 g, so use percentile tracking instead. Population: WHO MGRS, healthy term infants of non-smoking mothers, breastfed predominantly (standard applies to all feeding types per CDC/WHO).",
-    "sex": "female"
+    "notes": "WHO weight-velocity standard, 1-month increment for interval 3-4m: 5th percentile 259 g, median 585 g. Measurement interval: weights at day 91 and day 122 (months converted at 30.4375 days and rounded). The engine needs a weight within 3 days of each end; it does not interpolate or rescale increments to other intervals, and otherwise reports 'not enough data'. Evaluated once the interval has ended, for 14 days (this file's choice). Using the 5th percentile as a 'mention it at the next visit' flag is an application policy; the WHO tables describe the distribution and do not prescribe that action. Population: WHO Multicentre Growth Reference Study, healthy term breastfed infants.",
+    "sex": "female",
+    "op": "lt",
+    "interval": {
+      "from_days": 91,
+      "to_days": 122
+    }
   },
   {
     "id": "weight_gain_who_p5_4_5m_male",
@@ -991,8 +1127,9 @@
     "value": 194,
     "unit": "g",
     "age_range": {
-      "from_days": 122,
-      "to_days": 152
+      "from_days": 152,
+      "to_days": 166,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -1002,8 +1139,13 @@
       "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-velocity/lms_weight_boys_1mon_p.pdf?sfvrsn=e8ae6f73_7"
     },
     "confidence": "high",
-    "notes": "WHO weight-velocity standard, 1-month increment for interval 4-5m: 5th percentile 194 g, median 522 g. Applies to the weight change across the whole interval (needs weights at both ends, interpolated to exact ages). By definition 5% of healthy infants fall below; use as 'consider discussing at next visit', not urgent. From ~7 months the 5th percentile approaches or drops below 0 g, so use percentile tracking instead. Population: WHO MGRS, healthy term infants of non-smoking mothers, breastfed predominantly (standard applies to all feeding types per CDC/WHO).",
-    "sex": "male"
+    "notes": "WHO weight-velocity standard, 1-month increment for interval 4-5m: 5th percentile 194 g, median 522 g. Measurement interval: weights at day 122 and day 152 (months converted at 30.4375 days and rounded). The engine needs a weight within 3 days of each end; it does not interpolate or rescale increments to other intervals, and otherwise reports 'not enough data'. Evaluated once the interval has ended, for 14 days (this file's choice). Using the 5th percentile as a 'mention it at the next visit' flag is an application policy; the WHO tables describe the distribution and do not prescribe that action. Population: WHO Multicentre Growth Reference Study, healthy term breastfed infants.",
+    "sex": "male",
+    "op": "lt",
+    "interval": {
+      "from_days": 122,
+      "to_days": 152
+    }
   },
   {
     "id": "weight_gain_who_p5_4_5m_female",
@@ -1011,8 +1153,9 @@
     "value": 172,
     "unit": "g",
     "age_range": {
-      "from_days": 122,
-      "to_days": 152
+      "from_days": 152,
+      "to_days": 166,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -1022,8 +1165,13 @@
       "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-velocity/lms_weight_girls_1mon_p.pdf?sfvrsn=e7614a98_11"
     },
     "confidence": "high",
-    "notes": "WHO weight-velocity standard, 1-month increment for interval 4-5m: 5th percentile 172 g, median 489 g. Applies to the weight change across the whole interval (needs weights at both ends, interpolated to exact ages). By definition 5% of healthy infants fall below; use as 'consider discussing at next visit', not urgent. From ~7 months the 5th percentile approaches or drops below 0 g, so use percentile tracking instead. Population: WHO MGRS, healthy term infants of non-smoking mothers, breastfed predominantly (standard applies to all feeding types per CDC/WHO).",
-    "sex": "female"
+    "notes": "WHO weight-velocity standard, 1-month increment for interval 4-5m: 5th percentile 172 g, median 489 g. Measurement interval: weights at day 122 and day 152 (months converted at 30.4375 days and rounded). The engine needs a weight within 3 days of each end; it does not interpolate or rescale increments to other intervals, and otherwise reports 'not enough data'. Evaluated once the interval has ended, for 14 days (this file's choice). Using the 5th percentile as a 'mention it at the next visit' flag is an application policy; the WHO tables describe the distribution and do not prescribe that action. Population: WHO Multicentre Growth Reference Study, healthy term breastfed infants.",
+    "sex": "female",
+    "op": "lt",
+    "interval": {
+      "from_days": 122,
+      "to_days": 152
+    }
   },
   {
     "id": "weight_gain_who_p5_5_6m_male",
@@ -1031,8 +1179,9 @@
     "value": 103,
     "unit": "g",
     "age_range": {
-      "from_days": 152,
-      "to_days": 183
+      "from_days": 183,
+      "to_days": 197,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -1042,8 +1191,13 @@
       "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-velocity/lms_weight_boys_1mon_p.pdf?sfvrsn=e8ae6f73_7"
     },
     "confidence": "high",
-    "notes": "WHO weight-velocity standard, 1-month increment for interval 5-6m: 5th percentile 103 g, median 422 g. Applies to the weight change across the whole interval (needs weights at both ends, interpolated to exact ages). By definition 5% of healthy infants fall below; use as 'consider discussing at next visit', not urgent. From ~7 months the 5th percentile approaches or drops below 0 g, so use percentile tracking instead. Population: WHO MGRS, healthy term infants of non-smoking mothers, breastfed predominantly (standard applies to all feeding types per CDC/WHO).",
-    "sex": "male"
+    "notes": "WHO weight-velocity standard, 1-month increment for interval 5-6m: 5th percentile 103 g, median 422 g. Measurement interval: weights at day 152 and day 183 (months converted at 30.4375 days and rounded). The engine needs a weight within 3 days of each end; it does not interpolate or rescale increments to other intervals, and otherwise reports 'not enough data'. Evaluated once the interval has ended, for 14 days (this file's choice). Using the 5th percentile as a 'mention it at the next visit' flag is an application policy; the WHO tables describe the distribution and do not prescribe that action. Population: WHO Multicentre Growth Reference Study, healthy term breastfed infants.",
+    "sex": "male",
+    "op": "lt",
+    "interval": {
+      "from_days": 152,
+      "to_days": 183
+    }
   },
   {
     "id": "weight_gain_who_p5_5_6m_female",
@@ -1051,8 +1205,9 @@
     "value": 93,
     "unit": "g",
     "age_range": {
-      "from_days": 152,
-      "to_days": 183
+      "from_days": 183,
+      "to_days": 197,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -1062,8 +1217,13 @@
       "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-velocity/lms_weight_girls_1mon_p.pdf?sfvrsn=e7614a98_11"
     },
     "confidence": "high",
-    "notes": "WHO weight-velocity standard, 1-month increment for interval 5-6m: 5th percentile 93 g, median 401 g. Applies to the weight change across the whole interval (needs weights at both ends, interpolated to exact ages). By definition 5% of healthy infants fall below; use as 'consider discussing at next visit', not urgent. From ~7 months the 5th percentile approaches or drops below 0 g, so use percentile tracking instead. Population: WHO MGRS, healthy term infants of non-smoking mothers, breastfed predominantly (standard applies to all feeding types per CDC/WHO).",
-    "sex": "female"
+    "notes": "WHO weight-velocity standard, 1-month increment for interval 5-6m: 5th percentile 93 g, median 401 g. Measurement interval: weights at day 152 and day 183 (months converted at 30.4375 days and rounded). The engine needs a weight within 3 days of each end; it does not interpolate or rescale increments to other intervals, and otherwise reports 'not enough data'. Evaluated once the interval has ended, for 14 days (this file's choice). Using the 5th percentile as a 'mention it at the next visit' flag is an application policy; the WHO tables describe the distribution and do not prescribe that action. Population: WHO Multicentre Growth Reference Study, healthy term breastfed infants.",
+    "sex": "female",
+    "op": "lt",
+    "interval": {
+      "from_days": 152,
+      "to_days": 183
+    }
   },
   {
     "id": "weight_for_age_below_p2_3",
@@ -1072,7 +1232,8 @@
     "unit": "percentile",
     "age_range": {
       "from_days": 0,
-      "to_days": 730
+      "to_days": 730,
+      "basis": "source"
     },
     "direction": "below_min_flag",
     "source": {
@@ -1082,7 +1243,8 @@
       "url": "https://www.cdc.gov/mmwr/preview/mmwrhtml/rr5909a1.htm"
     },
     "confidence": "high",
-    "notes": "CDC recommends WHO standards for children <24 months with cutoffs at 2 SD (2.3rd and 97.7th percentiles, often labeled 2nd/98th). CDC 'Using the WHO Growth Standard Charts' (2024) confirms. Replaces the 5th/95th used on older CDC charts. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "CDC recommends WHO standards for children <24 months with cutoffs at 2 SD (2.3rd and 97.7th percentiles, often labeled 2nd/98th). CDC 'Using the WHO Growth Standard Charts' (2024) confirms. Replaces the 5th/95th used on older CDC charts. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "weight_for_age_above_p97_7",
@@ -1091,9 +1253,10 @@
     "unit": "percentile",
     "age_range": {
       "from_days": 0,
-      "to_days": 730
+      "to_days": 730,
+      "basis": "source"
     },
-    "direction": "above_max_flag",
+    "direction": "informational",
     "source": {
       "title": "Use of World Health Organization and CDC Growth Charts for Children Aged 0-59 Months in the United States (MMWR Recomm Rep 59(RR-9))",
       "organization": "CDC",
@@ -1101,7 +1264,7 @@
       "url": "https://www.cdc.gov/mmwr/preview/mmwrhtml/rr5909a1.htm"
     },
     "confidence": "high",
-    "notes": "CDC: upper cutoff 97.7th percentile (+2 SD) on WHO charts for <24 months. Informational for weight; not a feeding red flag by itself. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "CDC: the +2 SD (97.7th percentile) cutoff on WHO charts for <24 months is used to screen high weight-for-length, not weight-for-age. High weight-for-age alone does not indicate excess weight. Informational only; a weight-for-length rule needs length measurements, which are outside v1. Population: healthy infants <24 months."
   },
   {
     "id": "weight_percentile_drop_major_lines_aap",
@@ -1110,9 +1273,10 @@
     "unit": "count",
     "age_range": {
       "from_days": 14,
-      "to_days": 730
+      "to_days": 730,
+      "basis": "app_choice"
     },
-    "direction": "below_min_flag",
+    "direction": "above_max_flag",
     "source": {
       "title": "Undernutrition",
       "organization": "AAP",
@@ -1120,7 +1284,8 @@
       "url": "https://www.aap.org/en/patient-care/newborn-infant-and-early-childhood-nutrition/undernutrition"
     },
     "confidence": "high",
-    "notes": "AAP 'Undernutrition': assess when rate of weight gain declines across 2 major percentiles (e.g., 90th, 75th, 25th). Major lines on WHO charts as printed by CDC: 2, 5, 10, 25, 50, 75, 90, 95, 98. Start at day 14 (this file's choice) because early physiological loss is covered by other entries. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP 'Undernutrition': assess when rate of weight gain declines across 2 major percentiles (e.g., 90th, 75th, 25th). Major lines on WHO charts as printed by CDC: 2, 5, 10, 25, 50, 75, 90, 95, 98. Start at day 14 (this file's choice) because early physiological loss is covered by other entries. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "gte"
   },
   {
     "id": "weight_centile_drop_nice_bw_lt9",
@@ -1129,9 +1294,10 @@
     "unit": "count",
     "age_range": {
       "from_days": 14,
-      "to_days": 730
+      "to_days": 730,
+      "basis": "app_choice"
     },
-    "direction": "below_min_flag",
+    "direction": "above_max_flag",
     "source": {
       "title": "Faltering growth: recognition and management of faltering growth in children (NG75)",
       "organization": "NICE",
@@ -1140,7 +1306,8 @@
     },
     "confidence": "high",
     "notes": "NICE NG75 rec 1.2.1: concern if weight falls across 1 or more centile spaces when birth weight was below the 9th centile (UK-WHO charts; centile space = gap between adjacent major centile lines). Disputed vs AAP 2-line rule. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
-    "condition": "birth_weight_centile < 9"
+    "condition": "birth_weight_centile < 9",
+    "op": "gte"
   },
   {
     "id": "weight_centile_drop_nice_bw_9_91",
@@ -1149,9 +1316,10 @@
     "unit": "count",
     "age_range": {
       "from_days": 14,
-      "to_days": 730
+      "to_days": 730,
+      "basis": "app_choice"
     },
-    "direction": "below_min_flag",
+    "direction": "above_max_flag",
     "source": {
       "title": "Faltering growth: recognition and management of faltering growth in children (NG75)",
       "organization": "NICE",
@@ -1160,7 +1328,8 @@
     },
     "confidence": "high",
     "notes": "NICE NG75 rec 1.2.1: concern if weight falls across 2 or more centile spaces when birth weight was between the 9th and 91st centiles (UK-WHO charts). Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
-    "condition": "9 <= birth_weight_centile <= 91"
+    "condition": "9 <= birth_weight_centile <= 91",
+    "op": "gte"
   },
   {
     "id": "weight_centile_drop_nice_bw_gt91",
@@ -1169,9 +1338,10 @@
     "unit": "count",
     "age_range": {
       "from_days": 14,
-      "to_days": 730
+      "to_days": 730,
+      "basis": "app_choice"
     },
-    "direction": "below_min_flag",
+    "direction": "above_max_flag",
     "source": {
       "title": "Faltering growth: recognition and management of faltering growth in children (NG75)",
       "organization": "NICE",
@@ -1180,7 +1350,8 @@
     },
     "confidence": "high",
     "notes": "NICE NG75 rec 1.2.1: concern if weight falls across 3 or more centile spaces when birth weight was above the 91st centile (UK-WHO charts). Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
-    "condition": "birth_weight_centile > 91"
+    "condition": "birth_weight_centile > 91",
+    "op": "gte"
   },
   {
     "id": "weight_below_2nd_centile_nice",
@@ -1189,7 +1360,8 @@
     "unit": "percentile",
     "age_range": {
       "from_days": 14,
-      "to_days": 730
+      "to_days": 730,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -1199,7 +1371,8 @@
       "url": "https://www.nice.org.uk/guidance/ng75/chapter/Recommendations"
     },
     "confidence": "high",
-    "notes": "NICE NG75 rec 1.2.1: concern when current weight is below the 2nd centile for age, whatever the birth weight. Close to CDC's 2.3rd percentile cutoff. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants."
+    "notes": "NICE NG75 rec 1.2.1: concern when current weight is below the 2nd centile for age, whatever the birth weight. Close to CDC's 2.3rd percentile cutoff. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "colostrum_intake_per_feed_h0_24",
@@ -1211,7 +1384,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 0,
-      "to_days": 1
+      "to_days": 1,
+      "basis": "source"
     },
     "direction": "expected_range",
     "source": {
@@ -1233,7 +1407,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 1,
-      "to_days": 2
+      "to_days": 2,
+      "basis": "source"
     },
     "direction": "expected_range",
     "source": {
@@ -1255,7 +1430,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 2,
-      "to_days": 3
+      "to_days": 3,
+      "basis": "source"
     },
     "direction": "expected_range",
     "source": {
@@ -1277,7 +1453,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 3,
-      "to_days": 4
+      "to_days": 4,
+      "basis": "source"
     },
     "direction": "expected_range",
     "source": {
@@ -1296,7 +1473,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 0,
-      "to_days": 1
+      "to_days": 1,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
@@ -1306,7 +1484,15 @@
       "url": "https://pubmed.ncbi.nlm.nih.gov/19783000/"
     },
     "confidence": "high",
-    "notes": "Santoro 2010: mean gain per feed 1.5 +/- 1.1 g on day 1; daily intake 15 +/- 11 g (1 g ~ 1 mL). Real day-1 intake is often below ABM's 2-10 mL. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "Santoro 2010: mean gain per feed 1.5 +/- 1.1 g on day 1; daily intake 15 +/- 11 g (1 g ~ 1 mL). Real day-1 intake is often below ABM's 2-10 mL. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "source_value": 1.5,
+    "source_unit": "g",
+    "conversion": {
+      "from": "g",
+      "to": "mL",
+      "divide_by": 1.03,
+      "approximate": true
+    }
   },
   {
     "id": "stomach_capacity_birth",
@@ -1315,7 +1501,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 0,
-      "to_days": 1
+      "to_days": 1,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
@@ -1330,11 +1517,12 @@
   {
     "id": "breast_milk_daily_day5_neville",
     "metric": "breast_milk_intake_per_24h",
-    "value": 498,
+    "value": 483,
     "unit": "mL",
     "age_range": {
       "from_days": 4,
-      "to_days": 5
+      "to_days": 5,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
@@ -1344,16 +1532,25 @@
       "url": "https://pubmed.ncbi.nlm.nih.gov/3202087/"
     },
     "confidence": "moderate",
-    "notes": "Neville 1988: 498 +/- 129 g/day on day 5; 753 +/- 89 g/day at months 3-5 (test weighing, 13 women; g ~ mL). Disputed vs Kent 2016 pooled 415 +/- 123 g on day 5. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "Neville 1988: 498 +/- 129 g/day on day 5; 753 +/- 89 g/day at months 3-5 (test weighing, 13 women; g ~ mL). Disputed vs Kent 2016 pooled 415 +/- 123 g on day 5. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "source_value": 498,
+    "source_unit": "g",
+    "conversion": {
+      "from": "g",
+      "to": "mL",
+      "divide_by": 1.03,
+      "approximate": true
+    }
   },
   {
     "id": "breast_milk_daily_day5_kent",
     "metric": "breast_milk_intake_per_24h",
-    "value": 415,
+    "value": 403,
     "unit": "mL",
     "age_range": {
       "from_days": 4,
-      "to_days": 5
+      "to_days": 5,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
@@ -1363,19 +1560,28 @@
       "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5188411/"
     },
     "confidence": "moderate",
-    "notes": "Kent 2016: pooled daily milk transfer on day 5 = 415 +/- 123 g (305 mothers); week 2 = 653 +/- 154 g. Convenience sample, many with breastfeeding problems. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "Kent 2016 introduction: day-5 milk transfer of 415 +/- 123 g pooled from seven earlier studies (305 mothers in total); a separate cited study of 10 mothers gives 653 +/- 154 g in week 2. These are not Kent 2016's own convenience sample, which recruited mothers with breastfeeding difficulties. Population: breastfeeding mothers of term infants in the cited studies. Disputed vs Neville 1988 (498 g).",
+    "source_value": 415,
+    "source_unit": "g",
+    "conversion": {
+      "from": "g",
+      "to": "mL",
+      "divide_by": 1.03,
+      "approximate": true
+    }
   },
   {
     "id": "breast_milk_daily_1_6mo_range",
     "metric": "breast_milk_intake_per_24h",
     "value": {
-      "min": 478,
-      "max": 1356
+      "min": 464,
+      "max": 1317
     },
     "unit": "mL",
     "age_range": {
       "from_days": 30,
-      "to_days": 183
+      "to_days": 183,
+      "basis": "source"
     },
     "direction": "expected_range",
     "source": {
@@ -1385,7 +1591,18 @@
       "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10223764/"
     },
     "confidence": "moderate",
-    "notes": "Kent 2006 (exclusive breastfeeding, 1-6 months, 71 dyads): mean 788 +/- 169 g/24 h, range 478-1356 g. Verified via a PMC review citing Kent 2006; the Kent abstract does not state the 24-h total and the full text was 403. WHO-commissioned meta-analysis (Rios-Leyvraz 2023): means 624 mL/day at 1 month, 735 at 3 months, 729 at 6 months. Range of normal is wide; do not flag on intake alone. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "Kent 2006 (exclusive breastfeeding, 1-6 months, 71 dyads): mean 788 +/- 169 g/24 h, range 478-1356 g. Verified via a PMC review citing Kent 2006; the Kent abstract does not state the 24-h total and the full text was 403. WHO-commissioned meta-analysis (Rios-Leyvraz 2023): means 624 mL/day at 1 month, 735 at 3 months, 729 at 6 months. Range of normal is wide; do not flag on intake alone. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "source_value": {
+      "min": 478,
+      "max": 1356
+    },
+    "source_unit": "g",
+    "conversion": {
+      "from": "g",
+      "to": "mL",
+      "divide_by": 1.03,
+      "approximate": true
+    }
   },
   {
     "id": "breast_milk_daily_meta_1mo",
@@ -1394,7 +1611,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 30,
-      "to_days": 31
+      "to_days": 31,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
@@ -1404,19 +1622,20 @@
       "url": "https://pubmed.ncbi.nlm.nih.gov/36763610/"
     },
     "confidence": "high",
-    "notes": "Rios-Leyvraz & Yao 2023 meta-analysis: mean breast milk intake 624 mL/day at 1 month, 735 at 3 months, 729 at 6 months; deuterium dilution gave higher estimates than test weighing. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "Rios-Leyvraz & Yao 2023 meta-analysis, subgroup of healthy term infants exclusively breastfed through 6 months: 624 mL/day at 1 month, 735 at 3 months, 729 at 6 months. Deuterium dilution gave higher estimates than test weighing. Population: healthy term, exclusively breastfed."
   },
   {
     "id": "breast_milk_per_feed_1_6mo",
     "metric": "breast_milk_intake_per_feed",
     "value": {
-      "min": 0,
-      "max": 240
+      "min": 0.0,
+      "max": 233
     },
     "unit": "mL",
     "age_range": {
       "from_days": 30,
-      "to_days": 183
+      "to_days": 183,
+      "basis": "source"
     },
     "direction": "expected_range",
     "source": {
@@ -1426,7 +1645,18 @@
       "url": "https://pubmed.ncbi.nlm.nih.gov/16510619/"
     },
     "confidence": "high",
-    "notes": "Kent 2006: a breastfeed averaged 76.0 +/- 12.6 g (range 0-240 g), i.e. 67% of milk available in the breast. Single feeds vary widely; never flag a single feed. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "Kent 2006: a breastfeed averaged 76.0 +/- 12.6 g (range 0-240 g), i.e. 67% of milk available in the breast. Single feeds vary widely; never flag a single feed. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "source_value": {
+      "min": 0,
+      "max": 240
+    },
+    "source_unit": "g",
+    "conversion": {
+      "from": "g",
+      "to": "mL",
+      "divide_by": 1.03,
+      "approximate": true
+    }
   },
   {
     "id": "breast_milk_per_feed_first_weeks",
@@ -1435,7 +1665,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 7,
-      "to_days": 28
+      "to_days": 28,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1454,7 +1685,8 @@
     "unit": "mL_per_kg",
     "age_range": {
       "from_days": 7,
-      "to_days": 90
+      "to_days": 90,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1473,7 +1705,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 0,
-      "to_days": 2
+      "to_days": 2,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
@@ -1492,7 +1725,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 0,
-      "to_days": 7
+      "to_days": 7,
+      "basis": "source"
     },
     "direction": "above_max_flag",
     "source": {
@@ -1502,7 +1736,8 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/formula-feeding/Pages/Amount-and-Schedule-of-Formula-Feedings.aspx"
     },
     "confidence": "moderate",
-    "notes": "AAP 2022: 'In the first week after birth, babies should be eating no more than about 1 to 2 ounces (30 to 60 ml) per feed.' CDC 2026: offer 1-2 oz every 2-3 h in the first days. Disputed: an AAP 2018 Q&A page says 2-3 oz in the first few days. Soft flag (possible overfeeding), not urgent. Population: healthy term infants, formula-fed. Excludes preterm and medically complex infants, and specialized formulas."
+    "notes": "AAP 2022: 'In the first week after birth, babies should be eating no more than about 1 to 2 ounces (30 to 60 ml) per feed.' CDC 2026: offer 1-2 oz every 2-3 h in the first days. Disputed: an AAP 2018 Q&A page says 2-3 oz in the first few days. Soft flag (possible overfeeding), not urgent. Population: healthy term infants, formula-fed. Excludes preterm and medically complex infants, and specialized formulas.",
+    "op": "gt"
   },
   {
     "id": "formula_per_feed_1mo",
@@ -1514,7 +1749,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 21,
-      "to_days": 60
+      "to_days": 60,
+      "basis": "app_choice"
     },
     "direction": "expected_range",
     "source": {
@@ -1524,7 +1760,7 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/formula-feeding/Pages/Amount-and-Schedule-of-Formula-Feedings.aspx"
     },
     "confidence": "high",
-    "notes": "AAP 2022: through the first month babies take 3-4 oz (90-120 mL) per feed, about every 3-4 hours by end of month 1. Population: healthy term infants, formula-fed. Excludes preterm and medically complex infants, and specialized formulas."
+    "notes": "AAP 2022: through the first month babies take 3-4 oz (90-120 mL) per feed, about every 3-4 hours by end of month 1. Population: healthy term infants, formula-fed. Excludes preterm and medically complex infants, and specialized formulas. Age window is this file's choice."
   },
   {
     "id": "formula_per_feed_6mo",
@@ -1536,7 +1772,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 150,
-      "to_days": 210
+      "to_days": 210,
+      "basis": "app_choice"
     },
     "direction": "expected_range",
     "source": {
@@ -1546,7 +1783,7 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/formula-feeding/Pages/Amount-and-Schedule-of-Formula-Feedings.aspx"
     },
     "confidence": "high",
-    "notes": "AAP 2022: at 6 months, 6-8 oz (180-240 mL) at each of 4 or 5 feedings in 24 hours. Population: healthy term infants, formula-fed. Excludes preterm and medically complex infants, and specialized formulas."
+    "notes": "AAP 2022: at 6 months, 6-8 oz (180-240 mL) at each of 4 or 5 feedings in 24 hours. Population: healthy term infants, formula-fed. Excludes preterm and medically complex infants, and specialized formulas. Age window is this file's choice."
   },
   {
     "id": "formula_ml_per_kg_day",
@@ -1555,7 +1792,8 @@
     "unit": "mL_per_kg",
     "age_range": {
       "from_days": 7,
-      "to_days": 183
+      "to_days": 183,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1574,7 +1812,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 0,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "above_max_flag",
     "source": {
@@ -1584,7 +1823,8 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/formula-feeding/Pages/Amount-and-Schedule-of-Formula-Feedings.aspx"
     },
     "confidence": "high",
-    "notes": "AAP 2022: 'no more than an average of about 32 ounces (960 mL) of formula in 24 hours' (exact conversion is 946 mL; page states 960). CDC uses 32 oz only as a vitamin D cutoff, not as a cap. Soft flag; sustained intake above this is worth discussing. Population: healthy term infants, formula-fed. Excludes preterm and medically complex infants, and specialized formulas."
+    "notes": "AAP 2022: 'no more than an average of about 32 ounces (960 mL) of formula in 24 hours' (exact conversion is 946 mL; page states 960). CDC uses 32 oz only as a vitamin D cutoff, not as a cap. Soft flag; sustained intake above this is worth discussing. Population: healthy term infants, formula-fed. Excludes preterm and medically complex infants, and specialized formulas.",
+    "op": "gt"
   },
   {
     "id": "breastfeeds_min_newborn_cdc",
@@ -1593,7 +1833,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 0,
-      "to_days": 28
+      "to_days": 28,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -1603,7 +1844,8 @@
       "url": "https://www.cdc.gov/infant-toddler-nutrition/breastfeeding/how-much-and-how-often.html"
     },
     "confidence": "high",
-    "notes": "CDC 2026: 'Your baby will breastfeed about 8 to 12 times in 24 hours'; newborns may feed every 1-3 hours. Fewer than 8 in the first weeks -> flag. Upper bound 28 days is this file's choice. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "CDC 2026: 'Your baby will breastfeed about 8 to 12 times in 24 hours'; newborns may feed every 1-3 hours. Fewer than 8 in the first weeks -> flag. Upper bound 28 days is this file's choice. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "breastfeeds_min_newborn_aap",
@@ -1612,7 +1854,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 0,
-      "to_days": 28
+      "to_days": 28,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -1622,7 +1865,8 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/breastfeeding/Pages/How-Often-to-Breastfeed.aspx"
     },
     "confidence": "high",
-    "notes": "AAP 2015: 'be sure he receives eight to twelve feedings in every twenty-four-hour period' in the early weeks. Page dated 2015. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP 2015: 'be sure he receives eight to twelve feedings in every twenty-four-hour period' in the early weeks. Page dated 2015. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "lt"
   },
   {
     "id": "breastfeeds_norm_aap2024",
@@ -1634,7 +1878,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 0,
-      "to_days": 28
+      "to_days": 28,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1653,7 +1898,8 @@
     "unit": "hours",
     "age_range": {
       "from_days": 0,
-      "to_days": 28
+      "to_days": 28,
+      "basis": "app_choice"
     },
     "direction": "above_max_flag",
     "source": {
@@ -1663,7 +1909,8 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/breastfeeding/Pages/How-Often-to-Breastfeed.aspx"
     },
     "confidence": "moderate",
-    "notes": "AAP 2015: 'He should not go longer than about two to three hours during the day or four hours at night without a feeding' (early weeks). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP 2015: 'He should not go longer than about two to three hours during the day or four hours at night without a feeding' (early weeks). Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "gt"
   },
   {
     "id": "breastfeed_gap_max_night_hours",
@@ -1672,7 +1919,8 @@
     "unit": "hours",
     "age_range": {
       "from_days": 0,
-      "to_days": 28
+      "to_days": 28,
+      "basis": "app_choice"
     },
     "direction": "above_max_flag",
     "source": {
@@ -1682,7 +1930,8 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/breastfeeding/Pages/How-Often-to-Breastfeed.aspx"
     },
     "confidence": "moderate",
-    "notes": "AAP 2015: no longer than about four hours at night without a feeding in the early weeks. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants."
+    "notes": "AAP 2015: no longer than about four hours at night without a feeding in the early weeks. Population: healthy term newborns, breastfed. Excludes preterm, NICU, and medically complex infants.",
+    "op": "gt"
   },
   {
     "id": "breastfeeds_observed_1_6mo",
@@ -1694,7 +1943,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 30,
-      "to_days": 183
+      "to_days": 183,
+      "basis": "source"
     },
     "direction": "expected_range",
     "source": {
@@ -1713,7 +1963,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 0,
-      "to_days": 28
+      "to_days": 28,
+      "basis": "app_choice"
     },
     "direction": "below_min_flag",
     "source": {
@@ -1723,7 +1974,8 @@
       "url": "https://www.healthychildren.org/English/ages-stages/baby/feeding-nutrition/Pages/How-Often-and-How-Much-Should-Your-Baby-Eat.aspx"
     },
     "confidence": "high",
-    "notes": "AAP 2024: 'If bottle-fed, most newborns eat every 2 to 3 hours; 8 times is generally recommended as the minimum every 24 hours.' CDC: formula-fed newborns feed 8-12 times in 24 h. Population: healthy term infants, formula-fed. Excludes preterm and medically complex infants, and specialized formulas."
+    "notes": "AAP 2024: 'If bottle-fed, most newborns eat every 2 to 3 hours; 8 times is generally recommended as the minimum every 24 hours.' CDC: formula-fed newborns feed 8-12 times in 24 h. Population: healthy term infants, formula-fed. Excludes preterm and medically complex infants, and specialized formulas.",
+    "op": "lt"
   },
   {
     "id": "formula_feeds_6mo",
@@ -1735,7 +1987,8 @@
     "unit": "count",
     "age_range": {
       "from_days": 150,
-      "to_days": 210
+      "to_days": 210,
+      "basis": "app_choice"
     },
     "direction": "expected_range",
     "source": {
@@ -1757,7 +2010,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 0,
-      "to_days": 28
+      "to_days": 28,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1767,7 +2021,7 @@
       "url": "https://pubmed.ncbi.nlm.nih.gov/16717082/"
     },
     "confidence": "moderate",
-    "notes": "Savenije & Brand 2006: routine single test weighing (94 newborns, bottle/cup/tube fed so true intake known) had mean bias 1.3 mL but 95% limits about -12.4 to +15 mL (max 30 mL); authors say not to use it clinically. Disputed: protocol-based studies (Haase 2009, Kinoshita 2025) report errors within +/-5 g. Use these limits as the uncertainty on a single home test weight."
+    "notes": "Savenije & Brand 2006: routine single test weighing in 94 newborns fed by bottle, cup or tube (true intake known) had mean bias 1.3 mL and 95% limits of agreement about -12 to +15 mL; the authors advised against clinical use of single test weights. These are method-agreement limits for that setting, not a validated uncertainty for home scales, other ages, feed sizes or techniques. Do not display them as an error bar; a home uncertainty model is deferred until validated."
   },
   {
     "id": "test_weigh_protocol_error",
@@ -1776,7 +2030,8 @@
     "unit": "g",
     "age_range": {
       "from_days": 0,
-      "to_days": 120
+      "to_days": 120,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1795,7 +2050,8 @@
     "unit": "g",
     "age_range": {
       "from_days": 0,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1805,7 +2061,7 @@
       "url": "https://pubmed.ncbi.nlm.nih.gov/39054548/"
     },
     "confidence": "moderate",
-    "notes": "Validation studies used infant scales reading to 2 g (Tanita BD-815U: 2 g up to 6 kg, 5 g from 6-15 kg); parents' test weights differed from reference by mean 2.18 g (SD 6.63). No allowed source states a minimum resolution; '10 g home scales are inadequate' could not be verified. Engine should widen intake uncertainty for coarser scales."
+    "notes": "Esquerra-Zwiers 2024: parents performed test weights on infants and toddlers under 2 years in a community setting (31 participants, 101 paired measurements, mostly older infants), using a specific scale (Tanita BD-815U: 2 g up to 6 kg, 5 g from 6-15 kg) and protocol with researchers present. The scale's resolution describes that study, not a minimum the app can require. Results do not extend to unsupervised newborn breastfeeds."
   },
   {
     "id": "human_milk_density",
@@ -1814,7 +2070,8 @@
     "unit": "g_per_mL",
     "age_range": {
       "from_days": 0,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1833,7 +2090,8 @@
     "unit": "ratio",
     "age_range": {
       "from_days": 0,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1843,7 +2101,7 @@
       "url": "https://pubmed.ncbi.nlm.nih.gov/41167837/"
     },
     "confidence": "moderate",
-    "notes": "MILQ 2025 corrected test-weighing volumes by a factor of 1.05 for insensible water loss during the feed. Arthur 1987 (PMID 3694369) found evaporative loss varied 3-55% of the infant's weight change in single feeds. Research-grade correction; consumer use uncertain."
+    "notes": "MILQ 2025 corrected test-weighing volumes by a factor of 1.05 for insensible water loss within its research protocol. Arthur 1987 (PMID 3694369) found evaporative loss during feeds. A protocol-specific correction, not a mandatory correction for every home feed. Age window is this file's choice."
   },
   {
     "id": "test_weigh_days_for_24h_production",
@@ -1855,7 +2113,8 @@
     "unit": "days",
     "age_range": {
       "from_days": 0,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1874,7 +2133,8 @@
     "unit": "percent",
     "age_range": {
       "from_days": 30,
-      "to_days": 183
+      "to_days": 183,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
@@ -1893,7 +2153,8 @@
     "unit": "percent",
     "age_range": {
       "from_days": 30,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1903,16 +2164,17 @@
       "url": "https://pubmed.ncbi.nlm.nih.gov/18333764/"
     },
     "confidence": "moderate",
-    "notes": "Kent 2008: pumping at maximum comfortable vacuum removed 65.5 +/- 4.1% of available milk (118.5 mL); lower vacuum removed less. Pump output depends on pump, vacuum and fullness, so it is not a fixed fraction of supply."
+    "notes": "Kent 2008: pumping at maximum comfortable vacuum removed 65.5 +/- 4.1% of available milk (118.5 mL); lower vacuum removed less. Pump output depends on pump, vacuum and fullness, so it is not a fixed fraction of supply. Age window is this file's choice."
   },
   {
     "id": "pump_estimate_overestimates_intake",
     "metric": "pump_estimated_production_per_24h",
-    "value": 1085,
+    "value": 1053,
     "unit": "mL",
     "age_range": {
       "from_days": 30,
-      "to_days": 120
+      "to_days": 120,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1922,16 +2184,25 @@
       "url": "https://pubmed.ncbi.nlm.nih.gov/32700964/"
     },
     "confidence": "high",
-    "notes": "Roznowski 2020: a 3-hour pumping protocol estimated 1,085 +/- 300 g/24 h vs 717 +/- 119 g/24 h measured infant intake by test weighing (n=23, ~day 54); gap grew with output. 'MPR is a valid measure of current maternal milk production capacity, but is not accurate for evaluating infant intake.' Do not convert pumped volume to infant intake."
+    "notes": "Roznowski 2020: in 16 paired measurements (23 enrolled), a 3-hour pumping protocol estimated 1,085 +/- 300 g/24 h vs 717 +/- 119 g/24 h infant intake by test weighing (~day 54). Valid for production capacity but not for infant intake. Exclusively breastfeeding mothers of term singletons, 4-10 weeks postpartum. Window is this file's choice.",
+    "source_value": 1085,
+    "source_unit": "g",
+    "conversion": {
+      "from": "g",
+      "to": "mL",
+      "divide_by": 1.03,
+      "approximate": true
+    }
   },
   {
     "id": "residual_milk_daily",
     "metric": "residual_milk_per_24h",
-    "value": 109,
+    "value": 106,
     "unit": "mL",
     "age_range": {
       "from_days": 90,
-      "to_days": 365
+      "to_days": 365,
+      "basis": "app_choice"
     },
     "direction": "informational",
     "source": {
@@ -1941,7 +2212,15 @@
       "url": "https://pubmed.ncbi.nlm.nih.gov/2034486/"
     },
     "confidence": "moderate",
-    "notes": "Dewey 1991 (DARLING): intake 818, volume extracted 914, residual milk 109 g/day (residual = extracted by expression on a separate day minus test-weighed intake). Term breastfed infants ~3-12 months."
+    "notes": "Dewey 1991 (DARLING), measured at 3 months only: intake 818, volume extracted 914, residual milk 109 g/day (residual = extracted by expression on a separate day minus test-weighed intake); day-to-day CV ~8.9%. 73 exclusively breastfed infants. Applying it beyond 3 months is this file's choice.",
+    "source_value": 109,
+    "source_unit": "g",
+    "conversion": {
+      "from": "g",
+      "to": "mL",
+      "divide_by": 1.03,
+      "approximate": true
+    }
   },
   {
     "id": "preterm_pump_target_day14",
@@ -1950,7 +2229,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 13,
-      "to_days": 15
+      "to_days": 15,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
@@ -1969,7 +2249,8 @@
     "unit": "mL",
     "age_range": {
       "from_days": 28,
-      "to_days": 182
+      "to_days": 182,
+      "basis": "source"
     },
     "direction": "informational",
     "source": {
