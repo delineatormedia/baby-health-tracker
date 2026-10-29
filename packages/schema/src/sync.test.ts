@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import type { BabyEvent } from './events.ts';
 import { newId } from './model.ts';
-import { compareVersions, resolveAll, resolveCurrent, type StoredVersion } from './sync.ts';
+import {
+  canonicalJson,
+  compareVersions,
+  resolveAll,
+  resolveCurrent,
+  type StoredVersion,
+} from './sync.ts';
 
 const id = newId();
 const babyId = newId();
@@ -11,7 +17,13 @@ const dad = newId();
 function version(
   v: number,
   seq: number | null,
-  opts: { author?: string; ml?: number; deleted?: boolean; recordedAt?: string } = {},
+  opts: {
+    author?: string;
+    ml?: number;
+    deleted?: boolean;
+    recordedAt?: string;
+    notes?: string;
+  } = {},
 ): StoredVersion {
   const event: BabyEvent = {
     id,
@@ -21,7 +33,7 @@ function version(
     recordedAt: opts.recordedAt ?? '2026-10-29T03:00:00.000Z',
     version: v,
     deleted: opts.deleted ?? false,
-    notes: null,
+    notes: opts.notes ?? null,
     type: 'bottle',
     data: { contents: 'formula', volumeMl: opts.ml ?? 60 },
   };
@@ -99,9 +111,49 @@ describe('resolveCurrent', () => {
     expect(resolveCurrent(log)?.seq).toBe(7);
   });
 
+  test('tied unsynced versions resolve by content, not clock or property order', () => {
+    const a = version(2, null, { notes: 'A', recordedAt: '2026-10-29T03:00:00.000Z' });
+    const b = version(2, null, { notes: 'B', recordedAt: '2026-10-29T03:00:00.000Z' });
+    const winner = resolveCurrent([a, b]);
+    expect(resolveCurrent([b, a])).toBe(winner);
+
+    // An earlier or later client clock on either side changes nothing.
+    for (const recordedAt of ['2020-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']) {
+      const loserId = winner === a ? b : a;
+      const skewed = { ...loserId, event: { ...loserId.event, recordedAt } };
+      const other = winner === a ? a : b;
+      expect(resolveCurrent([skewed, other])?.event.notes).toBe(other.event.notes);
+    }
+
+    // Rebuilding the winner with its properties in reverse order changes nothing.
+    const w = winner as StoredVersion;
+    const reordered = {
+      seq: null,
+      event: Object.fromEntries(Object.entries(w.event).reverse()) as typeof w.event,
+    };
+    const loser = winner === a ? b : a;
+    expect(resolveCurrent([loser, reordered])?.event.notes).toBe(w.event.notes);
+    expect(resolveCurrent([reordered, loser])?.event.notes).toBe(w.event.notes);
+  });
+
+  test('two bodies under one server seq are an integrity error', () => {
+    const a = version(2, 7, { notes: 'A' });
+    const b = version(2, 7, { notes: 'B' });
+    expect(() => resolveCurrent([a, b])).toThrow(/Integrity error/);
+    expect(resolveCurrent([a, { ...a, event: { ...a.event } }])?.seq).toBe(7);
+  });
+
   test('rejects versions of different events', () => {
     const other = { seq: 2, event: { ...version(1, 2).event, id: newId() } };
     expect(() => resolveCurrent([version(1, 1), other])).toThrow(/versions of/);
+  });
+});
+
+describe('canonicalJson', () => {
+  test('sorts keys at every level and keeps array order', () => {
+    expect(canonicalJson({ b: 1, a: { d: [3, 1], c: null } })).toBe(
+      '{"a":{"c":null,"d":[3,1]},"b":1}',
+    );
   });
 });
 

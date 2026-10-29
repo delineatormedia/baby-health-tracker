@@ -15,8 +15,12 @@ export interface StoredVersion {
  * The highest `version` wins. On a tie the version the server accepted first (lower seq)
  * wins, and an unsynced version loses to any synced one, because the server will rank it
  * last when it arrives. Client clocks never decide the winner, so a device with a skewed
- * clock cannot dominate. The final recordedAt/JSON comparisons only make the order total
- * for impossible inputs (two unsynced versions with the same number).
+ * clock cannot dominate.
+ *
+ * Two unsynced versions with the same number (possible from two offline tabs) are ordered by
+ * their canonical JSON (sorted keys), so the winner depends only on content: never on a clock,
+ * property order or arrival order. Two versions with the same server seq must be the same
+ * version; differing bodies there are an integrity error.
  */
 export function compareVersions(a: StoredVersion, b: StoredVersion): number {
   if (a.event.version !== b.event.version) return a.event.version - b.event.version;
@@ -25,12 +29,22 @@ export function compareVersions(a: StoredVersion, b: StoredVersion): number {
     if (b.seq === null) return 1;
     return b.seq - a.seq;
   }
-  if (a.event.recordedAt !== b.event.recordedAt) {
-    return a.event.recordedAt < b.event.recordedAt ? 1 : -1;
+  const ca = canonicalJson(a.event);
+  const cb = canonicalJson(b.event);
+  if (ca === cb) return 0;
+  if (a.seq !== null) {
+    throw new Error(`Integrity error: seq ${a.seq} holds two bodies for ${a.event.id}`);
   }
-  const ja = JSON.stringify(a.event);
-  const jb = JSON.stringify(b.event);
-  return ja === jb ? 0 : ja < jb ? 1 : -1;
+  return ca < cb ? 1 : -1;
+}
+
+/** JSON with object keys sorted at every level, so equal values serialize identically. */
+export function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)))
+      : v,
+  );
 }
 
 /**
