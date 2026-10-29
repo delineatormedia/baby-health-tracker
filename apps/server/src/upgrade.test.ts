@@ -50,10 +50,13 @@ function mainDatabase(): string {
 const userVersion = (db: DatabaseSync) =>
   (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
 
-/** Every row of every table, in rowid order, blobs as hex. */
+/** Every row of every table, AUTOINCREMENT's sqlite_sequence included, in rowid order, blobs as hex. */
 function rows(db: DatabaseSync): Record<string, Record<string, unknown>[]> {
   const tables = db
-    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
+    .prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'table'
+         AND (name NOT LIKE 'sqlite_%' OR name = 'sqlite_sequence')`,
+    )
     .all() as { name: string }[];
   return Object.fromEntries(
     tables.map(({ name }) => [
@@ -80,6 +83,8 @@ test('the migrations run once on main’s database and keep every row', () => {
   const before = rows(raw);
   raw.close();
   expect(before.event_versions).toHaveLength(6);
+  // As main left it: one sequence row, at the last seq it handed out.
+  expect(before.sqlite_sequence).toEqual([{ name: 'event_versions', seq: 6 }]);
 
   const db = openDatabase(file);
   expect(userVersion(db)).toBe(MIGRATIONS.length);

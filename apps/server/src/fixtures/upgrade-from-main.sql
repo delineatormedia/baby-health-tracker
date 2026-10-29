@@ -4,7 +4,9 @@
 -- Sam, who joins on phone B; A pushes wet, bottle and dirty, then a bottle edit and a wet
 -- delete; B pushes one wet for Bo. upgrade-from-main.json holds the phones' passkeys and
 -- session cookies and main's pull response. Regenerate only from a shipped build; never
--- edit by hand.
+-- edit by hand. One post-processing step: `DELETE FROM sqlite_sequence;` goes before the
+-- dump's sqlite_sequence INSERT, because replaying the event INSERTs already creates that
+-- row, and without the DELETE the restored file would hold it twice.
 PRAGMA foreign_keys=OFF;
 BEGIN TRANSACTION;
 CREATE TABLE households (
@@ -95,6 +97,7 @@ CREATE TABLE auth_flows (
      browser_hash TEXT NOT NULL,
      expires_at TEXT NOT NULL
    ) STRICT;
+DELETE FROM sqlite_sequence;
 INSERT INTO sqlite_sequence VALUES('event_versions',6);
 CREATE INDEX event_versions_by_household ON event_versions (household_id, seq);
 CREATE INDEX babies_by_household ON babies (household_id);
