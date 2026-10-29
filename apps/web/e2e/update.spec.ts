@@ -334,6 +334,41 @@ test('leaving the app while an Undo is queued keeps the page, and the Undo lands
   s.server.close();
 });
 
+test('leaving the app while an Undo of an edit is queued keeps the page, and it lands', async ({
+  browser,
+}) => {
+  const { s, ctx, page, errors } = await armed(browser);
+  // A feed started before the update, stopped on Home after it: stopping is an edit.
+  await page.getByRole('button', { name: /^Feed/ }).tap();
+  await page.getByRole('button', { name: /^Left/ }).tap();
+  await page.getByRole('button', { name: 'Pause', exact: true }).waitFor();
+  await page.goBack();
+  await page.waitForURL((u) => u.pathname === '/');
+  await update(page, s);
+  await page.getByRole('button', { name: /^Stop the breastfeed/ }).tap();
+  await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
+  const [stopped] = await current(page, 'breastfeed');
+  expect(stopped!.data.durationSeconds).not.toBeNull();
+  await countWrites(page);
+  await hold(page);
+  await page.getByRole('button', { name: 'Undo', exact: true }).tap();
+  await queued(page);
+  await screenIdle(page);
+
+  await hide(page);
+  await page.waitForTimeout(500);
+  expect(await samePage(page)).toBe(true);
+  await release(page);
+  await expect(page.getByText('Undone')).toBeVisible();
+  expect(await samePage(page)).toBe(true);
+  // Undoing the stop restores the running feed.
+  const [feed] = await current(page, 'breastfeed');
+  expect(feed!.data.durationSeconds).toBeNull();
+  expect(errors).toEqual([]);
+  await ctx.close();
+  s.server.close();
+});
+
 test('leaving the app while a Retry is queued keeps the page, and the retry lands', async ({
   browser,
 }) => {
