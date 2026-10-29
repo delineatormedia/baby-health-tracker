@@ -110,6 +110,11 @@ class AppState {
   devices = $state.raw<HouseholdDevice[] | null>(null);
   /** That pull's clock sample. In memory only: after a reload, windows wait for a pull. */
   clockSample = $state.raw<ClockSample | null>(null);
+  /**
+   * Whether this session's sync client has adopted a pull that reached through. Until it has,
+   * `devices` is the cached list and signed-in checks are not assessed.
+   */
+  devicesCurrent = $state(false);
 
   #store: EventStore | null = null;
   #kv: Storage | null = null;
@@ -384,6 +389,7 @@ class AppState {
     this.#sync = null;
     this.devices = null;
     this.clockSample = null;
+    this.devicesCurrent = false;
     await stop?.();
   }
 
@@ -396,6 +402,7 @@ class AppState {
     if (!this.account) return null;
     return {
       devices: this.devices,
+      current: this.devicesCurrent,
       self: this.store.authorId,
       sample: this.clockSample,
       wall,
@@ -430,13 +437,23 @@ class AppState {
     }
     const household = this.account?.householdId ?? '';
     let adopted = false;
+    let adoptions = 0;
     const sync = new SyncClient(this.store, httpTransport(), {
       household,
-      onAdopt: (devices, sample) => {
+      // The watermarks cover what the store holds once the pull reached through, not what this
+      // tab last read: another tab may have pulled the rows and moved the shared cursor past
+      // them, leaving this pull empty. So the log is re-read first, and the events and the
+      // watermarks they are assessed against are published together.
+      onAdopt: async (devices, sample) => {
         if (this.#sync !== sync) return;
+        const current = this.#fence();
+        const n = ++adoptions;
         adopted = true;
+        await this.#reload();
+        if (!current() || this.#sync !== sync || n !== adoptions) return;
         this.devices = devices;
         this.clockSample = sample;
+        this.devicesCurrent = true;
       },
       prepare: babyPreparer(
         (b) => this.#api.addBaby(b),

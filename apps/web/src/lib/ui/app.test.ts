@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { openDatabase } from '../data/db.ts';
 import { SEEDED_REFUSAL } from '../data/seeded.ts';
 import { EventStore } from '../data/store.ts';
+import { SyncClient } from '../data/sync.ts';
+import { FakeServer, FakeTransport } from '../data/testing/fake-server.ts';
 
 // App-level account transitions (#55 review): the real AppState over a real EventStore, with
 // fetch answered (or held) by each test.
@@ -583,8 +585,7 @@ describe('a seeded dev browser stays off real servers', () => {
 describe('Readings waits on the other phones (#5 step 3b)', () => {
   const W = Date.parse('2026-10-29T12:00:00.000Z');
   /** The end of the span from the distant past, or null. */
-  const through = (spans: [number, number][]) =>
-    spans[0]?.[0] === -Infinity ? spans[0][1] : null;
+  const through = (spans: [number, number][]) => (spans[0]?.[0] === -Infinity ? spans[0][1] : null);
   const sam = (watermark: number | null) => ({
     deviceId: newId(),
     memberName: 'Sam',
@@ -620,6 +621,128 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     expect(app.waitingOn(-Infinity, line, sample.tSend, sample.pSend)).toEqual([]);
   });
 
+  test('another tab pulled the rows: an empty pull still re-reads the log with the watermarks', async () => {
+    // #64 review: tab B pulls Sam's entry and moves the shared cursor past it, so this tab's
+    // next pull is empty. The adopted watermark covers that entry, so the events this tab
+    // assesses against it must include it without a reload.
+    const now = Date.now();
+    const home = baby();
+    const self = newId();
+    const remote = newId();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.author', self);
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    const online = new EventTarget();
+    vi.stubGlobal('window', online);
+    const server = new FakeServer();
+    server.now = now;
+    server.addDevice(self, 'Maya');
+    server.addDevice(remote, 'Sam');
+    serve(async (url, init) => {
+      const body = () => JSON.parse(init!.body as string);
+      if (url === '/api/sync/barrier') return json(server.barrier(body()));
+      if (url === '/api/sync') return json(server.push(body().events));
+      if (url.startsWith('/api/sync?')) {
+        const q = new URL(url, 'http://localhost').searchParams;
+        const through = q.get('through');
+        return json(
+          server.pull(
+            Number(q.get('after')),
+            Number(q.get('limit')),
+            through === null ? undefined : Number(through),
+          ),
+        );
+      }
+      return json({ ok: true });
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.devicesCurrent).toBe(true));
+    expect(through(app.syncedSpans(Date.now(), performance.now()))).toBeNull();
+    expect(app.events).toEqual([]);
+
+    const sam = new EventStore(await openDatabase(`sam-${newId()}`), remote);
+    const at = new Date(now - 3_600_000).toISOString();
+    const wet = (await sam.log(home.id, 'diaper', { kind: 'wet' }, { occurredAt: at })).event;
+    server.push([wet]);
+    server.barrier({ deviceId: remote, gen: 1, at: now });
+    // Tab B: the same database, its own store and subscribers.
+    const tabB = new EventStore(await openDatabase(), self);
+    const syncB = new SyncClient(tabB, new FakeTransport(server), { household: home.householdId });
+    await syncB.sync();
+    await syncB.stop();
+    // Every version the server has, from the shared cursor's point of view.
+    const cursor = server.log.length;
+    expect(await app.store.cursor(home.householdId)).toBe(cursor);
+    expect(app.events).toEqual([]);
+
+    // Other tests' apps may still be retrying against the stubbed fetch, so look for this
+    // tab's empty pull among the ones sent from here on, rather than at the last one.
+    const pulled = pulls().length;
+    online.dispatchEvent(new Event('online'));
+    await vi.waitFor(() =>
+      expect(app.devices?.find((d) => d.deviceId === remote)?.watermark).toBe(now),
+    );
+    expect(pulls().slice(pulled)).toContain(`GET /api/sync?after=${cursor}&limit=500`);
+    // Published in the same step: the coverage that includes the entry, and the entry.
+    expect(app.events).toEqual([wet]);
+    const sample = app.clockSample!;
+    expect(through(app.syncedSpans(sample.tSend, sample.pSend))).toBeGreaterThan(Date.parse(at));
+    await app.signOut();
+  });
+
+  test('a kept one-phone list assesses nothing until this session’s first pull', async () => {
+    // #64 review: a second phone may have joined since the list was stored.
+    const home = baby();
+    const self = newId();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.author', self);
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    const me = { ...sam(null), deviceId: self, memberName: 'Maya' };
+    await (await openDatabase()).put('meta', [me], `devices:${home.householdId}`);
+    const pull = held();
+    serve(async (url) => (url.startsWith('/api/sync?') ? pull.response : json({})));
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.devices).toEqual([me]));
+    expect(app.clockSample).toBeNull();
+    expect(through(app.syncedSpans(Date.now(), performance.now()))).toBeNull();
+
+    const joined = sam(null);
+    pull.release(json({ ...emptyPull(), serverNow: Date.now(), devices: [me, joined] }));
+    await vi.waitFor(() => expect(app.devicesCurrent).toBe(true));
+    expect(app.devices).toEqual([me, joined]);
+    expect(through(app.syncedSpans(Date.now(), performance.now()))).toBeNull();
+    await app.signOut();
+  });
+
+  test('offline, a kept one-phone list waits; once a pull lands it is synced through now', async () => {
+    const home = baby();
+    const self = newId();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.author', self);
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    const me = { ...sam(null), deviceId: self, memberName: 'Maya' };
+    await (await openDatabase()).put('meta', [me], `devices:${home.householdId}`);
+    const online = new EventTarget();
+    vi.stubGlobal('window', online);
+    let reachable = false;
+    serve(async (url) => {
+      if (!reachable) throw new TypeError('Failed to fetch');
+      return url.startsWith('/api/sync?')
+        ? json({ ...emptyPull(), serverNow: Date.now(), devices: [me] })
+        : json({ ok: true });
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('offline'));
+    expect(app.devices).toEqual([me]);
+    expect(through(app.syncedSpans(Date.now(), performance.now()))).toBeNull();
+
+    reachable = true;
+    online.dispatchEvent(new Event('online'));
+    await vi.waitFor(() => expect(app.devicesCurrent).toBe(true));
+    expect(app.syncedSpans(Date.now(), performance.now())).toEqual([[-Infinity, Infinity]]);
+    await app.signOut();
+  });
+
   test('signed out, the phone’s own log is the whole log', async () => {
     const home = baby();
     kv.set('bht.baby', JSON.stringify(home));
@@ -635,6 +758,7 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     await app.signOut();
     expect(app.devices).toBeNull();
     expect(app.clockSample).toBeNull();
+    expect(app.devicesCurrent).toBe(false);
     expect(app.syncedSpans(W, 0)).toEqual([[-Infinity, Infinity]]);
     expect(app.waitingOn(-Infinity, W, W, 0)).toEqual([]);
   });

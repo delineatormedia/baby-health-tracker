@@ -59,8 +59,14 @@ export interface Vouch {
 
 /** What Readings knows about the other phones of the household. */
 export interface SyncView {
-  /** The adopted device list; null until a pull after sign-in has reached through. */
+  /** The household's phones: adopted from a pull, or kept from an earlier session. */
   devices: readonly HouseholdDevice[] | null;
+  /**
+   * Whether a pull in this session has reached through and supplied `devices`. Until then the
+   * list is the one kept from an earlier session, for labels only: a phone may have joined
+   * since, so nothing is assessed.
+   */
+  current: boolean;
   /** This phone's own device id, left out of the list. */
   self: string;
   /** The last pull's sample, or null after a reload or before the first pull. */
@@ -108,11 +114,12 @@ export function deviceSpans(view: SyncView, d: HouseholdDevice): Spans {
 /**
  * The spans every other phone has uploaded or a parent vouched for, on this phone's clock: the
  * predicate Readings passes to evaluate(). A window is assessed only inside one span. Nothing
- * is synced before the first device list. The only phone of its household holds the whole log
+ * is synced until this session's first pull has reached through: a list kept from an earlier
+ * session is for labels only. The only phone of its household holds the whole log
  * (a phone that is not signed in does not ask).
  */
 export function syncedSpans(view: SyncView): Spans {
-  if (view.devices === null) return [];
+  if (!view.current || view.devices === null) return [];
   return otherDevices(view).reduce((acc, d) => intersect(acc, deviceSpans(view, d)), ALL);
 }
 
