@@ -53,12 +53,20 @@ Every event has a time that defaults to now and can be backdated, plus optional 
 - Bottle intake against expected intake for age and weight
 - Mismatches such as frequent breastfeeds with few wet diapers
 - Stool-color red flags
-- Milk-supply estimate (estimated intake plus post-feed pump residual), shown as
-  a range that narrows as weighted feeds and weigh-ins accumulate
+- Measured intake: weighted breastfeeds shown as approximate, kept separate from
+  bottle and pump volumes. Error bars wait for a measurement contract (scale,
+  technique and a validated uncertainty model).
+- A 24-hour "milk removed" total, shown only for days when every feed and pump
+  was weighed or measured
+- The weight trend, as the main sign that intake is adequate
+
+The milk-supply estimate (intake plus post-feed pump residual) is out of v1 (owner
+decision, 2026-10-29). The evidence is in
+[CLINICAL_REFERENCE.md](CLINICAL_REFERENCE.md#milk-supply-estimate-evidence).
 
 Each insight shows its source when the user asks "why?".
 
-**Later:** sleep, temperature, medications and vitamin D, length and head
+**Later:** a milk-supply estimate, sleep, temperature, medications and vitamin D, length and head
 circumference, photos, the native iOS app (widgets, Live Activity feed timer),
 and end-to-end encryption.
 
