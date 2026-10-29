@@ -117,17 +117,41 @@ export const DiaperData = v.variant('kind', [
   v.strictObject({ kind: v.picklist(['dirty', 'mixed']), stool: v.nullable(Stool) }),
 ]);
 
+function pumpAgrees(d: {
+  leftMl: number | null;
+  rightMl: number | null;
+  afterFeed: boolean;
+  side?: Side | undefined;
+  durationSeconds?: number | null | undefined;
+}): boolean {
+  // Running (#22): occurredAt is the start, and the volumes wait for Stop.
+  if (d.durationSeconds === null)
+    return d.side !== undefined && d.leftMl === null && d.rightMl === null;
+  if (d.leftMl === null && d.rightMl === null) return false;
+  // The sides pumped are the sides with a volume.
+  if (d.side === undefined) return true;
+  return d.side === 'both'
+    ? d.leftMl !== null && d.rightMl !== null
+    : (d.side === 'left') === (d.leftMl !== null) && (d.side === 'right') === (d.rightMl !== null);
+}
+
 export const PumpData = v.pipe(
   v.strictObject({
     /** 0 is meaningful: nothing came out (for example right after a feed). null = side not pumped. */
     leftMl: v.nullable(Ml('nonnegative')),
     rightMl: v.nullable(Ml('nonnegative')),
     afterFeed: v.boolean(),
+    /** Sides on the pump, from the timer. Absent on pumps logged before the timer (#22). */
+    side: v.optional(Side),
+    /**
+     * null while the timer is running, with no volumes yet; occurredAt is the start.
+     * Absent when the pump was logged without a timer.
+     */
+    durationSeconds: v.optional(
+      v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(MAX_FEED_SECONDS))),
+    ),
   }),
-  v.check(
-    (d) => d.leftMl !== null || d.rightMl !== null,
-    'Pump needs a volume for at least one side',
-  ),
+  v.check(pumpAgrees, 'Pump needs a volume for each side pumped, and none while its timer runs'),
 );
 
 export const WeightData = v.strictObject({

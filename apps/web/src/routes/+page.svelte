@@ -16,8 +16,11 @@
     DEFAULT_BOTTLE_ML,
     lastBottle,
     lastDiaperAt,
+    lastPump,
     minutes,
+    pumpSide,
     runningFeed,
+    runningPump,
     suggestSide,
   } from '../lib/ui/logic.ts';
 
@@ -27,6 +30,8 @@
   const running = $derived(runningFeed(app.events));
   const lastFeed = $derived(app.events.find((e) => e.type === 'breastfeed' || e.type === 'bottle'));
   const diaperAt = $derived(lastDiaperAt(app.events));
+  const pumping = $derived(runningPump(app.events));
+  const pumped = $derived(lastPump(app.events));
   const bottleMl = $derived(lastBottle(app.events)?.data.volumeMl ?? DEFAULT_BOTTLE_ML);
 
   let busy = $state(false);
@@ -104,6 +109,18 @@
   <div class="dock">
     <Toast />
     <nav class="chips">
+      <!-- Placement waits on the Home glanceability design (#20). -->
+      <a href={resolve('/pump')} class:run={pumping}>
+        {#if pumping}
+          Pump · <span class="num">{clock(app.now - Date.parse(pumping.occurredAt))}</span>
+        {:else if pumped}
+          Pump · <span class="num">{hm(app.now - Date.parse(pumped.occurredAt))}</span> ago · {pumpSide(
+            pumped,
+          )[0]?.toUpperCase()}
+        {:else}
+          Pump
+        {/if}
+      </a>
       <a href={resolve('/readings')}>Readings</a>
       <a href={resolve('/settings')}>Settings</a>
     </nav>
@@ -214,6 +231,15 @@
     font-size: 14px;
     color: var(--dim);
     text-decoration: none;
+  }
+  .chips a:first-child {
+    flex: 2;
+    color: var(--ink);
+  }
+  .chips a.run {
+    background: var(--acc);
+    color: var(--acc-ink);
+    border-color: var(--acc);
   }
   .rail {
     display: grid;
