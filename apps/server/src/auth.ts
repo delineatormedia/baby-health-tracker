@@ -41,7 +41,17 @@ export interface AuthConfig {
   rpName?: string;
   /** Secure cookie attribute; true unless a test or local HTTP dev turns it off. */
   secureCookie?: boolean;
+  /**
+   * Who may create a household (BHT_REGISTRATION). `open`, the default, lets any phone that
+   * reaches the server register one. `first` allows only the first: after that, a new parent
+   * joins with an invite, so another device on the network cannot start its own household.
+   */
+  registration?: 'open' | 'first';
 }
+
+/** What a second registration gets on a `first` server. */
+export const REGISTRATION_CLOSED =
+  'This server already has a household. Ask a parent in it for an invite.';
 
 export const SESSION_COOKIE = 'bht_session';
 export const SESSION_DAYS = 180;
@@ -93,6 +103,7 @@ export class Accounts {
     const parsed = v.safeParse(RegisterRequest, input);
     if (!parsed.success) return fail(400, 'Expected { householdId, displayName, deviceId, baby }');
     const request = parsed.output;
+    if (this.#registrationClosed()) return fail(403, REGISTRATION_CLOSED);
     if (this.#exists('households', request.householdId)) return fail(409, 'Household exists');
     if (this.#exists('babies', request.baby.id)) return fail(409, 'Baby exists');
     // Refused before the phone makes a passkey this server would never keep.
@@ -180,7 +191,8 @@ export class Accounts {
       let householdId: string;
       if (payload.purpose === 'register') {
         const { request } = payload;
-        // Checked again here: another phone may have registered the same ids since options.
+        // Checked again here: another phone may have registered since options.
+        if (this.#registrationClosed()) return fail(403, REGISTRATION_CLOSED);
         if (this.#exists('households', request.householdId)) return fail(409, 'Household exists');
         if (this.#exists('babies', request.baby.id)) return fail(409, 'Baby exists');
         householdId = request.householdId;
@@ -536,6 +548,11 @@ export class Accounts {
       )
       .get(hashSecret(code), this.now().toISOString()) as { household_id: string } | undefined;
     return row ?? null;
+  }
+
+  #registrationClosed(): boolean {
+    if (this.config.registration !== 'first') return false;
+    return this.db.prepare('SELECT 1 FROM households LIMIT 1').get() !== undefined;
   }
 
   #exists(table: 'households' | 'babies' | 'credentials', id: string): boolean {
