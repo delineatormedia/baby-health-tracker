@@ -1,10 +1,11 @@
+import { loadSeeded } from '../ui/prefs.ts';
+
 /**
- * Test data never leaves for a real server. The dev seed (#58) sets this key, and only
- * clearing local data removes it. While it is set, every request to the server is refused
- * unless the server is on this computer, so a seeded dev browser that signs in to the family
- * server cannot upload a test baby.
+ * Test data never leaves for a real server. The dev seed (#58) sets the `bht.seeded` marker
+ * (prefs.ts), and only clearing local data removes it. While it is set, every request to the
+ * server is refused unless the server is on this computer, so a seeded dev browser that signs
+ * in to the family server cannot upload a test baby.
  */
-export const SEEDED_KEY = 'bht.seeded';
 
 /** Why sync and sign-in stop, as Settings and the sign-in screen show it. */
 export const SEEDED_REFUSAL = 'Test data on this phone only syncs with a localhost server';
@@ -29,7 +30,8 @@ export function isLocalHost(hostname: string): boolean {
 
 function seeded(): boolean {
   try {
-    return globalThis.localStorage?.getItem(SEEDED_KEY) != null;
+    const kv = globalThis.localStorage;
+    return kv != null && loadSeeded(kv);
   } catch {
     // Storage that throws stops the app at init; there is no seeded data to protect.
     return false;

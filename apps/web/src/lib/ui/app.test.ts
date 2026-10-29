@@ -39,7 +39,13 @@ beforeEach(() => {
     getItem: (k: string) => kv.get(k) ?? null,
     setItem: (k: string, v: string) => kv.set(k, v),
     removeItem: (k: string) => kv.delete(k),
+    key: (i: number) => [...kv.keys()][i] ?? null,
+    get length() {
+      return kv.size;
+    },
   });
+  // init() reads ?seed in dev builds (#60); tests that need a real host stub their own.
+  vi.stubGlobal('location', new URL('http://localhost/'));
   vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} });
   vi.stubGlobal('document', {
     addEventListener() {},
@@ -305,6 +311,35 @@ describe('a seeded dev browser stays off real servers', () => {
     await expect(app.signIn((account) => account.login())).rejects.toThrow(SEEDED_REFUSAL);
     expect(requests).toEqual([]);
     expect(app.account).toBeNull();
+  });
+
+  test('seeded by loadScenario, then signed in on a real server: zero requests', async () => {
+    // The two halves meet (#55, #60): the dev seed's own marker, not a hand-set key.
+    vi.stubGlobal('location', new URL('https://bht.example/'));
+    const { loadScenario } = await import('../dev/seed.ts');
+    const db = await openDatabase();
+    await loadScenario(db, localStorage, 'healthy-month', Date.parse('2026-10-29T12:00:00Z'));
+    db.close();
+    const seededBaby = JSON.parse(kv.get('bht.baby')!) as { householdId: string };
+    serve(async () => json(emptyPull()));
+
+    let app = await loadApp();
+    await expect(app.signIn((account) => account.login())).rejects.toThrow(SEEDED_REFUSAL);
+    expect(requests).toEqual([]);
+    const pending = (await app.store.pending(10_000)).length;
+    expect(pending).toBeGreaterThan(0);
+
+    // Even with a session already stored (signed in before the marker), sync sends nothing.
+    kv.set(
+      'bht.account',
+      JSON.stringify({ householdId: seededBaby.householdId, memberId: newId() }),
+    );
+    vi.resetModules();
+    app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('offline'));
+    expect(app.syncError).toBe(SEEDED_REFUSAL);
+    expect(requests).toEqual([]);
+    expect(await app.store.pending(10_000)).toHaveLength(pending);
   });
 
   test('on localhost it syncs as usual', async () => {

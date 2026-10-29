@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { httpAccount, signInFailure } from './account.ts';
 import { httpTransport } from './protocol.ts';
-import { SEEDED_KEY, SEEDED_REFUSAL, SeededRefusal, isLocalHost } from './seeded.ts';
+import { KEYS } from '../ui/prefs.ts';
+import { SEEDED_REFUSAL, SeededRefusal, isLocalHost } from './seeded.ts';
 import { failureReason } from './sync.ts';
 
 // A seeded dev browser (#58) must not reach a real server (#55).
@@ -40,7 +41,7 @@ describe('isLocalHost', () => {
 
 describe('a seeded browser', () => {
   test('sends no sync request to a real server', async () => {
-    kv.set(SEEDED_KEY, '1');
+    kv.set(KEYS.seeded, '1');
     at('https://bht.example/');
     const http = httpTransport();
     await expect(http.push([])).rejects.toBeInstanceOf(SeededRefusal);
@@ -49,7 +50,7 @@ describe('a seeded browser', () => {
   });
 
   test('sends no account request to a real server, the home network included', async () => {
-    kv.set(SEEDED_KEY, '1');
+    kv.set(KEYS.seeded, '1');
     at('http://192.168.1.20:8787/');
     const http = httpAccount();
     await expect(http.get('/api/household')).rejects.toBeInstanceOf(SeededRefusal);
@@ -58,7 +59,7 @@ describe('a seeded browser', () => {
   });
 
   test('judges an absolute base by its own host, not the page', async () => {
-    kv.set(SEEDED_KEY, '1');
+    kv.set(KEYS.seeded, '1');
     at('http://localhost:5173/');
     await expect(httpTransport('https://bht.example').pull(0, 10)).rejects.toBeInstanceOf(
       SeededRefusal,
@@ -67,7 +68,7 @@ describe('a seeded browser', () => {
   });
 
   test('still syncs with a dev server on this computer', async () => {
-    kv.set(SEEDED_KEY, '1');
+    kv.set(KEYS.seeded, '1');
     at('http://localhost:5173/');
     await httpTransport().pull(0, 10);
     at('http://127.0.0.1:8787/');
