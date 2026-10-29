@@ -91,7 +91,12 @@ future encrypted-blob server possible without moving the insights.
   first (lowest sequence) wins, and an unsynced version loses to a synced one.
   Losing versions stay in the log and can be restored. The rule is
   `resolveCurrent` in `packages/schema`, shared by server and client.
-  Client timestamps are for display only.
+- Timestamps never outrank version or sequence. Two unsynced versions with the
+  same number (two offline tabs) are ordered by their canonical JSON, which
+  includes the timestamps; that order is provisional until the server
+  sequences both.
+- A sequence number names one stored version. Two different bodies under one
+  sequence are an integrity error, checked over the whole log.
 
 **Stack:**
 

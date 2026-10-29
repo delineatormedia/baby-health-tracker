@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { BabyEvent } from './events.ts';
 import { newId } from './model.ts';
 import {
+  assertSeqIntegrity,
   canonicalJson,
   compareVersions,
   resolveAll,
@@ -143,6 +144,22 @@ describe('resolveCurrent', () => {
     expect(resolveCurrent([a, { ...a, event: { ...a.event } }])?.seq).toBe(7);
   });
 
+  test('a shared seq is an integrity error even when the versions differ', () => {
+    const v2 = version(2, 7, { notes: 'A' });
+    const v3 = version(3, 7, { notes: 'B' });
+    expect(() => compareVersions(v2, v3)).toThrow(/Integrity error/);
+    expect(() => compareVersions(v3, v2)).toThrow(/Integrity error/);
+    expect(() => resolveCurrent([v2, v3])).toThrow(/Integrity error/);
+  });
+
+  test('integrity is checked whatever the arrival order, even behind a higher winner', () => {
+    const log = [version(2, 7, { notes: 'A' }), version(2, 7, { notes: 'B' }), version(4, 8)];
+    for (const order of permutations(log)) {
+      expect(() => resolveCurrent(order)).toThrow(/Integrity error/);
+      expect(() => resolveAll(order)).toThrow(/Integrity error/);
+    }
+  });
+
   test('rejects versions of different events', () => {
     const other = { seq: 2, event: { ...version(1, 2).event, id: newId() } };
     expect(() => resolveCurrent([version(1, 1), other])).toThrow(/versions of/);
@@ -166,6 +183,17 @@ describe('compareVersions', () => {
         if (a !== b) expect(compareVersions(a, b)).not.toBe(0);
       }
     }
+  });
+});
+
+describe('assertSeqIntegrity', () => {
+  test('a seq is unique across the whole log, not just one event', () => {
+    const other = { seq: 7, event: { ...version(1, 7).event, id: newId() } };
+    expect(() => assertSeqIntegrity([version(1, 7), other])).toThrow(/seq 7/);
+    expect(() => resolveAll([version(1, 7), other])).toThrow(/seq 7/);
+    expect(() =>
+      assertSeqIntegrity([version(1, 7), version(1, 7), version(2, null)]),
+    ).not.toThrow();
   });
 });
 
