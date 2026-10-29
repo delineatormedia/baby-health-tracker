@@ -19,7 +19,7 @@ afterEach(() => {
 function realServer() {
   const db = openServerDb(':memory:');
   const household = newId();
-  ensureHousehold(db, household);
+  ensureHousehold(db, household, [babyId]);
   return createApp(db, { session: () => ({ householdId: household }) });
 }
 

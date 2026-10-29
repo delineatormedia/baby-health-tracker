@@ -1,6 +1,7 @@
 import ts from 'typescript';
 import * as v from 'valibot';
 import { expect, test } from 'vitest';
+import accountSource from './account.ts?raw';
 import eventsSource from './events.ts?raw';
 import { SCHEMA_VERSION, WIRE_SCHEMAS } from './index.ts';
 import modelSource from './model.ts?raw';
@@ -14,6 +15,7 @@ import protocolSource from './protocol.ts?raw';
  */
 const FINGERPRINTS: Record<number, string> = {
   2: 'c3e18a1b2cbd3378',
+  3: 'ff6f2b76b610d3fe',
 };
 
 /**
@@ -21,6 +23,7 @@ const FINGERPRINTS: Record<number, string> = {
  * constants it uses but not their bodies or values, so the modules' code is hashed too.
  */
 const SCHEMA_MODULES: Record<string, string> = {
+  './account.ts': accountSource,
   './events.ts': eventsSource,
   './model.ts': modelSource,
   './protocol.ts': protocolSource,

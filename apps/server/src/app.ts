@@ -7,18 +7,28 @@ import {
 } from '@bht/schema';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { DatabaseSync } from 'node:sqlite';
+import {
+  Accounts,
+  FLOW_COOKIE,
+  FLOW_MINUTES,
+  SESSION_COOKIE,
+  SESSION_DAYS,
+  type AuthConfig,
+  type Result,
+  type Session,
+} from './auth.ts';
 import { pullVersions, pushVersions } from './events.ts';
 
-/** Who is calling: the household every query is scoped to. */
-export interface Session {
-  householdId: string;
-}
+export type { Session } from './auth.ts';
 
 export interface AppOptions {
+  /** Passkey relying party. Without it there is no sign-in, and sync answers 401. */
+  auth?: AuthConfig;
   /**
-   * Resolves the caller's session, or null when signed out. Passkey sessions arrive in #5
-   * step 2; until then nothing resolves in production, so sync answers 401.
+   * Resolves the caller's session, or null when signed out. Defaults to the session cookie
+   * issued by a passkey sign-in; tests may inject one instead.
    */
   session?: (c: Context) => Session | null | Promise<Session | null>;
   now?: () => Date;
@@ -26,9 +36,13 @@ export interface AppOptions {
 
 type Env = { Variables: { session: Session } };
 
+const AUTH_BODY_BYTES = 64 * 1024;
+
 export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
-  const resolveSession = opts.session ?? (() => null);
   const now = opts.now ?? (() => new Date());
+  const accounts = opts.auth ? new Accounts(db, opts.auth, now) : null;
+  const resolveSession =
+    opts.session ?? ((c: Context) => accounts?.session(getCookie(c, SESSION_COOKIE)) ?? null);
   const app = new Hono<Env>();
 
   app.get('/api/health', (c) => {
@@ -36,12 +50,101 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
     return c.json({ ok: true, schemaVersion: SCHEMA_VERSION, sqlite: row.sqlite });
   });
 
-  // Every sync route is scoped to the caller's household; there is no unscoped query.
-  app.use('/api/sync', async (c, next) => {
+  // Every write must come from the app's own page. A JSON body needs a CORS preflight, which
+  // a cross-site form or no-cors fetch cannot pass, and browsers send Origin on every POST.
+  // Without auth there is no origin to check, and no session for a forged request to use.
+  app.use('/api/*', async (c, next) => {
+    if (c.req.method === 'GET' || c.req.method === 'HEAD') return next();
+    if (opts.auth && c.req.header('origin') !== opts.auth.origin) {
+      return c.json({ error: 'Cross-origin request refused' }, 403);
+    }
+    const type = c.req.header('content-type')?.split(';')[0]!.trim().toLowerCase();
+    if (type !== 'application/json') return c.json({ error: 'Expected application/json' }, 415);
+    await next();
+  });
+
+  // Every signed-in route is scoped to the caller's household; there is no unscoped query.
+  const signedIn = async (c: Context<Env>, next: () => Promise<void>) => {
     const session = await resolveSession(c);
     if (!session) return c.json({ error: 'Sign in' }, 401);
     c.set('session', session);
     await next();
+  };
+  app.use('/api/sync', signedIn);
+  app.use('/api/household', signedIn);
+  app.use('/api/invites', signedIn);
+  app.use('/api/babies', signedIn);
+
+  // Passkey ceremonies. Each */options call starts a single-use flow and gives this browser
+  // its flow cookie; */verify finishes it only with that cookie and sets an HttpOnly,
+  // SameSite=Strict session cookie.
+  const authBody = bodyLimit({
+    maxSize: AUTH_BODY_BYTES,
+    onError: (c) => c.json({ error: 'Request too large' }, 413),
+  });
+  const json = (c: Context) => c.req.json().catch(() => null) as Promise<unknown>;
+  const secure = opts.auth?.secureCookie ?? true;
+  const ceremony = (
+    path: string,
+    run: (a: Accounts, body: unknown, browser: string | undefined) => Promise<Result<object>>,
+  ) =>
+    app.post(path, authBody, async (c) => {
+      if (!accounts) return c.json({ error: 'Sign-in is not configured' }, 503);
+      const result = await run(accounts, await json(c), getCookie(c, FLOW_COOKIE));
+      if (!result.ok) return c.json({ error: result.error }, result.status);
+      const { token, browser, ...value } = result.value as { token?: string; browser?: string };
+      if (browser) {
+        setCookie(c, FLOW_COOKIE, browser, {
+          httpOnly: true,
+          secure,
+          sameSite: 'Strict',
+          path: '/api/auth',
+          maxAge: FLOW_MINUTES * 60,
+        });
+      }
+      if (token) {
+        deleteCookie(c, FLOW_COOKIE, { path: '/api/auth', secure });
+        setCookie(c, SESSION_COOKIE, token, {
+          httpOnly: true,
+          secure,
+          sameSite: 'Strict',
+          path: '/',
+          maxAge: SESSION_DAYS * 86_400,
+        });
+      }
+      return c.json(value);
+    });
+  ceremony('/api/auth/register/options', (a, b) => a.registerOptions(b));
+  ceremony('/api/auth/register/verify', (a, b, browser) =>
+    a.registerVerify(b, 'register', browser),
+  );
+  ceremony('/api/auth/join/options', (a, b) => a.joinOptions(b));
+  ceremony('/api/auth/join/verify', (a, b, browser) => a.registerVerify(b, 'join', browser));
+  ceremony('/api/auth/login/options', (a, b) => a.loginOptions(b));
+  ceremony('/api/auth/login/verify', (a, b, browser) => a.loginVerify(b, browser));
+
+  app.post('/api/auth/logout', (c) => {
+    accounts?.signOut(getCookie(c, SESSION_COOKIE));
+    deleteCookie(c, SESSION_COOKIE, { path: '/', secure });
+    return c.json({ ok: true });
+  });
+
+  app.get('/api/household', (c) => {
+    if (!accounts) return c.json({ error: 'Sign-in is not configured' }, 503);
+    return c.json(accounts.household(c.var.session.householdId));
+  });
+
+  app.post('/api/babies', authBody, async (c) => {
+    if (!accounts) return c.json({ error: 'Sign-in is not configured' }, 503);
+    const result = accounts.addBaby(c.var.session.householdId, await json(c));
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(result.value);
+  });
+
+  app.post('/api/invites', (c) => {
+    const { householdId, memberId, deviceId } = c.var.session;
+    if (!accounts || !memberId || !deviceId) return c.json({ error: 'Sign in' }, 401);
+    return c.json(accounts.createInvite({ householdId, memberId, deviceId }));
   });
 
   app.post(
@@ -67,7 +170,7 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
       if (!isPushRequestBody(body)) {
         return c.json({ error: 'Expected { schemaVersion, events }' }, 400);
       }
-      const results = pushVersions(db, c.var.session.householdId, body.events, now());
+      const results = pushVersions(db, c.var.session, body.events, now());
       return c.json({ results });
     },
   );
