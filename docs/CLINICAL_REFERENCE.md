@@ -284,8 +284,11 @@ How to use these values:
   distribution and do not prescribe an action.
 - Each increment is evaluated once its whole interval has been observed (the
   0–4 week gain from day 28), using the weights nearest each end of the
-  interval. Calendar months are treated as WHO's 1-month intervals; there is
-  no interpolation, and too few weights means "not enough data".
+  interval. Interval ends follow WHO's measurement schedule, not calendar
+  months: days 0, 28, 61, 91, 122, 152 and 183, each with a ±3-day tolerance
+  ([WHO Child Growth Standards: growth velocity, 2009, §2.4.2, Table 2](https://library.health.go.ug/sites/default/files/resources/WHO%20Child%20growth%20Standards%202009.pdf)).
+  Returning "not enough data" when no weight falls inside the tolerance,
+  instead of interpolating, is this app's policy.
 - From about 7 months the 5th percentile is near or below zero. Percentile
   tracking replaces velocity flags from that age.
 
@@ -325,26 +328,27 @@ flags.
 | 48–72 h | 15–30 mL |
 | 72–96 h | 30–60 mL |
 
-On day 1, measured intake averaged only about 1.5 mL per feed, or about 15 mL
+On day 1, measured intake averaged only about 1.5 g (about 1.5 mL) per feed, or about 15 g
 for the whole day
 ([Santoro 2010](https://pubmed.ncbi.nlm.nih.gov/19783000/)).
 
 **Breast milk per day.** Typical totals by age:
 
-- **Day 5:** about 415–500 mL
-  ([Neville 1988](https://pubmed.ncbi.nlm.nih.gov/3202087/): 498 ± 129;
+- **Day 5:** about 415–500 g, or about 400–485 mL
+  ([Neville 1988](https://pubmed.ncbi.nlm.nih.gov/3202087/): 498 ± 129 g;
   [Kent 2016](https://pmc.ncbi.nlm.nih.gov/articles/PMC5188411/): 415 ± 123 g,
   pooled from seven earlier studies cited in Kent's introduction, not Kent's
   own sample).
 - **Week 2:** about 650 mL (one small cited study of 10 mothers).
-- **1–6 months:** a mean of 788 mL, with a normal range of 478–1356 mL
+- **1–6 months:** a mean of 788 g, with a normal range of 478–1356 g (about
+  464–1317 mL)
   (Kent 2006).
 - **WHO-commissioned meta-analysis:** 624 mL at 1 month, 735 mL at 3 months and
   729 mL at 6 months, in infants exclusively breastfed through 6 months
   ([Rios-Leyvraz 2023](https://pubmed.ncbi.nlm.nih.gov/36763610/)).
 
-**Breast milk per feed.** At 1–6 months a feed averages 76 mL but ranges from 0
-to 240 mL ([Kent 2006](https://pubmed.ncbi.nlm.nih.gov/16510619/)).
+**Breast milk per feed.** At 1–6 months a feed averages 76 g but ranges from 0
+to 240 g, about 0–233 mL ([Kent 2006](https://pubmed.ncbi.nlm.nih.gov/16510619/)).
 
 **Breast milk by body weight.** About 150 mL/kg a day is the conventional
 figure. Intake peaks near day 20 and falls over the following months
@@ -411,7 +415,8 @@ in mL.
   the scale it used, not a stated minimum.
 - No allowed source states a minimum resolution. The common claim that
   "10 g kitchen or baby scales are inadequate" could not be verified.
-- The engine should widen uncertainty in proportion to the scale's resolution.
+- How scale resolution should affect a displayed uncertainty is deferred
+  research. v1 has no validated uncertainty model and shows none.
 
 **Insensible water loss.** Babies lose some water to evaporation during a feed.
 The MILQ research protocol multiplies test weights by 1.05 to correct for this
@@ -425,7 +430,7 @@ that protocol; it is not an established correction for every home feed.
 - Estimating 24-hour production takes 2–4 full days of weighing every feed
   ([Roznowski 2020](https://pubmed.ncbi.nlm.nih.gov/32700964/)).
 - One test-weighed feed says little about the day, because single feeds range
-  from 0 to 240 mL (Kent 2006).
+  from 0 to 240 g, about 0–233 mL (Kent 2006).
 
 ## 8. Pumping as an estimate of supply
 
@@ -578,7 +583,7 @@ as weighted feeds and weigh-ins accumulate.
 | Formula per feed, first days | AAP 2024: about 15 mL on days 1–2 | AAP 2022 and CDC: 30–60 mL; an AAP 2018 Q&A says 60–90 mL |
 | 32 oz formula cap | AAP: a ceiling (960 mL as stated) | CDC: uses 32 oz only as a vitamin D cut-off |
 | Breastfeeds per day | CDC and AAP 2015: 8–12 | AAP 2024: 10–12 is the norm |
-| Breast milk on day 5 | Neville 1988: 498 mL | Kent 2016: 415 mL |
+| Breast milk on day 5 | Neville 1988: 498 g (about 483 mL) | Kent 2016: 415 g (about 403 mL), pooled from earlier studies |
 | Test-weighing reliability | Savenije 2006: single test weights unreliable in that newborn setting (−12 to +15 mL), do not use clinically | Meier 1990, Haase 2009, Kinoshita 2025: accurate with protocol and scale (±2–5 g) in preterm infants; Esquerra-Zwiers 2024: parent-performed with a set scale and protocol, mostly older infants |
 | Low supply | Hoban 2018: 500 mL a day by day 14 (preterm, pump-dependent) | Jin 2025: 708 mL a day (term, 4–26 weeks); not interchangeable |
 
@@ -601,6 +606,6 @@ as weighted feeds and weigh-ins accumulate.
   - The "10 g scales are inadequate" claim.
   - Any official source for a day-by-day "1, 2, 3, 4, 5, 6+" wet-diaper
     series. Only commercial sites give one; CDC's table is used instead.
-  - Kent 2006's 478–1356 mL range is verified only through a citing review
+  - Kent 2006's 478–1356 g range is verified only through a citing review
     ([PMC10223764](https://pmc.ncbi.nlm.nih.gov/articles/PMC10223764/)); the
     abstract does not state it.
