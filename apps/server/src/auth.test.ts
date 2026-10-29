@@ -385,6 +385,40 @@ describe('sessions', () => {
   });
 });
 
+describe('babies', () => {
+  test('a baby added after sign-up takes pushes; a retry is safe; another household is refused', async () => {
+    const { app } = server();
+    const a = await register(app);
+    const b = await register(app);
+    const second = {
+      id: newId(),
+      name: 'Wren',
+      birthAt: '2027-12-01T10:00:00.000Z',
+      sex: 'unspecified',
+    };
+    const entry = wet(second.id, a.phone.deviceId);
+    // Before it is added, its entries are refused.
+    expect((await a.phone.push([entry])).results[0]).toMatchObject({ error: 'Unknown baby' });
+    const added = await a.phone.json('/api/babies', second);
+    expect(added).toEqual({ ...second, householdId: a.home.householdId });
+    expect(await a.phone.json('/api/babies', second)).toEqual(added);
+    expect((await a.phone.push([entry])).results[0]).toMatchObject({ status: 'accepted' });
+    const view = await a.phone.json<HouseholdView>('/api/household');
+    expect(view.babies.map((x) => x.id)).toEqual([a.home.baby.id, second.id]);
+    // B cannot claim it, add a baby to A, or push for it.
+    expect((await b.phone.request('/api/babies', second)).status).toBe(409);
+    expect(
+      (await b.phone.request('/api/babies', { ...b.home.baby, id: a.home.baby.id })).status,
+    ).toBe(409);
+    expect((await b.phone.push([wet(second.id)])).results[0]).toMatchObject({
+      error: 'Unknown baby',
+    });
+    // Signed out, and malformed.
+    expect((await new Phone(app).request('/api/babies', second)).status).toBe(401);
+    expect((await a.phone.request('/api/babies', { id: 'x' })).status).toBe(400);
+  });
+});
+
 describe('household isolation through real sessions', () => {
   test('A cannot read B, write into B’s events, or log for B’s baby', async () => {
     const { app } = server();

@@ -55,6 +55,12 @@ export const CeremonyResponse = v.strictObject({
 /** A successful …/verify. The session itself is an HttpOnly cookie. */
 export const SignedIn = v.strictObject({ householdId: Id, memberId: Id });
 
+/**
+ * POST /api/babies: a baby this phone created after sign-up (a second child, say), so its
+ * entries are not refused as Unknown baby. Retrying with the same id is safe.
+ */
+export const AddBaby = NewBaby;
+
 /** POST /api/invites. */
 export const Invite = v.strictObject({ code: InviteCode, expiresAt: Timestamp });
 
@@ -71,10 +77,12 @@ export type LoginRequest = v.InferOutput<typeof LoginRequest>;
 export type CeremonyOptions = v.InferOutput<typeof CeremonyOptions>;
 export type CeremonyResponse = v.InferOutput<typeof CeremonyResponse>;
 export type SignedIn = v.InferOutput<typeof SignedIn>;
+export type AddBaby = v.InferOutput<typeof AddBaby>;
 export type Invite = v.InferOutput<typeof Invite>;
 export type HouseholdView = v.InferOutput<typeof HouseholdView>;
 
 export const ACCOUNT_SCHEMAS = {
+  AddBaby,
   RegisterRequest,
   JoinRequest,
   LoginRequest,

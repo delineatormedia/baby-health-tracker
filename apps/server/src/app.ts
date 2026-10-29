@@ -58,6 +58,7 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   app.use('/api/sync', signedIn);
   app.use('/api/household', signedIn);
   app.use('/api/invites', signedIn);
+  app.use('/api/babies', signedIn);
 
   // Passkey ceremonies. Each */options call starts a single-use flow; */verify finishes it
   // and sets an HttpOnly, SameSite=Strict session cookie.
@@ -99,6 +100,13 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   app.get('/api/household', (c) => {
     if (!accounts) return c.json({ error: 'Sign-in is not configured' }, 503);
     return c.json(accounts.household(c.var.session.householdId));
+  });
+
+  app.post('/api/babies', authBody, async (c) => {
+    if (!accounts) return c.json({ error: 'Sign-in is not configured' }, 503);
+    const result = accounts.addBaby(c.var.session.householdId, await json(c));
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(result.value);
   });
 
   app.post('/api/invites', (c) => {

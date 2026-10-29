@@ -275,6 +275,7 @@ covered by `SCHEMA_VERSION` 3.
 | `POST /api/auth/logout` | none | revokes the session, clears the cookie |
 | `GET /api/household` | signed in | `{id, members, babies}` |
 | `POST /api/invites` | signed in | `{code, expiresAt}` |
+| `POST /api/babies` | signed in, `{id, name, birthAt, sex}` | the baby; same id again is a safe retry, another household's id is 409 |
 
 - A flow (challenge) is single-use and lives 5 minutes. An invite is single-use
   and lives 24 hours; it is consumed in the same transaction that creates the
@@ -294,6 +295,11 @@ covered by `SCHEMA_VERSION` 3.
 
 - Sign-in, create-household and join-with-code screens.
 - Start `SyncClient` in `app.svelte.ts` and call `resume()` after sign-in.
+- A baby created on the phone after sign-in (a second child) is sent to
+  `POST /api/babies` before any of its entries are pushed, or they come back
+  `Unknown baby`.
+- A login refused with "This phone was removed from the household" mints a new
+  device id (`authorId`) and signs in again, so the user never hits a dead end.
 - Replace "Saved on this phone · not synced" with the real status.
 - While `status` is `offline`, Settings shows `SyncClient.error` (for example
   "Server rejected upload size" when a proxy caps uploads below ours), with a

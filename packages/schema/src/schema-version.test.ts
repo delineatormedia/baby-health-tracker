@@ -15,7 +15,7 @@ import protocolSource from './protocol.ts?raw';
  */
 const FINGERPRINTS: Record<number, string> = {
   2: 'c3e18a1b2cbd3378',
-  3: '60b2c7e386696b9f',
+  3: 'ff6f2b76b610d3fe',
 };
 
 /**

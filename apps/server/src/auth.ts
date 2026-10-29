@@ -1,9 +1,11 @@
 import {
+  AddBaby,
   CeremonyResponse,
   JoinRequest,
   LoginRequest,
   newId,
   RegisterRequest,
+  type Baby,
   type CeremonyOptions,
   type HouseholdView,
   type Invite,
@@ -296,6 +298,31 @@ export class Accounts {
       )
       .run(hashSecret(code), session.householdId, session.memberId, now.toISOString(), expiresAt);
     return { code, expiresAt };
+  }
+
+  /**
+   * Adds a baby to the caller's household. The same id again in this household answers the
+   * stored baby (a retry after a lost response); an id held by another household is 409.
+   */
+  addBaby(householdId: string, input: unknown): Result<Baby> {
+    const parsed = v.safeParse(AddBaby, input);
+    if (!parsed.success) return fail(400, 'Expected { id, name, birthAt, sex }');
+    const { id, name, birthAt, sex } = parsed.output;
+    return this.#transaction(() => {
+      const held = this.db.prepare('SELECT household_id FROM babies WHERE id = ?').get(id) as
+        { household_id: string } | undefined;
+      if (held && held.household_id !== householdId) return fail(409, 'Baby exists');
+      if (!held) {
+        this.db
+          .prepare(
+            `INSERT INTO babies (id, household_id, name, birth_at, sex, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+          )
+          .run(id, householdId, name, birthAt, sex, this.now().toISOString());
+      }
+      const baby = this.household(householdId).babies.find((b) => b.id === id)!;
+      return { ok: true, value: baby };
+    });
   }
 
   household(householdId: string): HouseholdView {
