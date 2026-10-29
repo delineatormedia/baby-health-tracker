@@ -59,8 +59,15 @@
     padding: 12px 0;
     font: 500 17px/1.3 var(--sans);
   }
+  /* A part never wraps inside (#49). One wider than the toast, which no real message is at
+     320 px, is cut with an ellipsis rather than broken. */
   .part {
     display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
   }
   .acts {
     display: flex;

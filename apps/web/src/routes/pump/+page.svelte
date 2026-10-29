@@ -162,7 +162,7 @@
         const change = await app.store.edit(timer.id, {
           data: pumpData(side, { left, right }, afterFeed, s),
         });
-        app.showUndo(`Pump · ${mins(s)} · ${volumes} logged`, change);
+        app.showUndo(`Pump · ${volumes} logged`, change);
       } else {
         await app.log(
           'pump',

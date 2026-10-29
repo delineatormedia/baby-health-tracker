@@ -6,7 +6,7 @@
   import type { Stool } from '@bht/schema';
   import { app } from '../../../lib/ui/app.svelte.ts';
   import { leaveDetails, saveDetails } from '../../../lib/ui/details.ts';
-  import { describe, swatch, type Diaper } from '../../../lib/ui/logic.ts';
+  import { describe, kindName, swatch, type Diaper } from '../../../lib/ui/logic.ts';
   import TimeRow from '../../../lib/ui/TimeRow.svelte';
   import { when } from '../../../lib/ui/time.ts';
 
@@ -70,7 +70,7 @@
       if (change) {
         const verb = fresh ? 'logged' : 'updated';
         app.showUndo(
-          `${describe(change.event, app.volume)} ${verb} · ${when(change.event.occurredAt, Date.now())}`,
+          `${kindName(change.event)} ${verb} · ${when(change.event.occurredAt, Date.now())}`,
           change,
         );
       }

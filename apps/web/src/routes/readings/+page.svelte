@@ -52,14 +52,10 @@
   /** "We missed some": the day this check looked at leaves the count checks. */
   const markMissed = (r: CheckResult) =>
     once(() =>
-      app.log(
-        'missed_logs',
-        { start: r.window.start, end: r.window.end },
-        'Marked: we missed some',
-        {
-          occurredAt: r.window.start,
-        },
-      ),
+      app.log('missed_logs', { start: r.window.start, end: r.window.end }, 'Missed some', {
+        occurredAt: r.window.start,
+        day: `Day ${ageDays(app.baby!.birthAt, Date.parse(r.window.start))}`,
+      }),
     );
 
   /** "We logged everything": takes back every mark on this check's day. */
