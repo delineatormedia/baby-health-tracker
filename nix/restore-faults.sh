@@ -53,7 +53,7 @@ for unit in "$@"; do
     if [ "$verb" = start ]; then
       sqlite3 "$BHT_DB" 'PRAGMA journal_mode=WAL' >/dev/null
       touch "$CASE/active"
-    else
+    elif [ "$verb" = stop ]; then
       rm -f "$CASE/active"
     fi
   fi
@@ -150,7 +150,7 @@ grep -q "^mv .*/previous/" "$CASE/calls" && fail "moved previous files back over
 run_case move-back-fails start1 mv-previous-db
 [ "$status" -ne 0 ] || fail "exit 0"
 says "ROLLBACK INCOMPLETE: could not move $(prev)/bht.db back"
-says "systemctl start bht.service bht-backup.timer"
+says "systemctl reset-failed bht.service, then systemctl start bht.service bht-backup.timer"
 no_start_after "systemctl stop bht.service"
 [ -e "$BHT_DB" ] && fail "a database exists at the live path: $(rows "$BHT_DB")"
 [ -e "$CASE/active" ] && fail "the server is running"

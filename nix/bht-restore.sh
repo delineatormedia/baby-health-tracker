@@ -107,7 +107,7 @@ stranded() {
     echo "  1. systemctl stop bht.service, and check systemctl is-active bht.service says inactive or failed"
     echo "  2. move anything left at $BHT_DB, $BHT_DB-wal and $BHT_DB-shm into $work/failed/"
     echo "  3. move bht.db, bht.db-wal and bht.db-shm from $work/previous/ into $BHT_STATE_DIR/, all together"
-    echo "  4. systemctl start $BHT_START_UNITS"
+    echo "  4. systemctl reset-failed bht.service, then systemctl start $BHT_START_UNITS"
   } >&2
   exit 1
 }
@@ -131,6 +131,8 @@ rollback() {
     [ ! -e "$BHT_STATE_DIR/$name" ] || stranded "$BHT_STATE_DIR/$name is in the way"
     mv -- "$f" "$BHT_STATE_DIR/" || stranded "could not move $f back"
   done
+  # The failed start may have used up the unit's start limit.
+  systemctl reset-failed bht.service || true
   # shellcheck disable=SC2086
   systemctl start $BHT_START_UNITS || die "the previous database is back, but $BHT_START_UNITS did not start. See journalctl -u bht.service. Leftovers are in $work"
   wait_healthy || die "the previous database is back, but the server did not answer $BHT_HEALTH_URL within 30 s. See journalctl -u bht.service. Leftovers are in $work"

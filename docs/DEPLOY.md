@@ -106,8 +106,9 @@ timer stopped, with every file kept. Restarting then could open the wrong
 database or create an empty one. The message lists what is at the live path
 and the steps to finish by hand: stop `bht.service`, move anything at the live
 path into `restore-<time>/failed/`, move `bht.db` and its `-wal`/`-shm` from
-`restore-<time>/previous/` back into `/var/lib/bht` together, then start
-`bht.service` and `bht-backup.timer`.
+`restore-<time>/previous/` back into `/var/lib/bht` together, then run
+`systemctl reset-failed bht.service` (failed starts can use up its start
+limit) and start `bht.service` and `bht-backup.timer`.
 
 Don't copy files into `/var/lib/bht` by hand. The `-wal` file belongs to its
 database, so moving one without the other loses or corrupts recent writes.

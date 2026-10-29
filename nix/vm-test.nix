@@ -184,6 +184,7 @@ pkgs.testers.runNixOSTest {
         # The printed steps finish the job once the cause is fixed.
         server.succeed(f"chattr -i {work}/previous/bht.db")
         server.succeed(f"mv {work}/previous/bht.db* /var/lib/bht/")
+        server.succeed("systemctl reset-failed bht.service")
         server.succeed("systemctl start bht.service bht-backup.timer")
         server.wait_for_open_port(8787)
         server.succeed("curl -fsS http://127.0.0.1:8787/api/health")
