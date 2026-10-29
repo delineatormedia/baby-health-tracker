@@ -8,19 +8,21 @@
   const counts = $derived(countMarks(dayMarks(app.events, app.now)));
   const intake = $derived(intake24h(app.events, app.now));
 
-  // Re-evaluated once a minute, not on every clock tick.
-  const minute = $derived(Math.floor(app.now / 60_000) * 60_000);
-  const results = $derived(
-    evaluate({
+  // Re-evaluated once a minute and whenever the events change, always at the real current
+  // time: a minute-floored cutoff would leave out a log made earlier this minute.
+  const minute = $derived(Math.floor(app.now / 60_000));
+  const results = $derived.by(() => {
+    void minute;
+    return evaluate({
       baby: { birthAt: app.baby!.birthAt, sex: app.baby!.sex },
       events: app.events,
-      now: new Date(minute).toISOString(),
+      now: new Date(Date.now()).toISOString(),
       // The "fully logged" mark is on hold, so count and absence checks report not enough data.
       fullyLogged: [],
       // This phone does not sync yet.
       syncedThrough: null,
-    }),
-  );
+    });
+  });
   const flags = $derived(results.filter((r) => r.status === 'flag'));
   const assessed = $derived(results.filter((r) => r.status !== 'not_enough_data').length);
   const inRange = $derived(expectedRangeLine(results));
