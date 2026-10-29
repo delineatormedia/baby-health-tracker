@@ -161,9 +161,10 @@ export function saveHomeNoteDismissed(kv: KV): void {
 /**
  * Set once dev test data (#58) has been loaded into this browser. Nothing in the app clears
  * it, so only clearing the browser's site data does. The app badges the screen while it is
- * set, and sync must refuse any server but localhost (#55).
+ * set, and sync must refuse any server but localhost (#55). Any value counts, so a corrupted
+ * or hand-edited marker blocks sync instead of opening it; only a missing key is unseeded.
  */
-export const loadSeeded = (kv: KV): boolean => kv.getItem(KEYS.seeded) === '1';
+export const loadSeeded = (kv: KV): boolean => kv.getItem(KEYS.seeded) !== null;
 
 export function markSeeded(kv: KV): void {
   kv.setItem(KEYS.seeded, '1');

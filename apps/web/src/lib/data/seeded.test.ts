@@ -40,6 +40,13 @@ describe('isLocalHost', () => {
 });
 
 describe('a seeded browser', () => {
+  test.each(['true', '0', ''])('fails closed: a marker of %j still refuses', async (value) => {
+    kv.set(KEYS.seeded, value);
+    at('https://bht.example/');
+    await expect(httpTransport().push([])).rejects.toBeInstanceOf(SeededRefusal);
+    expect(fetched).toEqual([]);
+  });
+
   test('sends no sync request to a real server', async () => {
     kv.set(KEYS.seeded, '1');
     at('https://bht.example/');
