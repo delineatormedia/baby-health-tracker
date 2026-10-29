@@ -79,7 +79,7 @@
     time. This phone only, until sync.
   </p>
 
-  <div class="sec lab">Storage</div>
+  <div class="sec lab" id="storage">Storage</div>
   <p class="note day" role="status">
     {#if app.persistence === 'persisted'}
       <b>Kept.</b> This browser has promised not to clear the logs on this phone.

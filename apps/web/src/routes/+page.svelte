@@ -85,7 +85,7 @@
     <a class="act" href={resolve('/settings')}>Settings</a>
   </header>
 
-  <HomeScreenNote />
+  <HomeScreenNote compact />
 
   <!-- The dial is the last 24 hours, so tapping it opens Reports (#21). While a feed runs it
        stays the way back to the timer, where the parent switches sides. -->
