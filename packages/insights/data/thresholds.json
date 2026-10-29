@@ -248,7 +248,8 @@
       "url": "https://www.healthychildren.org/English/tips-tools/symptom-checker/Pages/symptomviewer.aspx?symptom=Breast-Feeding+Questions"
     },
     "confidence": "high",
-    "notes": "AAP KidsDoc: 'Dehydration suspected. No urine in more than 8 hours, dark urine, no stool for 24 hours, very dry mouth and no tears' -> call doctor or seek care now. The 8-hour gap alone is one component; the source pairs it with other signs. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
+    "requires_signs": ["dark_urine", "no_stool_24h", "very_dry_mouth", "no_tears"],
+    "notes": "AAP KidsDoc: 'Dehydration suspected. No urine in more than 8 hours, dark urine, no stool for 24 hours, very dry mouth and no tears' -> call doctor or seek care now. The 8-hour gap alone is one component; the source pairs it with other signs. The app logs none of the requires_signs, so this entry is cited but never flags on its own (PM decision on #7, 2026-10-29); no_urine_hours_dol2_4 is the gap rule that runs. Population: healthy term infants (any feeding method unless stated). Excludes preterm, NICU, and medically complex infants.",
     "op": "gt"
   },
   {
