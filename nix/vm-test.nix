@@ -23,8 +23,10 @@ pkgs.testers.runNixOSTest {
     # will not run. A vm_jam table also makes the old database immovable, so the
     # rollback itself fails.
     systemd.services.bht.serviceConfig.ExecStartPre = "+${pkgs.writeShellScript "bht-vm-poison" ''
+      # sqlite3 runs as bht: as root it would create a root-owned bht.db (or -shm)
+      # on first boot that the server then cannot open.
       has() {
-        [ -n "$(${pkgs.sqlite}/bin/sqlite3 /var/lib/bht/bht.db \
+        [ -n "$(${pkgs.util-linux}/bin/runuser -u bht -- ${pkgs.sqlite}/bin/sqlite3 /var/lib/bht/bht.db \
           "SELECT name FROM sqlite_master WHERE name = '$1'")" ]
       }
       if has vm_jam; then
