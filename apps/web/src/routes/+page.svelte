@@ -65,8 +65,12 @@
 <!-- The page scrolls clear of the dock, however tall wrapped key lines make it. -->
 <main class="screen fade" style:--dock-h="{dockHeight}px">
   <header class="top">
-    <h1>{baby.name}</h1>
-    <span class="lab num">{ageDays(baby.birthAt, app.now)} days · last 24 h</span>
+    <span class="title-row">
+      <h1>{baby.name}</h1>
+      <span class="lab num">{ageDays(baby.birthAt, app.now)} days · last 24 h</span>
+    </span>
+    <!-- The #20 board has no place for Settings; it left the chip row for Weight and History. -->
+    <a class="act" href={resolve('/settings')}>Settings</a>
   </header>
 
   <!-- The dial is the last 24 hours, so tapping it opens Reports (#21). While a feed runs it
@@ -111,8 +115,9 @@
   <div class="dock" bind:clientHeight={dockHeight}>
     <Toast />
     <nav class="chips">
+      <a href={resolve('/weight')}>Weight</a>
+      <a href={resolve('/history')}>History</a>
       <a href={resolve('/readings')}>Readings</a>
-      <a href={resolve('/settings')}>Settings</a>
     </nav>
     <div class="rail">
       <!-- Feed opens Left / Right: starting on either side is two taps (#19). -->
@@ -150,6 +155,22 @@
 <style>
   .screen {
     padding-bottom: calc(var(--dock-h) + 16px);
+  }
+  .title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 12px;
+    min-width: 0;
+  }
+  .act {
+    flex: none;
+    /* A 44 px tap height without moving the header. */
+    padding: 10px 0;
+    margin: -10px 0;
+    font: 500 20px var(--sans);
+    color: var(--ink);
+    text-decoration: none;
   }
   .dial-link {
     display: block;
