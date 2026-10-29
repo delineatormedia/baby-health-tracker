@@ -8,7 +8,11 @@
   let { children }: { children: Snippet } = $props();
 
   void app.init();
-  watchForUpdates(() => !!app.baby && !app.toast && !app.saveError && !app.error);
+  watchForUpdates({
+    idle: () => !!app.baby && !app.toast && !app.saveError && !app.error,
+    writing: () => app.writing,
+    settled: () => app.settled(),
+  });
 
   $effect(() => {
     document.documentElement.dataset.theme = app.prefs.theme;

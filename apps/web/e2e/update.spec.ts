@@ -215,3 +215,213 @@ test('leaving the app from Home loads the new build for the next launch', async 
   await ctx.close();
   s.server.close();
 });
+
+// A write in flight is never lost to an update reload (#74). Storage contention is a readwrite
+// transaction held open on another connection, so the app's own write queues behind it.
+
+/** Holds `versions` until `release`; resolves once a write of the app's has queued behind it. */
+async function hold(page: Page) {
+  await page.evaluate(
+    () =>
+      new Promise<void>((ok) => {
+        const w = window as unknown as { release?: boolean };
+        w.release = false;
+        const q = indexedDB.open('bht');
+        q.onsuccess = () => {
+          const store = q.result.transaction('versions', 'readwrite').objectStore('versions');
+          const keep = () => {
+            if (w.release) q.result.close();
+            else store.get('held').onsuccess = keep;
+          };
+          keep();
+          ok();
+        };
+      }),
+  );
+}
+
+/** Starts counting the app's transactions, to see a write queued behind `hold`. */
+const countWrites = (page: Page) =>
+  page.evaluate(() => {
+    const w = window as unknown as { writes: number };
+    w.writes = 0;
+    const original = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function (...args) {
+      if (args[1] === 'readwrite') w.writes++;
+      return original.apply(this, args);
+    };
+  });
+const queued = (page: Page) =>
+  expect
+    .poll(() => page.evaluate(() => (window as unknown as { writes: number }).writes))
+    .toBeGreaterThan(0);
+const release = (page: Page) =>
+  page.evaluate(() => ((window as unknown as { release: boolean }).release = true));
+
+/** Leaves the app, the way the Home Screen app is put away. */
+const hide = (page: Page) =>
+  page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+
+/** Build N on Home with N+1 installed and in control: the next safe chance reloads. */
+async function armed(browser: Parameters<typeof phone>[0]) {
+  const s = await serve();
+  const ctx = await phone(browser, 390, 'light', { serviceWorkers: 'allow' });
+  const page = await ctx.newPage();
+  const errors = watchErrors(page);
+  await page.goto(s.url);
+  await page.locator('.rail').waitFor();
+  await installed(page);
+  return { s, ctx, page, errors };
+}
+
+/** Nothing is in progress on screen, so only the queued write can hold the reload off. */
+async function screenIdle(page: Page) {
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0, {
+    timeout: 10_000,
+  });
+  await expect(page.getByRole('alert')).toHaveCount(0);
+}
+
+test('leaving the app while a Wet is queued keeps the page, and the Wet saves', async ({
+  browser,
+}) => {
+  const { s, ctx, page, errors } = await armed(browser);
+  await update(page, s);
+  await countWrites(page);
+  await hold(page);
+  await page.getByRole('button', { name: /^Wet/ }).tap();
+  await queued(page);
+  await screenIdle(page);
+
+  await hide(page);
+  await page.waitForTimeout(500);
+  expect(await samePage(page)).toBe(true);
+  await release(page);
+  await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
+  expect(await samePage(page)).toBe(true);
+  expect(await current(page, 'diaper')).toHaveLength(1);
+  expect(errors).toEqual([]);
+  await ctx.close();
+  s.server.close();
+});
+
+test('leaving the app while an Undo is queued keeps the page, and the Undo lands', async ({
+  browser,
+}) => {
+  const { s, ctx, page, errors } = await armed(browser);
+  await page.getByRole('button', { name: /^Wet/ }).tap();
+  await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
+  await update(page, s);
+  await countWrites(page);
+  await hold(page);
+  await page.getByRole('button', { name: 'Undo', exact: true }).tap();
+  await queued(page);
+  // The toast times out while the Undo waits on storage: nothing on screen says busy.
+  await screenIdle(page);
+
+  await hide(page);
+  await page.waitForTimeout(500);
+  expect(await samePage(page)).toBe(true);
+  await release(page);
+  await expect(page.getByText('Undone')).toBeVisible();
+  expect(await samePage(page)).toBe(true);
+  expect(await current(page, 'diaper')).toEqual([]);
+  expect(errors).toEqual([]);
+  await ctx.close();
+  s.server.close();
+});
+
+test('leaving the app while a Retry is queued keeps the page, and the retry lands', async ({
+  browser,
+}) => {
+  const { s, ctx, page } = await armed(browser);
+  await page.getByRole('button', { name: /^Wet/ }).tap();
+  await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
+  await update(page, s);
+  // The first Undo fails, leaving its inverse behind Retry undo.
+  await page.evaluate(() => {
+    const original = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function () {
+      IDBDatabase.prototype.transaction = original;
+      throw new DOMException('Full', 'QuotaExceededError');
+    };
+  });
+  await page.getByRole('button', { name: 'Undo', exact: true }).tap();
+  const retry = page.getByRole('button', { name: 'Retry undo', exact: true });
+  await retry.waitFor();
+  await countWrites(page);
+  await hold(page);
+  await retry.tap();
+  await queued(page);
+  await screenIdle(page);
+
+  await hide(page);
+  await page.waitForTimeout(500);
+  expect(await samePage(page)).toBe(true);
+  await release(page);
+  await expect(page.getByText('Undone')).toBeVisible();
+  expect(await samePage(page)).toBe(true);
+  expect(await current(page, 'diaper')).toEqual([]);
+  await ctx.close();
+  s.server.close();
+});
+
+test('a tap while a Wet is queued opens its screen in this build, and the Wet saves', async ({
+  browser,
+}) => {
+  const { s, ctx, page, errors } = await armed(browser);
+  await update(page, s);
+  await countWrites(page);
+  await hold(page);
+  await page.getByRole('button', { name: /^Wet/ }).tap();
+  await queued(page);
+  await screenIdle(page);
+
+  await page.getByRole('link', { name: 'History', exact: true }).tap();
+  await page.waitForURL((u) => u.pathname === '/history');
+  expect(await samePage(page)).toBe(true);
+  await release(page);
+  const diapers = await until(
+    page,
+    () => current(page, 'diaper'),
+    (d) => d.length === 1,
+  );
+  expect(diapers).toHaveLength(1);
+  expect(await samePage(page)).toBe(true);
+  expect(errors).toEqual([]);
+  await ctx.close();
+  s.server.close();
+});
+
+test('back or forward while a Wet is queued waits for it, then keeps its toast', async ({
+  browser,
+}) => {
+  const { s, ctx, page, errors } = await armed(browser);
+  // History to go forward into, made before the update so neither move reloads.
+  await page.getByRole('link', { name: 'History', exact: true }).tap();
+  await page.waitForURL((u) => u.pathname === '/history');
+  await page.goBack();
+  await page.waitForURL((u) => u.pathname === '/');
+  await update(page, s);
+  await countWrites(page);
+  await hold(page);
+  await page.getByRole('button', { name: /^Wet/ }).tap();
+  await queued(page);
+  await screenIdle(page);
+
+  await page.goForward();
+  await page.waitForURL((u) => u.pathname === '/history');
+  await page.waitForTimeout(500);
+  expect(await samePage(page)).toBe(true);
+  await release(page);
+  // The settled Wet raised its Undo toast, so the page stays for the parent to use it.
+  await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
+  expect(await samePage(page)).toBe(true);
+  expect(await current(page, 'diaper')).toHaveLength(1);
+  expect(errors).toEqual([]);
+  await ctx.close();
+  s.server.close();
+});
