@@ -23,7 +23,8 @@ export const MIGRATIONS: string[] = [
    ) STRICT;
    CREATE INDEX event_versions_by_household ON event_versions (household_id, seq);`,
   // 2: members and passkeys, the household's babies, phones, invites and sessions (#5 step
-  // 2). Invite codes and session tokens are stored as SHA-256 hashes, never as issued.
+  // 2). Invite codes, session tokens and flow secrets are stored as SHA-256 hashes, never as
+  // issued.
   // event_versions.member_id is the signed-in member who pushed a version, stamped by the
   // server; it is null on versions stored before this migration.
   `CREATE TABLE members (
@@ -80,6 +81,7 @@ export const MIGRATIONS: string[] = [
      challenge TEXT NOT NULL,
      purpose TEXT NOT NULL,
      payload TEXT NOT NULL,
+     browser_hash TEXT NOT NULL,
      expires_at TEXT NOT NULL
    ) STRICT;
    ALTER TABLE event_versions ADD COLUMN member_id TEXT REFERENCES members (id);`,

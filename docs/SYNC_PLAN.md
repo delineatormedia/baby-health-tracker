@@ -268,11 +268,11 @@ covered by `SCHEMA_VERSION` 3.
 
 | Route | Body | Answer |
 |---|---|---|
-| `POST /api/auth/register/options` | `{householdId, displayName, deviceId, baby}`, the phone's local ids | `{flowId, options}`; 409 if the household or baby id exists |
-| `POST /api/auth/join/options` | `{code, displayName, deviceId}` | `{flowId, options}`; 404 for an unknown, used or expired code |
-| `POST /api/auth/login/options` | `{deviceId}` | `{flowId, options}` for a discoverable passkey |
-| `POST /api/auth/{register,join,login}/verify` | `{flowId, response}` | `{householdId, memberId}` and the session cookie; 401 if not verified |
-| `POST /api/auth/logout` | none | revokes the session, clears the cookie |
+| `POST /api/auth/register/options` | `{householdId, displayName, deviceId, baby}`, the phone's local ids | `{flowId, options}` and the flow cookie; 409 if the household, baby or device id exists |
+| `POST /api/auth/join/options` | `{code, displayName, deviceId}` | `{flowId, options}` and the flow cookie; 404 for an unknown, used or expired code; 409 if the device id is another household's |
+| `POST /api/auth/login/options` | `{deviceId}` | `{flowId, options}` for a discoverable passkey, and the flow cookie |
+| `POST /api/auth/{register,join,login}/verify` | `{flowId, response}` | `{householdId, memberId}` and the session cookie; 401 if not verified; 403 without the flow cookie from options; 409 if the device id is another household's |
+| `POST /api/auth/logout` | `{}` | revokes the session, clears the cookie |
 | `GET /api/household` | signed in | `{id, members, babies}` |
 | `POST /api/invites` | signed in | `{code, expiresAt}` |
 | `POST /api/babies` | signed in, `{id, name, birthAt, sex}` | the baby; same id again is a safe retry, another household's id is 409 |
@@ -282,9 +282,21 @@ covered by `SCHEMA_VERSION` 3.
   member. A session lives 180 days and dies with sign-out or when its phone's
   `devices` row is removed. A removed phone cannot sign back in under the same
   device id.
-- Invite codes and session tokens are stored as SHA-256 hashes.
-- `deviceId` is the phone's `authorId`. A phone belongs to whoever last signed
-  in on it.
+- Every POST under `/api` needs `Origin` equal to `BHT_ORIGIN` (else 403) and
+  `Content-Type: application/json` (else 415). A JSON body needs a CORS
+  preflight, so a cross-site form or `no-cors` fetch cannot send one (#47
+  review: login CSRF).
+- Each `*/options` sets `bht_flow` (HttpOnly, Secure, SameSite=Strict,
+  `Path=/api/auth`, 5 minutes), and `*/verify` finishes the flow only with that
+  cookie. An assertion replayed from another browser gets 403 and leaves the
+  flow unused. The signed WebAuthn origin proves where the ceremony ran, not
+  which browser submits it.
+- Invite codes, session tokens and flow secrets are stored as SHA-256 hashes.
+- `deviceId` is the phone's `authorId`. A device id belongs to one household:
+  signing in with one held by another household is 409. Within the household a
+  phone belongs to whoever last signed in on it, and that sign-in revokes the
+  other members' sessions on it in the same transaction. A session is live only
+  while its phone's `devices` row names its member.
 - A push for a `babyId` outside the caller's household is `rejected` with
   `Unknown baby`. Every stored version records the pushing member
   (`event_versions.member_id`).
@@ -300,6 +312,13 @@ covered by `SCHEMA_VERSION` 3.
   `Unknown baby`.
 - A login refused with "This phone was removed from the household" mints a new
   device id (`authorId`) and signs in again, so the user never hits a dead end.
+- A sign-in refused with 409 "This phone id belongs to another household" does
+  the same: mint a new device id and start the ceremony again. For a login
+  that means a second passkey prompt; register and join are refused at
+  options, before the passkey is made.
+- Every POST sends `Content-Type: application/json`, including logout (`{}`).
+  Run options and verify in the same browser, one ceremony at a time: a new
+  options call replaces the flow cookie.
 - Replace "Saved on this phone · not synced" with the real status.
 - While `status` is `offline`, Settings shows `SyncClient.error` (for example
   "Server rejected upload size" when a proxy caps uploads below ours), with a

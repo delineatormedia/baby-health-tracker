@@ -43,7 +43,9 @@ export interface AuthConfig {
 
 export const SESSION_COOKIE = 'bht_session';
 export const SESSION_DAYS = 180;
-const FLOW_MINUTES = 5;
+/** Binds a ceremony to the browser that asked for its options; see Accounts. */
+export const FLOW_COOKIE = 'bht_flow';
+export const FLOW_MINUTES = 5;
 const INVITE_HOURS = 24;
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
@@ -56,16 +58,27 @@ type FlowPayload =
 
 /** Outcome of a ceremony step: a body to answer with, or an HTTP error. */
 export type Result<T> =
-  { ok: true; value: T } | { ok: false; status: 400 | 401 | 404 | 409; error: string };
+  { ok: true; value: T } | { ok: false; status: 400 | 401 | 403 | 404 | 409; error: string };
 
-const fail = (status: 400 | 401 | 404 | 409, error: string) =>
+const fail = (status: 400 | 401 | 403 | 404 | 409, error: string) =>
   ({ ok: false, status, error }) as const;
+
+/** What an options step answers: the body, and the flow secret for the browser's cookie. */
+type Started = CeremonyOptions & { browser: string };
+
+/** The 409 a phone id held by another household gets; step 3 answers it with a new id. */
+export const DEVICE_ELSEWHERE = 'This phone id belongs to another household';
 
 export const hashSecret = (secret: string) => createHash('sha256').update(secret).digest('hex');
 
 /**
  * Passkey ceremonies, invites and sessions over the server database. Every write that makes a
  * member, consumes an invite or issues a session is one transaction.
+ *
+ * Each options step mints a flow secret for the caller's browser (the bht_flow cookie) and
+ * stores only its hash; verify finishes the flow only with that secret. The signed WebAuthn
+ * origin proves where the ceremony ran, not which browser submits it: without the binding, an
+ * assertion for one account could be submitted from another browser and sign it in there.
  */
 export class Accounts {
   constructor(
@@ -74,12 +87,15 @@ export class Accounts {
     readonly now: () => Date = () => new Date(),
   ) {}
 
-  async registerOptions(input: unknown): Promise<Result<CeremonyOptions>> {
+  async registerOptions(input: unknown): Promise<Result<Started>> {
     const parsed = v.safeParse(RegisterRequest, input);
     if (!parsed.success) return fail(400, 'Expected { householdId, displayName, deviceId, baby }');
     const request = parsed.output;
     if (this.#exists('households', request.householdId)) return fail(409, 'Household exists');
     if (this.#exists('babies', request.baby.id)) return fail(409, 'Baby exists');
+    // Refused before the phone makes a passkey this server would never keep.
+    const device = this.#deviceRefusal(request.deviceId, request.householdId);
+    if (device) return device;
     const userId = randomBytes(16);
     const options = await generateRegistrationOptions({
       rpName: this.config.rpName ?? 'Baby Health Tracker',
@@ -89,19 +105,22 @@ export class Accounts {
       attestationType: 'none',
       authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
     });
-    const flowId = this.#startFlow(options.challenge, {
+    const flow = this.#startFlow(options.challenge, {
       purpose: 'register',
       request,
       userId: options.user.id,
     });
-    return { ok: true, value: { flowId, options: asOptions(options) } };
+    return { ok: true, value: { ...flow, options: asOptions(options) } };
   }
 
-  async joinOptions(input: unknown): Promise<Result<CeremonyOptions>> {
+  async joinOptions(input: unknown): Promise<Result<Started>> {
     const parsed = v.safeParse(JoinRequest, input);
     if (!parsed.success) return fail(400, 'Expected { code, displayName, deviceId }');
     const request = parsed.output;
-    if (!this.#openInvite(request.code)) return fail(404, 'Invite not found or expired');
+    const invite = this.#openInvite(request.code);
+    if (!invite) return fail(404, 'Invite not found or expired');
+    const device = this.#deviceRefusal(request.deviceId, invite.household_id);
+    if (device) return device;
     const options = await generateRegistrationOptions({
       rpName: this.config.rpName ?? 'Baby Health Tracker',
       rpID: this.config.rpId,
@@ -110,15 +129,15 @@ export class Accounts {
       attestationType: 'none',
       authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
     });
-    const flowId = this.#startFlow(options.challenge, {
+    const flow = this.#startFlow(options.challenge, {
       purpose: 'join',
       request,
       userId: options.user.id,
     });
-    return { ok: true, value: { flowId, options: asOptions(options) } };
+    return { ok: true, value: { ...flow, options: asOptions(options) } };
   }
 
-  async loginOptions(input: unknown): Promise<Result<CeremonyOptions>> {
+  async loginOptions(input: unknown): Promise<Result<Started>> {
     const parsed = v.safeParse(LoginRequest, input);
     if (!parsed.success) return fail(400, 'Expected { deviceId }');
     // Discoverable credentials: the phone offers its passkey, so no account name is asked for.
@@ -126,23 +145,25 @@ export class Accounts {
       rpID: this.config.rpId,
       userVerification: 'preferred',
     });
-    const flowId = this.#startFlow(options.challenge, { purpose: 'login', request: parsed.output });
-    return { ok: true, value: { flowId, options: asOptions(options) } };
+    const flow = this.#startFlow(options.challenge, { purpose: 'login', request: parsed.output });
+    return { ok: true, value: { ...flow, options: asOptions(options) } };
   }
 
   /** Finishes a register or join ceremony: a new member with this passkey, signed in. */
   async registerVerify(
     input: unknown,
     purpose: 'register' | 'join',
+    browser: string | undefined,
   ): Promise<Result<SignedIn & { token: string }>> {
     const body = v.safeParse(CeremonyResponse, input);
     if (!body.success) return fail(400, 'Expected { flowId, response }');
-    const flow = this.#takeFlow(body.output.flowId, purpose);
-    if (!flow || flow.payload.purpose === 'login') return fail(401, 'Sign-in expired; start again');
-    const payload = flow.payload;
+    const flow = this.#takeFlow(body.output.flowId, purpose, browser);
+    if (!flow.ok) return flow;
+    if (flow.value.payload.purpose === 'login') return fail(401, 'Sign-in expired; start again');
+    const payload = flow.value.payload;
     const verification = await verifyRegistrationResponse({
       response: body.output.response as unknown as RegistrationResponseJSON,
-      expectedChallenge: flow.challenge,
+      expectedChallenge: flow.value.challenge,
       expectedOrigin: this.config.origin,
       expectedRPID: this.config.rpId,
       requireUserVerification: false,
@@ -207,17 +228,22 @@ export class Accounts {
           JSON.stringify(credential.transports ?? []),
           at,
         );
-      const token = this.#signIn(memberId, payload.request.deviceId, at);
+      const token = this.#signIn(memberId, householdId, payload.request.deviceId, at);
       return { ok: true, value: { householdId, memberId, token } };
     });
   }
 
   /** Finishes a login: the member who owns this passkey, signed in on this phone. */
-  async loginVerify(input: unknown): Promise<Result<SignedIn & { token: string }>> {
+  async loginVerify(
+    input: unknown,
+    browser: string | undefined,
+  ): Promise<Result<SignedIn & { token: string }>> {
     const body = v.safeParse(CeremonyResponse, input);
     if (!body.success) return fail(400, 'Expected { flowId, response }');
-    const flow = this.#takeFlow(body.output.flowId, 'login');
-    if (!flow || flow.payload.purpose !== 'login') return fail(401, 'Sign-in expired; start again');
+    const taken = this.#takeFlow(body.output.flowId, 'login', browser);
+    if (!taken.ok) return taken;
+    const flow = taken.value;
+    if (flow.payload.purpose !== 'login') return fail(401, 'Sign-in expired; start again');
     const response = body.output.response as unknown as AuthenticationResponseJSON;
     const row = this.db
       .prepare(
@@ -254,7 +280,12 @@ export class Accounts {
       this.db
         .prepare('UPDATE credentials SET counter = ?, last_used_at = ? WHERE id = ?')
         .run(verification.authenticationInfo.newCounter, at, row.id);
-      const token = this.#signIn(row.member_id, flow.payload.request.deviceId, at);
+      const token = this.#signIn(
+        row.member_id,
+        row.household_id,
+        flow.payload.request.deviceId,
+        at,
+      );
       return {
         ok: true,
         value: { householdId: row.household_id, memberId: row.member_id, token },
@@ -269,7 +300,7 @@ export class Accounts {
       .prepare(
         `SELECT s.member_id, s.device_id, m.household_id
          FROM sessions s JOIN members m ON m.id = s.member_id
-         JOIN devices d ON d.id = s.device_id
+         JOIN devices d ON d.id = s.device_id AND d.member_id = s.member_id
          WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?
            AND d.removed_at IS NULL`,
       )
@@ -351,16 +382,36 @@ export class Accounts {
   }
 
   /**
-   * Records the phone for the member (a phone belongs to whoever last signed in on it) and
-   * issues a session. Returns the token; only its hash is stored.
+   * Why this phone id cannot sign in to the household, or null. A removed phone stays removed
+   * (step 3b counts removal as the vouch from removedAt), and a phone id belongs to one
+   * household: the step 3 client answers either refusal by minting a new id.
    */
-  #signIn(memberId: string, deviceId: string, at: string): string {
-    // A removed phone stays removed (step 3b counts removal as the vouch from removedAt); it
-    // cannot sign itself back in under the same device id.
-    const removed = this.db
-      .prepare('SELECT 1 FROM devices WHERE id = ? AND removed_at IS NOT NULL')
-      .get(deviceId);
-    if (removed) throw new Rollback(fail(401, 'This phone was removed from the household'));
+  #deviceRefusal(deviceId: string, householdId: string): Result<never> | null {
+    const device = this.db
+      .prepare(
+        `SELECT d.removed_at, m.household_id FROM devices d
+         JOIN members m ON m.id = d.member_id WHERE d.id = ?`,
+      )
+      .get(deviceId) as { removed_at: string | null; household_id: string } | undefined;
+    if (device?.removed_at) return fail(401, 'This phone was removed from the household');
+    if (device && device.household_id !== householdId) return fail(409, DEVICE_ELSEWHERE);
+    return null;
+  }
+
+  /**
+   * Records the phone for the member and issues a session. Within a household a phone belongs
+   * to whoever last signed in on it, so any other member's sessions on it end here. Returns
+   * the token; only its hash is stored.
+   */
+  #signIn(memberId: string, householdId: string, deviceId: string, at: string): string {
+    const refusal = this.#deviceRefusal(deviceId, householdId);
+    if (refusal) throw new Rollback(refusal);
+    this.db
+      .prepare(
+        `UPDATE sessions SET revoked_at = ?
+         WHERE device_id = ? AND member_id <> ? AND revoked_at IS NULL`,
+      )
+      .run(at, deviceId, memberId);
     this.db
       .prepare(
         `INSERT INTO devices (id, member_id, created_at, last_seen_at) VALUES (?, ?, ?, ?)
@@ -379,35 +430,57 @@ export class Accounts {
     return token;
   }
 
-  #startFlow(challenge: string, payload: FlowPayload): string {
+  #startFlow(challenge: string, payload: FlowPayload): { flowId: string; browser: string } {
     const id = randomUUID();
+    const browser = randomBytes(32).toString('base64url');
     const now = this.now();
     this.db.prepare('DELETE FROM auth_flows WHERE expires_at <= ?').run(now.toISOString());
     this.db
       .prepare(
-        'INSERT INTO auth_flows (id, challenge, purpose, payload, expires_at) VALUES (?, ?, ?, ?, ?)',
+        `INSERT INTO auth_flows (id, challenge, purpose, payload, browser_hash, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
         challenge,
         payload.purpose,
         JSON.stringify(payload),
+        hashSecret(browser),
         new Date(now.getTime() + FLOW_MINUTES * 60_000).toISOString(),
       );
-    return id;
+    return { flowId: id, browser };
   }
 
-  /** Removes and returns a live flow: each challenge is answered at most once. */
-  #takeFlow(id: string, purpose: Purpose): { challenge: string; payload: FlowPayload } | null {
+  /**
+   * Removes and returns a live flow: each challenge is answered at most once, and only by the
+   * browser holding its flow secret. Another browser's attempt leaves the flow in place.
+   */
+  #takeFlow(
+    id: string,
+    purpose: Purpose,
+    browser: string | undefined,
+  ): Result<{ challenge: string; payload: FlowPayload }> {
+    const at = this.now().toISOString();
     const row = this.db
       .prepare(
-        `DELETE FROM auth_flows WHERE id = ? AND purpose = ? AND expires_at > ?
+        `DELETE FROM auth_flows
+         WHERE id = ? AND purpose = ? AND expires_at > ? AND browser_hash = ?
          RETURNING challenge, payload`,
       )
-      .get(id, purpose, this.now().toISOString()) as
+      .get(id, purpose, at, hashSecret(browser ?? '')) as
       { challenge: string; payload: string } | undefined;
-    if (!row) return null;
-    return { challenge: row.challenge, payload: JSON.parse(row.payload) as FlowPayload };
+    if (row) {
+      return {
+        ok: true,
+        value: { challenge: row.challenge, payload: JSON.parse(row.payload) as FlowPayload },
+      };
+    }
+    const live = this.db
+      .prepare('SELECT 1 FROM auth_flows WHERE id = ? AND purpose = ? AND expires_at > ?')
+      .get(id, purpose, at);
+    return live
+      ? fail(403, 'Finish signing in in the browser that started it')
+      : fail(401, 'Sign-in expired; start again');
   }
 
   #openInvite(code: string): { household_id: string } | null {

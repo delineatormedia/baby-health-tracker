@@ -11,6 +11,8 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   Accounts,
+  FLOW_COOKIE,
+  FLOW_MINUTES,
   SESSION_COOKIE,
   SESSION_DAYS,
   type AuthConfig,
@@ -48,6 +50,19 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
     return c.json({ ok: true, schemaVersion: SCHEMA_VERSION, sqlite: row.sqlite });
   });
 
+  // Every write must come from the app's own page. A JSON body needs a CORS preflight, which
+  // a cross-site form or no-cors fetch cannot pass, and browsers send Origin on every POST.
+  // Without auth there is no origin to check, and no session for a forged request to use.
+  app.use('/api/*', async (c, next) => {
+    if (c.req.method === 'GET' || c.req.method === 'HEAD') return next();
+    if (opts.auth && c.req.header('origin') !== opts.auth.origin) {
+      return c.json({ error: 'Cross-origin request refused' }, 403);
+    }
+    const type = c.req.header('content-type')?.split(';')[0]!.trim().toLowerCase();
+    if (type !== 'application/json') return c.json({ error: 'Expected application/json' }, 415);
+    await next();
+  });
+
   // Every signed-in route is scoped to the caller's household; there is no unscoped query.
   const signedIn = async (c: Context<Env>, next: () => Promise<void>) => {
     const session = await resolveSession(c);
@@ -60,23 +75,38 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   app.use('/api/invites', signedIn);
   app.use('/api/babies', signedIn);
 
-  // Passkey ceremonies. Each */options call starts a single-use flow; */verify finishes it
-  // and sets an HttpOnly, SameSite=Strict session cookie.
+  // Passkey ceremonies. Each */options call starts a single-use flow and gives this browser
+  // its flow cookie; */verify finishes it only with that cookie and sets an HttpOnly,
+  // SameSite=Strict session cookie.
   const authBody = bodyLimit({
     maxSize: AUTH_BODY_BYTES,
     onError: (c) => c.json({ error: 'Request too large' }, 413),
   });
   const json = (c: Context) => c.req.json().catch(() => null) as Promise<unknown>;
-  const ceremony = (path: string, run: (a: Accounts, body: unknown) => Promise<Result<object>>) =>
+  const secure = opts.auth?.secureCookie ?? true;
+  const ceremony = (
+    path: string,
+    run: (a: Accounts, body: unknown, browser: string | undefined) => Promise<Result<object>>,
+  ) =>
     app.post(path, authBody, async (c) => {
       if (!accounts) return c.json({ error: 'Sign-in is not configured' }, 503);
-      const result = await run(accounts, await json(c));
+      const result = await run(accounts, await json(c), getCookie(c, FLOW_COOKIE));
       if (!result.ok) return c.json({ error: result.error }, result.status);
-      const { token, ...value } = result.value as { token?: string };
+      const { token, browser, ...value } = result.value as { token?: string; browser?: string };
+      if (browser) {
+        setCookie(c, FLOW_COOKIE, browser, {
+          httpOnly: true,
+          secure,
+          sameSite: 'Strict',
+          path: '/api/auth',
+          maxAge: FLOW_MINUTES * 60,
+        });
+      }
       if (token) {
+        deleteCookie(c, FLOW_COOKIE, { path: '/api/auth', secure });
         setCookie(c, SESSION_COOKIE, token, {
           httpOnly: true,
-          secure: opts.auth?.secureCookie ?? true,
+          secure,
           sameSite: 'Strict',
           path: '/',
           maxAge: SESSION_DAYS * 86_400,
@@ -85,15 +115,17 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
       return c.json(value);
     });
   ceremony('/api/auth/register/options', (a, b) => a.registerOptions(b));
-  ceremony('/api/auth/register/verify', (a, b) => a.registerVerify(b, 'register'));
+  ceremony('/api/auth/register/verify', (a, b, browser) =>
+    a.registerVerify(b, 'register', browser),
+  );
   ceremony('/api/auth/join/options', (a, b) => a.joinOptions(b));
-  ceremony('/api/auth/join/verify', (a, b) => a.registerVerify(b, 'join'));
+  ceremony('/api/auth/join/verify', (a, b, browser) => a.registerVerify(b, 'join', browser));
   ceremony('/api/auth/login/options', (a, b) => a.loginOptions(b));
-  ceremony('/api/auth/login/verify', (a, b) => a.loginVerify(b));
+  ceremony('/api/auth/login/verify', (a, b, browser) => a.loginVerify(b, browser));
 
   app.post('/api/auth/logout', (c) => {
     accounts?.signOut(getCookie(c, SESSION_COOKIE));
-    deleteCookie(c, SESSION_COOKIE, { path: '/', secure: opts.auth?.secureCookie ?? true });
+    deleteCookie(c, SESSION_COOKIE, { path: '/', secure });
     return c.json({ ok: true });
   });
 

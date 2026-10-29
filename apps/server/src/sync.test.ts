@@ -298,7 +298,11 @@ describe('POST and GET /api/sync', () => {
   test('signed out gets 401 on both routes', async () => {
     const { app } = server();
     expect((await app.request('/api/sync')).status).toBe(401);
-    const res = await app.request('/api/sync', { method: 'POST', body: '{}' });
+    const res = await app.request('/api/sync', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
     expect(res.status).toBe(401);
     // Without a session resolver (production until passkeys land), sync is closed.
     const closed = createApp(openDatabase(':memory:'));
@@ -342,6 +346,7 @@ describe('database', () => {
       const wet = event({ type: 'diaper', data: { kind: 'wet' } });
       await app.request('/api/sync', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ schemaVersion: SCHEMA_VERSION, events: [wet] }),
       });
       db.close();
