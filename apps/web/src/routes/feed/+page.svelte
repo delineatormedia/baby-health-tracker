@@ -287,9 +287,14 @@
   .screen {
     padding-bottom: calc(110px + var(--safe-b));
   }
+  /* The start time is a header action: tappable, so 20 px in the accent. */
   .when {
     position: relative;
     padding: 8px 0;
+    font: 500 20px var(--sans);
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--acc);
   }
   .when input {
     position: absolute;

@@ -88,12 +88,13 @@
   }
   .val {
     flex: 1;
-    font: 600 18px var(--sans);
+    font: 600 20px var(--sans);
     text-align: right;
   }
   .chev {
     color: var(--dim);
     width: 1em;
+    font-size: 20px;
   }
   .quick {
     display: grid;
@@ -106,7 +107,7 @@
     min-height: 52px;
     border-radius: 12px;
     border: 1px solid var(--line);
-    font-size: 15px;
+    font-size: 20px;
   }
   .quick button[aria-pressed='true'] {
     border: 2px solid var(--ink);

@@ -174,9 +174,6 @@
 {/snippet}
 
 <style>
-  .back {
-    font: 600 17px var(--sans);
-  }
   .verdict {
     margin: 18px 16px 0;
     border-radius: 18px;
@@ -189,7 +186,7 @@
     margin: 8px 0 4px;
   }
   .verdict p {
-    font-size: 14px;
+    font-size: 17px;
     color: var(--dim);
   }
   .verdict + .verdict {
@@ -210,7 +207,7 @@
   .more summary {
     display: flex;
     justify-content: space-between;
-    font-size: 15px;
+    font-size: 20px;
     font-weight: 600;
     cursor: pointer;
     list-style: none;
@@ -220,7 +217,7 @@
   }
   .why {
     margin-top: 10px;
-    font-size: 14px;
+    font-size: 17px;
     line-height: 1.45;
   }
   .verdict .why {
@@ -234,7 +231,7 @@
     padding: 12px 14px;
     border-radius: 12px;
     border: 1px dashed var(--line);
-    font-size: 13px;
+    font-size: 15px;
     line-height: 1.45;
     color: var(--dim);
   }
@@ -243,6 +240,7 @@
   }
   .src a {
     color: inherit;
+    font-size: 20px;
   }
   .list {
     margin: 0 16px;
@@ -260,6 +258,7 @@
     min-height: 52px;
   }
   .list summary {
+    font-size: 20px;
     cursor: pointer;
     list-style: none;
   }
@@ -297,10 +296,10 @@
   }
   .k {
     font-weight: 600;
-    font-size: 15px;
+    font-size: 17px;
   }
   .r b {
-    font: 500 15px var(--mono);
+    font: 500 17px var(--mono);
   }
   .strong {
     margin-top: 10px;
@@ -311,7 +310,7 @@
     margin-top: 4px;
     text-transform: none;
     letter-spacing: 0.04em;
-    font-size: 12px;
+    font-size: 15px;
   }
   .ask {
     margin-top: 14px;
@@ -339,7 +338,7 @@
   }
   .foot {
     margin: 22px 24px;
-    font-size: 13px;
+    font-size: 15px;
     color: var(--dim);
   }
 </style>

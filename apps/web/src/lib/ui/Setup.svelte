@@ -62,7 +62,7 @@
     margin-top: 4px;
     border: none;
     background: none;
-    font-size: 19px;
+    font-size: 20px;
     outline: none;
     min-height: 32px;
   }
@@ -71,7 +71,7 @@
   }
   .note {
     margin: 16px 24px;
-    font-size: 13px;
+    font-size: 15px;
     color: var(--dim);
   }
 </style>
