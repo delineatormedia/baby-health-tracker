@@ -248,17 +248,24 @@ in the bottom-left corner.
    *Expected:* the timer is still running, and its time counted on while the app was in
    the background. If the timer screen is showing, it isn't reloaded and has no label
    yet; that's correct. If iOS closed the app in the background, it opens on Home
-   instead, with the feed still running.
-4. Swipe back to Home if you're on the timer.
-   *Expected:* "build N+1" in the bottom-left corner, Home reads "Synced", and the feed is
-   still running. Open it: the timer shows the same running time, not 0.
+   instead, with the feed still running. Swipe back to Home if you're on the timer. No
+   label on Home yet is also correct: the new build is still installing.
+4. Leave the app open on Home for about 30 seconds while the new build installs. Then
+   open **History** and go back to Home.
+   *Expected:* "build N+1" in the bottom-left corner within those two screen changes,
+   Home reads "Synced", and the feed is still running. Open it: the timer shows the same
+   running time, not 0.
 5. Stop the timer and save the feed. Force-quit the app and open it from the Home Screen
    icon.
-   *Expected:* "build N+1" is still there, and the feed is in the log once.
+   *Expected:* "build N+1" is there, and the feed is in the log once.
 
-Within one screen change of A coming back, the label must be showing. If it takes more
-than one, or if any screen reloads while you're entering something, report it as a
-failure of 10.3 or 10.4.
+A screen change straight after A comes back can still show build N; that's expected,
+not a failure. After the 30-second wait, the label must show within two screen changes
+or on the next launch. A launch from the Home Screen icon can also show the old cached
+build first; the launch after that shows "build N+1". If the label still isn't there
+after the wait, two screen changes and a relaunch, report it as a failure of 10.4. If any
+screen reloads while you're entering something, or the feed is lost or logged twice,
+report it as a failure of the step where it happened.
 
 ## What to send back
 
