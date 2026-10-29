@@ -1,5 +1,5 @@
 import { serveStatic } from '@hono/node-server/serve-static';
-import type { Hono } from 'hono';
+import type { Env, Hono } from 'hono';
 import { join } from 'node:path';
 
 // Hashed build output never changes under the same name. Everything else must be
@@ -12,7 +12,7 @@ const REVALIDATE = 'no-cache';
  * Call after the API routes: unknown `/api/*` paths stay 404, and so do missing
  * files with an extension, so the service worker never caches index.html as a script.
  */
-export function serveWeb(app: Hono, root: string): void {
+export function serveWeb<E extends Env>(app: Hono<E>, root: string): void {
   app.all('/api/*', (c) => c.json({ error: 'not found' }, 404));
 
   app.use('*', async (c, next) => {

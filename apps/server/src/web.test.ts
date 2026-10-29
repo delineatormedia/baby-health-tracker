@@ -2,12 +2,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
-import type { Hono } from 'hono';
 import { createApp } from './app.ts';
 import { openDatabase } from './db.ts';
 import { serveWeb } from './web.ts';
 
-let app: Hono;
+let app: ReturnType<typeof createApp>;
 
 beforeAll(() => {
   const base = mkdtempSync(join(tmpdir(), 'bht-web-'));
