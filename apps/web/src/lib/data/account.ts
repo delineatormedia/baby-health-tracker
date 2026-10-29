@@ -11,6 +11,7 @@ import {
 } from '@bht/schema';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { HttpError } from './protocol.ts';
+import { SEEDED_REFUSAL, SeededRefusal, refuseSeeded } from './seeded.ts';
 
 /** A refused account request, with the server's reason ("Invite not found or expired"). */
 export class AccountError extends HttpError {
@@ -32,6 +33,7 @@ export interface AccountTransport {
 /** Same-origin fetch; the session and the flow cookie ride along as HttpOnly cookies. */
 export function httpAccount(base = ''): AccountTransport {
   async function call<T>(path: string, init?: RequestInit): Promise<T> {
+    refuseSeeded(base + path);
     const res = await fetch(base + path, { credentials: 'same-origin', ...init });
     const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
     if (!res.ok) {
@@ -158,6 +160,7 @@ export function isDeviceRefusal(e: unknown): boolean {
  */
 export function signInFailure(e: unknown): string {
   if (e instanceof AccountError) return e.reason;
+  if (e instanceof SeededRefusal) return `${SEEDED_REFUSAL}. Clear local data to sign in.`;
   if (e instanceof Error && e.name === 'NotAllowedError') return 'Passkey cancelled. Try again.';
   if (e instanceof TypeError) return 'No connection to the server. Try again.';
   return e instanceof Error ? e.message : String(e);

@@ -7,6 +7,7 @@ import {
   type PushResult,
   type SyncTransport,
 } from './protocol.ts';
+import { SeededRefusal } from './seeded.ts';
 
 export type SyncStatus = 'idle' | 'syncing' | 'offline' | 'signed_out';
 
@@ -273,6 +274,7 @@ export class SyncClient {
 
 /** A failed run's reason as Settings shows it. */
 export function failureReason(err: unknown): string {
+  if (err instanceof SeededRefusal) return err.message;
   if (!(err instanceof HttpError)) return 'No connection to the server';
   if (err.status === 413) return 'Server rejected upload size';
   if (err.status === 409) return 'Server needs an update before this app can sync';

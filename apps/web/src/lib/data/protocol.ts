@@ -5,6 +5,7 @@ import {
   type PushRequest,
   type PushResponse,
 } from '@bht/schema';
+import { refuseSeeded } from './seeded.ts';
 
 // The /api/sync wire format lives in @bht/schema (protocol.ts), shared with the server.
 export {
@@ -34,6 +35,7 @@ export class HttpError extends Error {
  */
 export function httpTransport(base = ''): SyncTransport {
   async function call<T>(input: string, init?: RequestInit): Promise<T> {
+    refuseSeeded(base + input);
     const res = await fetch(base + input, { credentials: 'same-origin', ...init });
     if (!res.ok) throw new HttpError(res.status);
     return (await res.json()) as T;

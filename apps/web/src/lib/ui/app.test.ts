@@ -3,6 +3,7 @@ import { IDBFactory } from 'fake-indexeddb';
 import { newId, type BabyEvent, type SignedIn } from '@bht/schema';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { openDatabase } from '../data/db.ts';
+import { SEEDED_REFUSAL } from '../data/seeded.ts';
 import { EventStore } from '../data/store.ts';
 
 // App-level account transitions (#55 review): the real AppState over a real EventStore, with
@@ -273,5 +274,48 @@ describe('placement goes by stored rows', () => {
     await vi.waitFor(() => expect(pushed).toHaveLength(1));
     expect(pushed[0]).toMatchObject({ babyId: target.id, deleted: true });
     expect(app.events).toEqual([]);
+  });
+});
+
+describe('a seeded dev browser stays off real servers', () => {
+  test('signed in on a real server, its test entries stay pending and nothing is sent', async () => {
+    vi.stubGlobal('location', new URL('https://bht.example/'));
+    const old = baby();
+    kv.set('bht.seeded', '1');
+    kv.set('bht.baby', JSON.stringify(old));
+    kv.set('bht.account', JSON.stringify({ householdId: old.householdId, memberId: newId() }));
+    const store = new EventStore(await openDatabase(), newId());
+    await store.log(old.id, 'diaper', { kind: 'wet' });
+    serve(async () => json(emptyPull()));
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('offline'));
+
+    expect(app.syncError).toBe(SEEDED_REFUSAL);
+    expect(requests).toEqual([]);
+    expect(await app.store.pending(10)).toHaveLength(1);
+  });
+
+  test('signing in to a real server is refused before any request', async () => {
+    vi.stubGlobal('location', new URL('https://bht.example/'));
+    kv.set('bht.seeded', '1');
+    kv.set('bht.baby', JSON.stringify(baby()));
+    serve(async () => json({}));
+    const app = await loadApp();
+
+    await expect(app.signIn((account) => account.login())).rejects.toThrow(SEEDED_REFUSAL);
+    expect(requests).toEqual([]);
+    expect(app.account).toBeNull();
+  });
+
+  test('on localhost it syncs as usual', async () => {
+    vi.stubGlobal('location', new URL('http://localhost:5173/'));
+    const old = baby();
+    kv.set('bht.seeded', '1');
+    kv.set('bht.baby', JSON.stringify(old));
+    kv.set('bht.account', JSON.stringify({ householdId: old.householdId, memberId: newId() }));
+    serve(async () => json(emptyPull()));
+    const app = await loadApp();
+    await vi.waitFor(() => expect(pulls()).toHaveLength(1));
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
   });
 });
