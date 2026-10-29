@@ -5,6 +5,7 @@
   import Dial from '../lib/ui/Dial.svelte';
   import FeedKey from '../lib/ui/FeedKey.svelte';
   import LogKey from '../lib/ui/LogKey.svelte';
+  import PumpKey from '../lib/ui/PumpKey.svelte';
   import { keyLines } from '../lib/ui/keys.ts';
   import Toast from '../lib/ui/Toast.svelte';
   import {
@@ -13,10 +14,14 @@
     countMarks,
     currentSide,
     dayMarks,
+    feedElapsed,
     finishFeedData,
     hm,
+    isPaused,
     minutes,
     runningFeed,
+    runningPump,
+    stoppedPump,
   } from '../lib/ui/logic.ts';
 
   const baby = $derived(app.baby!);
@@ -24,9 +29,12 @@
   const counts = $derived(countMarks(marks));
   const running = $derived(runningFeed(app.events));
   const lastFeed = $derived(app.events.find((e) => e.type === 'breastfeed' || e.type === 'bottle'));
+  const pumping = $derived(runningPump(app.events));
+  const pumpStopped = $derived(pumping ? undefined : stoppedPump(app.events));
   const lines = $derived(keyLines(app.events, app.now, app.volume));
 
   let busy = $state(false);
+  let dockHeight = $state(300);
 
   /** Serialises taps so a double tap cannot log twice. */
   async function once(fn: () => Promise<unknown>) {
@@ -54,22 +62,34 @@
   const wet = () => once(() => app.log('diaper', { kind: 'wet' }, 'Wet logged'));
 </script>
 
-<main class="screen fade">
+<!-- The page scrolls clear of the dock, however tall wrapped key lines make it. -->
+<main class="screen fade" style:--dock-h="{dockHeight}px">
   <header class="top">
     <h1>{baby.name}</h1>
     <span class="lab num">{ageDays(baby.birthAt, app.now)} days · last 24 h</span>
   </header>
 
+  <!-- The dial is the last 24 hours, so tapping it opens Reports (#21). While a feed runs it
+       stays the way back to the timer, where the parent switches sides. -->
   <a
-    href={resolve('/feed')}
+    href={running ? resolve('/feed') : resolve('/reports')}
     class="dial-link"
-    aria-label={running ? 'Open the breastfeed timer' : 'Breastfeed'}
+    aria-label={running ? 'Open the breastfeed timer' : 'Open Reports'}
   >
     <Dial {marks} running={running?.occurredAt ?? null} now={app.now}>
       {#if running}
-        <span class="lab">Feeding · {currentSide(running) ?? running.data.side}</span>
-        <span class="v num">{clock(app.now - Date.parse(running.occurredAt))}</span>
-        <span class="lab">since {time(running.occurredAt)}</span>
+        <span class="lab"
+          >{isPaused(running) ? 'Paused' : 'Feeding'} · {currentSide(running) ??
+            running.data.side}</span
+        >
+        <span class="v num" class:held={isPaused(running)}
+          >{clock(feedElapsed(running, app.now))}</span
+        >
+        <span class="lab"
+          >{isPaused(running) && running.data.pausedAt
+            ? `paused at ${time(running.data.pausedAt)}`
+            : `since ${time(running.occurredAt)}`}</span
+        >
       {:else if lastFeed}
         <span class="lab">Last feed</span>
         <span class="v num">{hm(app.now - Date.parse(lastFeed.occurredAt))}</span>
@@ -88,7 +108,7 @@
   </div>
   <p class="quiet lab">Saved on this phone · not synced</p>
 
-  <div class="dock">
+  <div class="dock" bind:clientHeight={dockHeight}>
     <Toast />
     <nav class="chips">
       <a href={resolve('/readings')}>Readings</a>
@@ -116,15 +136,20 @@
         lines={lines.bottle}
         onclick={() => goto(resolve('/bottle'))}
       />
-      <!-- Opens the pump screen once #22 (PR #32) lands; until then there is nowhere to go. -->
-      <LogKey kind="pump" label="Pump" lines={lines.pump} onclick={() => {}} disabled />
+      <PumpKey
+        running={pumping}
+        stopped={pumpStopped}
+        lines={lines.pump}
+        now={app.now}
+        onclick={() => goto(resolve('/pump'))}
+      />
     </div>
   </div>
 </main>
 
 <style>
   .screen {
-    padding-bottom: calc(300px + var(--safe-b));
+    padding-bottom: calc(var(--dock-h) + 16px);
   }
   .dial-link {
     display: block;
@@ -135,6 +160,9 @@
     font: 300 clamp(44px, 15vw, 60px) / 1 var(--sans);
     letter-spacing: -0.02em;
     margin: 8px 0;
+  }
+  .held {
+    color: var(--dim);
   }
   .legend {
     display: flex;
@@ -195,7 +223,8 @@
   .rail {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: 88px 88px;
+    /* Rows grow when a line wraps at narrow widths (#20: wrap, never truncate). */
+    grid-template-rows: minmax(88px, auto) minmax(88px, auto);
     gap: 8px;
   }
 </style>

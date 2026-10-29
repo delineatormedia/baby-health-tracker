@@ -106,6 +106,24 @@ describe('key lines', () => {
     expect(text(lines.pump)).toEqual(['30m ago', 'Right side']);
   });
 
+  test('a running pump or one waiting for its amount is not the last pump (#32)', () => {
+    const timer = (data: object, minutesAgo: number) =>
+      ev('pump', { leftMl: null, rightMl: null, afterFeed: false, ...data }, minutesAgo);
+    const finished = ev(
+      'pump',
+      { leftMl: 50, rightMl: null, afterFeed: false, side: 'both', durationSeconds: 900 },
+      200,
+    );
+    const running = timer({ side: 'left', durationSeconds: null }, 5);
+    const stopped = timer({ side: 'right', durationSeconds: 600 }, 40);
+    // The timer's side wins over the sides with a volume.
+    expect(text(keyLines([running, stopped, finished], NOW, mL).pump)).toEqual([
+      '3h 20m ago',
+      'Both sides',
+    ]);
+    expect(text(keyLines([running, stopped], NOW, mL).pump)).toEqual(['Not logged yet']);
+  });
+
   test('the lines follow the event list, so an Undo takes the event back out', () => {
     const older = ev('diaper', { kind: 'wet' }, 54);
     const logged = ev('diaper', { kind: 'wet' }, 0);

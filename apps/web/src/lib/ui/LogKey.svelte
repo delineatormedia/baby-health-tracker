@@ -4,7 +4,7 @@
 
   // One Home quick-log key (#20): a 2 px outline in the event colour, the label with the event's
   // shape, and its last-logged lines. Running, it gets a 3 px outline, the 16% tint, and
-  // `children` in place of the lines.
+  // `children` in place of the lines. Paused, the outline turns dashed and the tint goes.
   let {
     kind,
     label,
@@ -12,7 +12,7 @@
     onclick,
     tall = false,
     running = false,
-    disabled = false,
+    paused = false,
     name,
     children,
   }: {
@@ -22,20 +22,24 @@
     onclick: () => void;
     tall?: boolean;
     running?: boolean;
-    disabled?: boolean;
+    paused?: boolean;
     /** Accessible name; defaults to the label and lines. */
     name?: string;
     children?: Snippet;
   } = $props();
+
+  /** Lines wrap between phrases, never inside "1h 19m", "60 mL" or "1:40 AM". */
+  const glue = (s: string) =>
+    s.replace(/(\d\S*) (?=\d)/g, '$1\u00a0').replace(/(\d) (?=[a-zA-Z])/g, '$1\u00a0');
 </script>
 
 <button
   class="key"
   class:tall
   class:run={running}
+  class:paused
   style:--ev="var(--{kind})"
   aria-label={name ?? keyName(label, lines)}
-  {disabled}
   {onclick}
 >
   <b><i class="g g-{kind}" aria-hidden="true"></i>{label}</b>
@@ -44,7 +48,7 @@
   {:else}
     {#each lines as l, i (i)}
       <small class="num"
-        >{#if l.em}<em>{l.em}</em>{/if}{l.rest}</small
+        >{#if l.em}<em>{glue(l.em)}</em>{/if}{glue(l.rest)}</small
       >
     {/each}
   {/if}
@@ -53,6 +57,8 @@
 <style>
   .key {
     min-width: 0;
+    /* The live clocks size themselves to the key (cqi). */
+    container-type: inline-size;
     border-radius: 16px;
     background: var(--panel);
     border: 2px solid var(--ev);
@@ -80,9 +86,6 @@
   small,
   .key :global(small) {
     max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     font: 400 15px/1.25 var(--sans);
     color: var(--text-dim);
     margin-top: 4px;
@@ -95,6 +98,10 @@
   .run {
     border-width: 3px;
     background: color-mix(in srgb, var(--ev) 16%, var(--panel));
+  }
+  .run.paused {
+    border-style: dashed;
+    background: var(--panel);
   }
   .run :global(small) {
     color: var(--ink);

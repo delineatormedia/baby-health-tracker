@@ -2,7 +2,7 @@
 // from the current event list, so a log or an Undo changes it straight away.
 
 import type { BabyEvent, Side } from '@bht/schema';
-import type { Breastfeed } from './logic.ts';
+import { lastPump, pumpSide, type Breastfeed } from './logic.ts';
 import { time } from './time.ts';
 
 export type KeyKind = 'feed' | 'wet' | 'dirty' | 'bottle' | 'pump';
@@ -33,18 +33,13 @@ export function sideLine(side: Side): KeyLine {
   return { em: SIDE[side], rest: side === 'both' ? ' sides' : ' side' };
 }
 
-/** The sides a pump ran on, from the volumes it has. */
-function pumpSide(p: Extract<BabyEvent, { type: 'pump' }>): Side {
-  if (p.data.leftMl !== null && p.data.rightMl !== null) return 'both';
-  return p.data.leftMl !== null ? 'left' : 'right';
-}
-
 const NOT_YET: KeyLine[] = [{ em: '', rest: 'Not logged yet' }];
 
 /**
  * The lines under each key. Feed's side is the last breastfeed's side, "Both" once it switched,
- * as on the feed screen. A running breastfeed is not "last logged": the Feed key shows its
- * timer instead, so its lines come from the last finished feed.
+ * as on the feed screen. A running breastfeed or pump is not "last logged": its key shows the
+ * timer instead, so its lines come from the last finished one. A pump stopped with its amount
+ * still to enter is not finished either (the Pump key asks for the amount).
  */
 export function keyLines(
   events: readonly BabyEvent[],
@@ -63,7 +58,7 @@ export function keyLines(
   const wet = events.find((e) => e.type === 'diaper' && e.data.kind !== 'dirty');
   const dirty = events.find((e) => e.type === 'diaper' && e.data.kind !== 'wet');
   const bottle = find((e): e is Extract<BabyEvent, { type: 'bottle' }> => e.type === 'bottle');
-  const pump = find((e): e is Extract<BabyEvent, { type: 'pump' }> => e.type === 'pump');
+  const pump = lastPump(events);
 
   return {
     feed: feed ? [...at(feed), sideLine(feed.data.side)] : NOT_YET,
