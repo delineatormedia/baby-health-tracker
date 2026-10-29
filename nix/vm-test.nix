@@ -11,13 +11,28 @@
 { pkgs, self }:
 let
   # Stands in for the tailscale CLI: reports this machine's name from /run/fake-ts/name
-  # (default the test origin's host) and records what `serve` was asked to do.
+  # (default the test origin's host). Like tailscaled, it keeps one HTTPS handler per
+  # port, in /run/fake-ts/serve-<port>, until `off` removes it; `off` on a port with
+  # none fails with the real CLI's message.
   fakeTailscale = pkgs.writeShellScriptBin "tailscale" ''
     mkdir -p /run/fake-ts
     name=$(cat /run/fake-ts/name 2>/dev/null || echo bht.example.ts.net)
     case "$1 ''${2-}" in
       "status --json") echo "{\"BackendState\":\"Running\",\"Self\":{\"DNSName\":\"$name.\"}}" ;;
-      serve*) echo "$*" > /run/fake-ts/serve ;;
+      serve*)
+        port= last=
+        for a in "$@"; do
+          case "$a" in --https=*) port=''${a#--https=} ;; esac
+          last=$a
+        done
+        [ -n "$port" ] || { echo "fake tailscale: serve without --https: $*" >&2; exit 2; }
+        if [ "$last" = off ]; then
+          [ -e "/run/fake-ts/serve-$port" ] || { echo "error: failed to remove web serve: handler does not exist" >&2; exit 1; }
+          rm "/run/fake-ts/serve-$port"
+        else
+          echo "$*" > "/run/fake-ts/serve-$port"
+        fi
+        ;;
       *) echo "fake tailscale: $*" >&2; exit 2 ;;
     esac
   '';
@@ -94,16 +109,44 @@ pkgs.testers.runNixOSTest {
 
     with subtest("tailscale serve publishes origin only under the matching machine name"):
         server.wait_for_unit("bht-tailscale-serve.service")
-        served = server.succeed("cat /run/fake-ts/serve").strip()
+        served = server.succeed("cat /run/fake-ts/serve-443").strip()
         assert served == "serve --bg --https=443 http://127.0.0.1:8787", served
-        server.succeed("rm /run/fake-ts/serve && echo renamed.example.ts.net > /run/fake-ts/name")
+        # Someone else's handler on another port; the unit must never touch it.
+        server.succeed("${fakeTailscale}/bin/tailscale serve --bg --https=8443 http://127.0.0.1:9000")
+
+    with subtest("a renamed machine withdraws the published handler"):
+        server.succeed("echo renamed.example.ts.net > /run/fake-ts/name")
         server.fail("systemctl restart bht-tailscale-serve.service")
         journal = server.succeed("journalctl -u bht-tailscale-serve.service -o cat")
         assert "Tailscale name is renamed.example.ts.net" in journal, journal
         assert "Not publishing" in journal, journal
-        server.fail("test -e /run/fake-ts/serve")
-        server.succeed("rm /run/fake-ts/name && systemctl restart bht-tailscale-serve.service")
-        server.succeed("test -e /run/fake-ts/serve")
+        server.fail("test -e /run/fake-ts/serve-443")
+        server.succeed("test -e /run/fake-ts/serve-8443")
+
+    with subtest("a mismatch withdraws a handler left from an earlier boot, without a stop"):
+        # A handler persisted in tailscaled with the unit not running (power loss, so no
+        # stop ran). Only the start script's mismatch path can remove it here.
+        server.succeed("systemctl reset-failed bht-tailscale-serve.service")
+        server.succeed("${fakeTailscale}/bin/tailscale serve --bg --https=443 http://127.0.0.1:8787")
+        server.fail("systemctl start bht-tailscale-serve.service")
+        server.fail("test -e /run/fake-ts/serve-443")
+        server.succeed("test -e /run/fake-ts/serve-8443")
+
+    with subtest("stopping the unit withdraws its handler"):
+        server.succeed("rm /run/fake-ts/name && systemctl reset-failed bht-tailscale-serve.service")
+        server.succeed("systemctl start bht-tailscale-serve.service")
+        server.succeed("test -e /run/fake-ts/serve-443")
+        server.succeed("systemctl stop bht-tailscale-serve.service")
+        server.fail("test -e /run/fake-ts/serve-443")
+        server.succeed("test -e /run/fake-ts/serve-8443")
+        server.fail("systemctl is-failed bht-tailscale-serve.service")
+        # Stopping with nothing published (withdrawn by hand) is not a failure.
+        server.succeed("systemctl start bht-tailscale-serve.service")
+        server.succeed("${fakeTailscale}/bin/tailscale serve --https=443 off")
+        server.succeed("systemctl stop bht-tailscale-serve.service")
+        server.fail("systemctl is-failed bht-tailscale-serve.service")
+        server.succeed("systemctl start bht-tailscale-serve.service")
+        server.succeed("test -e /run/fake-ts/serve-443")
 
     with subtest("database lives in the state dir, readable only by bht"):
         server.succeed("test -s /var/lib/bht/bht.db")

@@ -8,7 +8,7 @@ only and the module opens no firewall port. Phones reach it over Tailscale.
 ## First deploy, step by step
 
 Follow these in order, on the family server and the two phones. Each step ends with a
-check; don't go on until it passes. Steps 6 and 7 need the sign-in release (#5 step 3).
+check; don't go on until it passes. Steps 7 and 8 need the sign-in release (#5 step 3).
 
 **Before you start:** a NixOS server whose configuration is a flake, a Tailscale account,
 the Tailscale app signed in on both phones, and passkeys on both phones (iOS 16 or later,
@@ -17,7 +17,14 @@ Android 9 or later, with a screen lock).
 1. **Turn on MagicDNS and HTTPS certificates** for the tailnet: admin console, DNS page.
    *Check:* both switches show enabled.
 
-2. **Put the server on the tailnet and settle its name.** Run `sudo tailscale up`, then
+2. **Turn on Tailscale on the server.** In the server's NixOS configuration, set
+   `services.tailscale.enable = true;`, then run
+   `sudo nixos-rebuild switch --flake .#family-server` (this guide calls the
+   configuration `family-server`; use yours).
+   *Check:* `tailscale status` answers (before `tailscale up` it says `Logged out.`), not
+   `failed to connect to local tailscaled`.
+
+3. **Put the server on the tailnet and settle its name.** Run `sudo tailscale up`, then
    rename the machine in the admin console if you want a different name. Its HTTPS name
    is what both parents will open.
    *Check:* `tailscale status --json | nix run nixpkgs#jq -- -r .Self.DNSName` prints the name, like
@@ -27,7 +34,7 @@ Android 9 or later, with a screen lock).
    > renaming the tailnet or changing `origin` later makes both parents' passkeys stop
    > working, and each has to register again.
 
-3. **Add the app to the server's flake.** Pin a release rather than following `main`:
+4. **Add the app to the server's flake.** Pin a release rather than following `main`:
 
    ```nix
    # flake.nix of the family server
@@ -48,12 +55,12 @@ Android 9 or later, with a screen lock).
    ```
 
    For `bht.nix`, copy [`nix/example-host.nix`](../nix/example-host.nix) and set
-   `origin` to `https://` plus the name from step 2, without the trailing dot. CI builds a
+   `origin` to `https://` plus the name from step 3, without the trailing dot. CI builds a
    whole system from that file, so its options are known to work.
    *Check:* `nix flake check` on the server's flake passes. A wrong `origin`, or an `rpId`
    that doesn't fit it, fails here with a message saying which.
 
-4. **Deploy.** `sudo nixos-rebuild switch --flake .#family-server`.
+5. **Deploy.** `sudo nixos-rebuild switch --flake .#family-server`.
    *Check:*
 
    ```sh
@@ -68,18 +75,18 @@ Android 9 or later, with a screen lock).
    not up yet (run `tailscale up`, then `sudo systemctl restart bht-tailscale-serve`), or a
    machine name that doesn't match `origin`. It publishes nothing until the name matches.
 
-5. **Open it on a phone.** On the tailnet, open `https://<name>` in Safari or Chrome and
+6. **Open it on a phone.** On the tailnet, open `https://<name>` in Safari or Chrome and
    add it to the Home Screen. The first load can take a few seconds while Tailscale gets
    the certificate.
    *Check:* the page loads over HTTPS with no certificate warning, and the app opens from
    the Home Screen icon.
 
-6. **First parent: create the household.** In the app, set up the baby, then Settings →
+7. **First parent: create the household.** In the app, set up the baby, then Settings →
    **Share with the other parent**, and save the passkey.
    *Check:* Settings shows the household and that it's synced. On the server:
    `sudo -u bht sqlite3 /var/lib/bht/bht.db 'SELECT COUNT(*) FROM households'` prints `1`.
 
-7. **Second parent: join.** On the first phone, Settings → **Invite the other parent**
+8. **Second parent: join.** On the first phone, Settings → **Invite the other parent**
    shows a code. It works once, for 24 hours. On the second phone, open the URL, add it to
    the Home Screen, set up the baby, then Settings → **Join the other parent** and enter
    the code.
@@ -88,42 +95,42 @@ Android 9 or later, with a screen lock).
    With `registration = "first"` (the default), nobody else on the tailnet can create a
    second household now. A third phone that tries **Share** is told to ask for an invite.
 
-8. **Take a backup, and send it off the machine.**
+9. **Take a backup, and send it off the machine.**
    `sudo systemctl start bht-backup.service`.
    *Check:* `sudo ls /var/backup/bht` shows a `bht-<time>.db`, and
    `systemctl list-timers bht-backup.timer` shows the next run. Then point the machine's
    off-site backup (restic, borg, …) at `/var/backup/bht`; snapshots on the same disk do
    not survive a lost disk.
 
-9. **Rehearse a restore, before the family relies on it.** Do this right after step 8,
-   while nobody is logging:
+10. **Rehearse a restore, before the family relies on it.** Do this right after step 9,
+    while nobody is logging:
 
-   ```sh
-   sudo systemctl start bht-backup.service
-   sudo bht-restore "$(sudo ls /var/backup/bht | tail -n 1)"
-   ```
+    ```sh
+    sudo systemctl start bht-backup.service
+    sudo bht-restore "$(sudo ls /var/backup/bht | tail -n 1)"
+    ```
 
-   *Check:* it ends with the server healthy, both phones still sync (log one more
-   wet diaper on each), and the counts match:
-   `sudo -u bht sqlite3 /var/lib/bht/bht.db 'SELECT COUNT(*) FROM event_versions'` before
-   and after. Then delete `/var/lib/bht/restore-*`.
+    *Check:* it ends with the server healthy, both phones still sync (log one more
+    wet diaper on each), and the counts match:
+    `sudo -u bht sqlite3 /var/lib/bht/bht.db 'SELECT COUNT(*) FROM event_versions'` before
+    and after. Then delete `/var/lib/bht/restore-*`.
 
-   > **Restoring once the family uses it loses recent entries.** Phones don't re-send
-   > what the server already accepted, so anything logged after the snapshot is gone
-   > from the server and from the other phone. New entries can also be missed by a phone
-   > until the server catches up with where that phone had read to. Restore only to
-   > recover from a lost or corrupt database, and see "Restore" below.
+    > **Restoring once the family uses it loses recent entries.** Phones don't re-send
+    > what the server already accepted, so anything logged after the snapshot is gone
+    > from the server and from the other phone. New entries can also be missed by a phone
+    > until the server catches up with where that phone had read to. Restore only to
+    > recover from a lost or corrupt database, and see "Restore" below.
 
 **Upgrading** later: change the commit or tag in `inputs.bht.url`, run
-`nix flake update bht`, then step 4 again with its check. Take a backup first
-(step 8).
+`nix flake update bht`, then step 5 again with its check. Take a backup first
+(step 9).
 
 ## Options
 
 | Option | Default | |
 | --- | --- | --- |
 | `origin` | none, required | The `https://` URL parents open |
-| `rpId` | the hostname of `origin` | WebAuthn relying-party ID; must be `origin`'s host or a parent domain |
+| `rpId` | the hostname of `origin` | WebAuthn relying-party ID; must be exactly `origin`'s host. Parent domains are not supported |
 | `registration` | `first` | `first`: only the first household can register, everyone else joins by invite. `open`: any phone that reaches the server can create one |
 | `tailscaleServe.enable` | `false` | Publish `origin` with `tailscale serve`, once the machine's Tailscale name matches it |
 | `tailscaleServe.package` | `services.tailscale.package` | |
@@ -166,7 +173,7 @@ systemctl list-timers bht-backup.timer
 ## Restore
 
 A restore puts the server back to the snapshot. Entries logged after it are lost (see
-the warning in step 9), so restore only to recover a lost or corrupt database.
+the warning in step 10), so restore only to recover a lost or corrupt database.
 
 Use `bht-restore`. Give it a snapshot file name from `backup.directory`, or a
 full path:

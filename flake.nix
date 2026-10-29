@@ -129,6 +129,10 @@
             inherit self;
             pkgs = nixpkgs.legacyPackages.${system};
           };
+          rp-id = import ./nix/rp-id-check.nix {
+            inherit lib self system;
+            pkgs = nixpkgs.legacyPackages.${system};
+          };
           # A whole NixOS system with the documented host config (docs/DEPLOY.md).
           example-host =
             (lib.nixosSystem {

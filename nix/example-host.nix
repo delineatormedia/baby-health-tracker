@@ -1,4 +1,4 @@
-# What a family server adds to its NixOS configuration for the app (docs/DEPLOY.md, step 3).
+# What a family server adds to its NixOS configuration for the app (docs/DEPLOY.md, step 4).
 # CI builds a whole system from it, so the options it uses keep evaluating.
 {
   services.tailscale.enable = true;
