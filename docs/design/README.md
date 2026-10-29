@@ -9,6 +9,9 @@ This folder holds the merged direction. It is the reference for the #6 UI.
 - `board-core.png`, `board-rest.png`: renders of the two boards.
 - `board-home.png`, `board-home-deut.png`: the glanceable Home (#20), and the
   same board through a deuteranopia simulation (`?board=home&cvd=deut`).
+- `board-reports.png`: Reports (#21), from `?board=reports`. The boundary
+  cases are `board-reports-dst25.png`, `board-reports-dst23.png` and
+  `board-reports-start.png`, from `?board=reports&case=dst25|dst23|start`.
 - `explorations/`: the three original directions (A Ledger, B Nest, C Darkroom),
   kept for the record.
 
@@ -176,6 +179,73 @@ are grouped under "Consider talking to your pediatrician".
   right after a log and right after Undo (the undone event no longer counts),
   and the elapsed time ticks at least once a minute.
 
+## Reports (#21)
+
+Reports are for looking back. History is for editing. Reports are read-only:
+nothing on them opens an editor, and a parent who wants to change an event uses
+History.
+
+- **Way in.** "Reports ›" in the History header, and a tap on the Home dial
+  (the dial is already the last 24 hours). The Home chips stay as they are,
+  because a fourth chip at 20 px doesn't fit. History keeps "Both parents"
+  beside its title.
+- **Day, Week, Month.** A segmented control, then a stepper: ‹, the period
+  ("Monday, Oct 26", "Oct 26 – Nov 1", "October 2026"), ›. Tapping the period
+  opens a date picker. › is disabled on the current period.
+- **Day.** Three summary cards: Diapers (wet and dirty), Feeds (breast and
+  bottle) and Bottle (mL total and oz). If a weight was logged that day, a
+  Weight card follows ("3.58 kg", then "7 lb 14 oz · Clinic"). Then a
+  timeline from day start to day start, in the dial's shapes: feed bars (as long
+  as the feed) and bottle rings on the top lane, wet dots and dirty squares on
+  the next, pump diamonds on the last. A dotted line marks midnight. Then the
+  list, oldest first, with an "After midnight · Tue Oct 27" divider. List rows
+  are 17 px because they are not tappable. The Day screen scrolls; the board
+  shows it at the top and scrolled to the divider.
+- **Weight** has no mark on the dial, so it stays off the timeline. It shows as
+  the Day card and a list row, "Weight · 3.58 kg / 7 lb 14 oz", with where it
+  was taken under it. Week and Month don't show weight.
+- **Week.** One line of daily averages over the days that have finished, then
+  a row for each day: the day (20 px, opens the Day view), its counts, and a
+  mini timeline. Today says "so far"; later days say "Not yet" and don't open.
+- **Month.** Daily averages, then a calendar. Each day shows feeds (bar) and
+  diapers (dot and square) and opens the Day view. Days before birth and future
+  days are blank. Today is outlined and counts only so far.
+- **Counts match the timeline.** Every count is computed from the same events
+  the timeline draws. In the mockup, Monday Oct 26 is the same day in the Day
+  view, the first Week row and the Month cell: 8 diapers, 9 feeds, 180 mL.
+- **Units** follow the mL/oz setting. "Both" shows mL first.
+
+### Day starts at
+
+- A Household setting: Midnight, 6 AM, 7 AM, 8 AM, 9 AM or Other (the
+  phone's time wheel). The default is Midnight.
+- It moves the day boundary in Reports and in History's day headings. With
+  8 AM, a 3 AM feed belongs to the night before.
+- It never changes Readings. Those count day-of-life windows from the birth
+  time (#11), and the screen says so under the setting. The implementation
+  needs #21's test that Readings are identical before and after a change.
+- The Day view says what its window is: "8 AM to 8 AM Tue", or "Midnight to
+  midnight". In `case=start`, the 3:00 AM Tuesday feed is in Monday with 8 AM
+  and in Tuesday with Midnight, and the Week rows move with it.
+- Until household sync (#5) lands, the setting is per phone (issue #21).
+
+### Daylight saving
+
+Days are cut at the day start in the household's time zone, not every 24
+hours, so a day can be 23 or 25 hours. The mockup builds every event from a
+real date in America/New_York.
+
+- The Day subtitle adds the length: "8 AM to 8 AM Sun · 25 h". The Week row
+  says "25 h" under the day, and its mini timeline spans that day's own hours.
+- The timeline gives every real hour the same width, so a 25 h day draws 25
+  hours and its axis ticks follow the clock.
+- **Clocks back (25 h, `case=dst25`).** The repeated hour is shaded on the
+  timeline, a note under it says what happened, and the list has a "Clocks went
+  back · 1 AM again" divider. A time in the second hour reads "1:30 AM (2nd)".
+- **Clocks forward (23 h, `case=dst23`).** A solid line marks the jump, the
+  note says there was no 2 AM hour, and the list has a "Clocks went forward ·
+  no 2 AM" divider. The axis tick that would be 2 AM reads 3 AM.
+
 ## Flows
 
 | Log | Taps from home |
@@ -192,6 +262,9 @@ Core: home (24-hour dial), breastfeed timer, diaper color, diaper details,
 bottle, readings (flag and all-clear states), why.
 
 Remaining: pump, weight, history, add a baby, household settings, sign in.
+
+Reports: day (top and scrolled), week, month, Day starts at, and History's
+"Reports ›" header. Cases: 25 h day, 23 h day, Day starts at 8 AM vs midnight.
 
 ## Readings and flag copy
 
