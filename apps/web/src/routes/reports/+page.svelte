@@ -4,6 +4,7 @@
   import { page } from '$app/state';
   import { formatWeight, fromMl } from '@bht/schema';
   import { app } from '../../lib/ui/app.svelte.ts';
+  import Glyph from '../../lib/ui/Glyph.svelte';
   import Timeline from '../../lib/ui/Timeline.svelte';
   import {
     addDays,
@@ -198,13 +199,6 @@
 
   const per = (n: number) => String(n);
   const plural = (n: number, word: string) => (n === 1 ? word : `${word}s`);
-  const glyphs = {
-    feed: 'g-feed',
-    bottle: 'g-bottle',
-    wet: 'g-wet',
-    dirty: 'g-dirty',
-    pump: 'g-pump',
-  };
 </script>
 
 <main class="screen fade reports">
@@ -263,15 +257,14 @@
         <span class="rl">Diapers</span>
         <div class="n num">{c.diapers}</div>
         <div class="sub">
-          <i class="g g-wet"></i><b>{c.wet}</b> wet<br /><i class="g g-dirty"></i><b>{c.dirty}</b> dirty
+          <Glyph kind="wet" /><b>{c.wet}</b> wet<br /><Glyph kind="dirty" /><b>{c.dirty}</b> dirty
         </div>
       </div>
       <div>
         <span class="rl">Feeds</span>
         <div class="n num">{c.breast + c.bottle}</div>
         <div class="sub">
-          <i class="g g-feed"></i><b>{c.breast}</b> breast<br /><i class="g g-bottle"></i><b
-            >{c.bottle}</b
+          <Glyph kind="feed" /><b>{c.breast}</b> breast<br /><Glyph kind="bottle" /><b>{c.bottle}</b
           > bottle
         </div>
       </div>
@@ -322,8 +315,8 @@
         <li class="rr" class:w={r.e.type === 'weight'}>
           <span class="t num">{clockText(r.t, tz)}</span>
           <span class="k"
-            >{#if r.text.glyph}<i class="g {glyphs[r.text.glyph]}"></i>{:else}<i class="g"
-              ></i>{/if}{r.text.name}{#if r.text.detail}<small>{r.text.detail}</small>{/if}</span
+            >{#if r.text.glyph}<Glyph kind={r.text.glyph} />{:else}<i class="g"></i>{/if}{r.text
+              .name}{#if r.text.detail}<small>{r.text.detail}</small>{/if}</span
           >
         </li>
       {:else}
@@ -388,7 +381,7 @@
       </p>
     {/if}
     <p class="note">
-      <i class="g g-feed"></i> feeds ·
+      <Glyph kind="feed" /> feeds ·
       <span class="pair"><i class="wet"></i><i class="dirty"></i></span>
       diapers · outlined: today so far · <i class="g g-miss"></i> missing logs marked
     </p>
@@ -412,7 +405,7 @@
           >
             <b>{d.date.d}</b>
             {#if d.missing}<i class="g g-miss mk"></i>{/if}
-            <span><i class="g g-feed"></i>{d.tally.breast + d.tally.bottle}</span>
+            <span><Glyph kind="feed" />{d.tally.breast + d.tally.bottle}</span>
             <span
               ><span class="pair"><i class="wet"></i><i class="dirty"></i></span>{d.tally
                 .diapers}</span
@@ -676,13 +669,14 @@
   .c.today {
     border: 2px solid var(--ink);
   }
-  .g {
+  /* Glyph's svg is the child component's: the margins reach it through :global. */
+  .reports :global(.g) {
     margin-right: 8px;
   }
-  .sub .g {
+  .sub :global(.g) {
     margin-right: 5px;
   }
-  .c .g {
+  .c :global(.g) {
     margin-right: 0;
   }
   .row .mk {
