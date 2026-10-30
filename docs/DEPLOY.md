@@ -82,18 +82,27 @@ Android 9 or later, with a screen lock).
    the Home Screen icon.
 
 7. **First parent: create the household.** In the app, set up the baby, then Settings →
-   **Share with the other parent**, and save the passkey.
+   **Share with the other parent**. Fill in **Your name** (the button stays off until you
+   do), tap **Create with a passkey**, and save the passkey.
    *Check:* Settings shows the household and that it's synced. On the server:
    `sudo -u bht sqlite3 /var/lib/bht/bht.db 'SELECT COUNT(*) FROM households'` prints `1`.
 
-8. **Second parent: join.** On the first phone, Settings → **Invite the other parent**
-   shows a code. It works once, for 24 hours. On the second phone, open the URL, add it to
-   the Home Screen, set up the baby, then Settings → **Join the other parent** and enter
-   the code.
+8. **Second parent: join, before logging anything.** On the first phone, Settings →
+   **Invite the other parent** shows a code. It works once, for 24 hours. On the second
+   phone, open the URL, add it to the Home Screen, and open the app from that icon (on
+   iPhone a Safari tab keeps separate storage). On its first screen, tap **Join the other
+   parent ›** instead of adding the baby. Enter the code and **Your name**, tap
+   **Join with a passkey**, and save the passkey. The phone takes the household's baby.
    *Check:* log a wet diaper on each phone. Each shows up on the other phone once it syncs (reopen the app if it hasn't).
 
+   If the second phone already set up a baby and logged something, it can still join from
+   Settings → **Join the other parent**, but it then asks what to do with its own logs
+   (**Joined the household**). Choose **Move them into <baby>**. **Keep them off this
+   household** leaves them on that phone, and they never upload.
+
    With `registration = "first"` (the default), nobody else on the tailnet can create a
-   second household now. A third phone that tries **Share** is told to ask for an invite.
+   second household now. A third phone that tries **Share** is told "This server already has
+   a household. Ask a parent in it for an invite."
 
 9. **Take a backup, and send it off the machine.**
    `sudo systemctl start bht-backup.service`.
