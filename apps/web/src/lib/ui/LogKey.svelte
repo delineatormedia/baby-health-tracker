@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { keyName, type KeyKind, type KeyLine } from './keys.ts';
+  import Glyph from './Glyph.svelte';
 
   // One Home quick-log key (#20): a 2 px outline in the event colour, the label with the event's
   // shape, and its last-logged lines. Running, it gets a 3 px outline, the 16% tint, and
@@ -42,7 +43,7 @@
   aria-label={name ?? keyName(label, lines)}
   {onclick}
 >
-  <b><i class="g g-{kind}" aria-hidden="true"></i>{label}</b>
+  <b><Glyph {kind} />{label}</b>
   {#if children}
     {@render children()}
   {:else}
@@ -77,11 +78,25 @@
   .tall {
     grid-row: span 2;
   }
+  /* Narrow keys (320 px screens) put the 16 px icon on its own line, centred above the label,
+     so the label gets the whole key width whatever font the phone falls back to (#53). */
   b {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     font-weight: 600;
+  }
+  /* The icon is 20 px beside the label once the key fits "Bottle" next to it (from 375 px
+     screens). */
+  @container (min-width: 83px) {
+    b {
+      flex-direction: row;
+      gap: 8px;
+    }
+    b :global(.g) {
+      --g: 20px;
+    }
   }
   small,
   .key :global(small) {

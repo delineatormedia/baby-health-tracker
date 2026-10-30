@@ -713,8 +713,20 @@ class AppState {
   /** Runs a failed write's retry once; a second failure puts it back in the banner. */
   retrySave(): void {
     const retry = this.saveError?.retry;
-    this.saveError = null;
-    if (retry) void retry.run();
+    if (!retry) {
+      this.saveError = null;
+      return;
+    }
+    // Counted as a write before the banner goes, so an update reload can't land in between.
+    void this.store.track(() => {
+      this.saveError = null;
+      return retry.run();
+    });
+  }
+
+  /** A write has started and not settled; reloading the page now would lose it (#74). */
+  get writing(): boolean {
+    return this.#store?.writing ?? false;
   }
 
   volume = (ml: number): string => formatVolume(ml, this.prefs.volume);

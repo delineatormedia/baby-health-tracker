@@ -29,9 +29,10 @@ export async function phone(
   browser: Browser,
   width: 320 | 390,
   theme: Theme = 'light',
-  opts: { baby?: boolean } = {},
+  opts: { baby?: boolean; serviceWorkers?: 'allow' } = {},
 ): Promise<BrowserContext> {
   const c = await browser.newContext({
+    ...(opts.serviceWorkers ? { serviceWorkers: opts.serviceWorkers } : {}),
     viewport: { width, height: width === 320 ? 568 : 844 },
     deviceScaleFactor: 2,
     hasTouch: true,
@@ -175,4 +176,21 @@ export function overflow(page: Page) {
       .map((e) => `${e.tagName}.${String(e.className).split(' ')[0]}`)
       .slice(0, 5),
   }));
+}
+
+/** Home keys whose label or lines reach past the key's outline (#53: the icon grows with the key). */
+export function spill(page: Page) {
+  return page.evaluate(() =>
+    [...document.querySelectorAll('main .key')].flatMap((key) => {
+      const k = key.getBoundingClientRect();
+      const cs = getComputedStyle(key);
+      const right = k.right - parseFloat(cs.borderRightWidth);
+      return [...key.querySelectorAll('*')]
+        .filter((e) => {
+          const r = e.getBoundingClientRect();
+          return r.width > 0 && r.right > right + 0.5;
+        })
+        .map((e) => `${key.getAttribute('aria-label')}: ${e.tagName} ${e.textContent!.trim()}`);
+    }),
+  );
 }
