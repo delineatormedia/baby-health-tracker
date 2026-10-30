@@ -155,7 +155,8 @@ function isMs(t: unknown): t is number {
   return typeof t === 'number' && Number.isFinite(t);
 }
 
-function merge(spans: Spans): Spans {
+/** Spans sorted, with overlapping and touching ones joined; empty ones dropped. */
+export function merge(spans: Spans): Spans {
   const out: Spans = [];
   for (const [s, e] of [...spans].filter(([s, e]) => s <= e).sort((a, b) => a[0] - b[0])) {
     const last = out.at(-1);
