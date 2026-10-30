@@ -69,6 +69,8 @@ export class SyncClient {
   readonly #listeners = new Set<(s: SyncStatus) => void>();
   /** The latest serverNow received: a barrier's `at` must come from before its snapshot. */
   #serverNow: number | null = null;
+  /** The write generation the last barrier covered, for flush(). */
+  #covered: number | null = null;
   readonly #opts: Required<Omit<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt'>> &
     Pick<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt'>;
 
@@ -124,6 +126,18 @@ export class SyncClient {
       if (again) void this.sync();
     });
     return this.#running;
+  }
+
+  /**
+   * One full run that starts after every run in flight, for sign-out (step 3b). Resolves to the
+   * write generation its barrier covered, or null if it sent none: the run failed, the session
+   * ended, or a version is still unanswered or refused.
+   */
+  async flush(): Promise<number | null> {
+    while (this.#running) await this.#running;
+    this.#covered = null;
+    await this.sync();
+    return this.#status === 'idle' ? this.#covered : null;
   }
 
   /** Wires browser triggers: local writes, coming back online, and returning to the app. */
@@ -310,6 +324,7 @@ export class SyncClient {
     });
     this.#fence(epoch);
     this.#heard(serverNow);
+    this.#covered = snapshot.gen;
   }
 
   #heard(serverNow: number | undefined) {

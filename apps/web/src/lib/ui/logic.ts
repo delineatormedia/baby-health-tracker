@@ -41,6 +41,9 @@ export function stopSeconds(startedAt: string, now: number): number | null {
 export function saveFailure(e: unknown): string {
   const name = e instanceof Error || e instanceof DOMException ? e.name : '';
   if (name === 'QuotaExceededError') return 'Not saved: this phone is out of storage space.';
+  // store.ts SigningOut, by name so this module stays free of IndexedDB.
+  if (name === 'SigningOut')
+    return 'Not saved while this phone signs out. Finish or cancel sign-out in Settings.';
   return 'Not saved: this phone could not write to its storage.';
 }
 

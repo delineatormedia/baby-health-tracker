@@ -432,3 +432,37 @@ describe('SyncClient', () => {
     expect(at(0).backoffMs(3)).toBe(2000);
   });
 });
+
+describe('flush for sign-out (step 3b)', () => {
+  test('resolves to the generation its barrier covered, after the run in flight', async () => {
+    const server = new FakeServer();
+    const mom = await phone(server);
+    await mom.store.log(babyId, 'diaper', { kind: 'wet' });
+    const first = mom.sync.sync();
+    await mom.store.log(babyId, 'bottle', { contents: 'formula', volumeMl: 60 });
+    await mom.store.beginSignOut();
+
+    const gen = await mom.sync.flush();
+    await first;
+    expect(gen).toBe(2);
+    expect(mom.transport.barriersSent.at(-1)?.gen).toBe(2);
+    expect(await mom.store.pending(10)).toEqual([]);
+  });
+
+  test('offline it resolves to null', async () => {
+    const server = new FakeServer();
+    const mom = await phone(server);
+    await mom.store.log(babyId, 'diaper', { kind: 'wet' });
+    mom.transport.online = false;
+    expect(await mom.sync.flush()).toBeNull();
+    expect(mom.sync.status).toBe('offline');
+  });
+
+  test('with a refused entry it sends no barrier and resolves to null', async () => {
+    const server = new FakeServer();
+    const mom = await phone(server, { maxPushBytes: 10 });
+    await mom.store.log(babyId, 'diaper', { kind: 'wet' });
+    expect(await mom.sync.flush()).toBeNull();
+    expect(mom.transport.barriersSent).toEqual([]);
+  });
+});

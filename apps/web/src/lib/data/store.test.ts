@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { newId } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
 import { openDatabase, rowKey } from './db.ts';
-import { EventStore } from './store.ts';
+import { EventStore, SigningOut } from './store.ts';
 import { FakeServer } from './testing/fake-server.ts';
 
 const babyId = newId();
@@ -191,5 +191,54 @@ describe('EventStore', () => {
     expect(await store.cursor()).toBe(42);
     await store.resetCursor();
     expect(await store.cursor()).toBe(0);
+  });
+});
+
+describe('sign-out stops local writes (step 3b)', () => {
+  test('with the flag set, log, edit, undo and moveBaby are refused and bump nothing', async () => {
+    const store = await makeStore();
+    const logged = await store.log(babyId, 'diaper', { kind: 'wet' });
+    const before = await store.snapshot();
+    await store.beginSignOut();
+    expect(await store.signingOut()).toBe(true);
+
+    await expect(
+      store.log(babyId, 'bottle', { contents: 'formula', volumeMl: 60 }),
+    ).rejects.toBeInstanceOf(SigningOut);
+    await expect(store.edit(logged.event.id, { notes: 'x' })).rejects.toBeInstanceOf(SigningOut);
+    await expect(logged.undo()).rejects.toBeInstanceOf(SigningOut);
+    await expect(store.moveBaby(babyId, newId())).rejects.toBeInstanceOf(SigningOut);
+    expect(await store.snapshot()).toEqual(before);
+    expect(await store.events(babyId)).toEqual([logged.event]);
+
+    await store.endSignOut();
+    expect(await store.signingOut()).toBe(false);
+    await store.log(babyId, 'bottle', { contents: 'formula', volumeMl: 60 });
+    expect((await store.snapshot()).gen).toBe(before.gen + 1);
+  });
+
+  test('another tab: a write started before the flag is in the snapshot, one after aborts', async () => {
+    // Three tabs on one IndexedDB. B's transaction opens before A sets the flag, so IndexedDB
+    // commits it first; C's opens after and sees the flag.
+    const name = `test-${newId()}`;
+    const [a, b, c] = await Promise.all(
+      [0, 1, 2].map(async () => new EventStore(await openDatabase(name), newId())),
+    );
+    const author = a!.authorId;
+    for (const tab of [b!, c!]) tab.authorId = author;
+    const written = b!.log(babyId, 'diaper', { kind: 'wet' });
+    await a!.beginSignOut();
+    const refused = c!.log(babyId, 'bottle', { contents: 'formula', volumeMl: 60 });
+
+    const { event } = await written;
+    await expect(refused).rejects.toBeInstanceOf(SigningOut);
+    const snapshot = await a!.snapshot();
+    expect(snapshot.pending).toEqual([event]);
+    expect(snapshot.gen).toBe(1);
+
+    // Cancelling lets C write again, above the snapshot.
+    await a!.endSignOut();
+    await c!.log(babyId, 'bottle', { contents: 'formula', volumeMl: 60 });
+    expect((await a!.snapshot()).gen).toBe(2);
   });
 });

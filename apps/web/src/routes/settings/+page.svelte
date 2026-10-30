@@ -8,6 +8,8 @@
   import SyncStatus from '../../lib/ui/SyncStatus.svelte';
   import type { Theme } from '../../lib/ui/prefs.ts';
   import { dayStartText } from '../../lib/ui/reports.ts';
+  import { otherPhones, phoneLine } from '../../lib/ui/sync.ts';
+  import { time } from '../../lib/ui/time.ts';
   import HomeScreenNote from '../../lib/ui/HomeScreenNote.svelte';
 
   const VOLUMES: [VolumeDisplay, string][] = [
@@ -27,6 +29,9 @@
   let invite = $state.raw<Invite | null>(null);
   let busy = $state(false);
   let syncError = $state<string | null>(null);
+  /** The phone whose Remove was tapped, waiting for the confirm. */
+  let removing = $state<string | null>(null);
+  const phones = $derived(otherPhones(app.devices, app.store.authorId));
 
   /** Runs a sync-section action; its failure shows under the section. */
   async function act(run: () => Promise<unknown>) {
@@ -165,13 +170,71 @@
           their phone under Join the other parent. Works once, until {expires(invite.expiresAt)}.
         </p>
       {/if}
-      <button
-        class="go2"
-        disabled={busy || app.transition === 'signIn'}
-        onclick={() => act(() => app.signOut())}>Sign out</button
-      >
+      {#if app.signOutBlocked}
+        <p class="note blocked" role="alert">
+          <b>{app.signOutBlocked}</b> Sign out anyway and the other phone keeps waiting for this one until
+          a parent counts without it. Logs not synced stay here and upload when you sign back in.
+        </p>
+        <button class="go2" disabled={busy} onclick={() => act(() => app.signOut())}
+          >Try again</button
+        >
+        <button class="go2" disabled={busy} onclick={() => act(() => app.signOut({ anyway: true }))}
+          >Sign out anyway</button
+        >
+        <button class="go2" disabled={busy} onclick={() => act(() => app.cancelSignOut())}
+          >Cancel</button
+        >
+      {:else}
+        <button
+          class="go2"
+          disabled={busy || app.transition === 'signIn' || app.signingOutElsewhere}
+          onclick={() => act(() => app.signOut())}
+          >{app.transition === 'signOut' ? 'Signing out…' : 'Sign out'}</button
+        >
+      {/if}
     </div>
-    <p class="note">Signing out keeps this phone's logs here.</p>
+    <p class="note">
+      Signing out keeps this phone's logs here. It first makes sure the server has them, so the
+      other phone gets them when it syncs.
+    </p>
+
+    {#if app.account.placed !== false && phones.length > 0}
+      <div class="sec lab">Phones</div>
+      <ul class="phones">
+        {#each phones as d (d.deviceId)}
+          <li>
+            <span class="phone">
+              <b>{d.memberName}’s phone</b>
+              <span class="dim">{phoneLine(d, time)}</span>
+            </span>
+            {#if removing !== d.deviceId}
+              <button class="go2 small" disabled={busy} onclick={() => (removing = d.deviceId)}
+                >Remove</button
+              >
+            {/if}
+          </li>
+          {#if removing === d.deviceId}
+            <li class="confirm">
+              <p class="note">
+                For a lost or replaced phone. It is signed out and can't sync as this phone again.
+                Checks from now on stop waiting for it; anything it logged that never synced only
+                arrives if it signs back in.
+              </p>
+              <button
+                class="go2 danger"
+                disabled={busy}
+                onclick={() =>
+                  act(async () => {
+                    await app.removeDevice(d.deviceId);
+                    removing = null;
+                  })}>Remove {d.memberName}’s phone</button
+              >
+              <button class="go2" disabled={busy} onclick={() => (removing = null)}>Keep</button>
+            </li>
+          {/if}
+        {/each}
+      </ul>
+    {/if}
   {/if}
   {#if syncError}<p class="note err" role="alert">{syncError}</p>{/if}
 </main>
@@ -214,6 +277,54 @@
     letter-spacing: 0.06em;
   }
   .note.err {
+    color: var(--flag);
+  }
+  .note.blocked {
+    margin: 0 0 4px;
+  }
+  .note.blocked b {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .phones {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .phones li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .phones .phone {
+    display: grid;
+    gap: 2px;
+    margin-left: 24px;
+    font-size: 17px;
+  }
+  .phones b {
+    font-weight: 500;
+  }
+  .phones .dim {
+    font-size: 15px;
+    color: var(--text-dim);
+  }
+  .phones .small {
+    width: auto;
+    padding: 0 18px;
+  }
+  .phones .confirm {
+    display: grid;
+    gap: 8px;
+  }
+  .phones .confirm .note {
+    margin: 0 24px;
+  }
+  .danger {
+    border-color: var(--flag);
     color: var(--flag);
   }
   .other {
