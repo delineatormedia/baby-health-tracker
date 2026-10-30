@@ -82,18 +82,27 @@ Android 9 or later, with a screen lock).
    the Home Screen icon.
 
 7. **First parent: create the household.** In the app, set up the baby, then Settings →
-   **Share with the other parent**, and save the passkey.
+   **Share with the other parent**. Fill in **Your name** (the button stays off until you
+   do), tap **Create with a passkey**, and save the passkey.
    *Check:* Settings shows the household and that it's synced. On the server:
    `sudo -u bht sqlite3 /var/lib/bht/bht.db 'SELECT COUNT(*) FROM households'` prints `1`.
 
-8. **Second parent: join.** On the first phone, Settings → **Invite the other parent**
-   shows a code. It works once, for 24 hours. On the second phone, open the URL, add it to
-   the Home Screen, set up the baby, then Settings → **Join the other parent** and enter
-   the code.
+8. **Second parent: join, before logging anything.** On the first phone, Settings →
+   **Invite the other parent** shows a code. It works once, for 24 hours. On the second
+   phone, open the URL, add it to the Home Screen, and open the app from that icon (on
+   iPhone a Safari tab keeps separate storage). On its first screen, tap **Join the other
+   parent ›** instead of adding the baby. Enter the code and **Your name**, tap
+   **Join with a passkey**, and save the passkey. The phone takes the household's baby.
    *Check:* log a wet diaper on each phone. Each shows up on the other phone once it syncs (reopen the app if it hasn't).
 
+   If the second phone already set up a baby and logged something, it can still join from
+   Settings → **Join the other parent**, but it then asks what to do with its own logs
+   (**Joined the household**). Choose **Move them into <baby>**. **Keep them off this
+   household** leaves them on that phone, and they never upload.
+
    With `registration = "first"` (the default), nobody else on the tailnet can create a
-   second household now. A third phone that tries **Share** is told to ask for an invite.
+   second household now. A third phone that tries **Share** is told "This server already has
+   a household. Ask a parent in it for an invite."
 
 9. **Take a backup, and send it off the machine.**
    `sudo systemctl start bht-backup.service`.
@@ -124,6 +133,45 @@ Android 9 or later, with a screen lock).
 **Upgrading** later: change the commit or tag in `inputs.bht.url`, run
 `nix flake update bht`, then step 5 again with its check. Take a backup first
 (step 9).
+
+## Upgrading from a single-phone deploy
+
+Use this if the server already runs a build from before sign-in (it has no **Share with
+the other parent** button) and a phone already holds real logs. The upgrade keeps those
+logs where they are, in the app's storage on that phone. Before sign-in, every log on the phone is saved there and waiting to upload. When that
+phone creates the household, the household is built around the baby already on it, and
+every one of those logs uploads. The server keeps its database and upgrades it in place
+the first time the new build starts. There's nothing to migrate by hand.
+
+1. **Check the phone with the logs.** Open the app from the Home Screen icon it has always
+   used, and look through History.
+   *Check:* the logs are there. Don't remove that icon or add the app to the Home Screen
+   again, and don't change the server's name. On iPhone the Home Screen app keeps its logs
+   apart from Safari, so the same address opened in a Safari tab shows an empty app.
+2. **Back up the server** (step 9). This backs up the server only. The phone's logs have
+   never been uploaded, so they are not in it: until step 5 they exist only on that phone.
+3. **Upgrade the server.** Pin the release in `inputs.bht.url`, then
+   `nix flake update bht` and step 5 again, with its check.
+4. **Load the new build on the phone with the logs.** Open the app from its icon, close it
+   fully (swipe it away), then open it again. If a screen fails to open on the first
+   launch, close and reopen once more: the old build can't fetch its screens once the new
+   one has replaced them. Logs saved on the phone are not affected.
+   *Check:* Settings shows **Share with the other parent**, and Home says
+   "Saved on this phone · not synced".
+5. **Create the household from that phone** (step 7), not from the other one.
+   *Check:* Settings says "Synced with your household." and Home says "Synced". On the
+   server, `sudo -u bht sqlite3 /var/lib/bht/bht.db 'SELECT COUNT(*) FROM households'`
+   prints `1` and `… 'SELECT COUNT(*) FROM event_versions'` is not `0`.
+6. **Join from the second phone** (step 8).
+   *Check:* the second phone's History shows the first phone's logs.
+
+   If the second phone also logged on the old build, it shows **Joined the household**
+   and asks about its own logs. **Move them into <baby>** uploads them to the household
+   baby, and you remove any duplicates in History. **Keep them off this household** keeps
+   them on that phone only, and they never upload.
+
+   If the second phone created the household first, the phone with the logs gets the same
+   question when it joins. Choose **Move them into <baby>**, or its logs never upload.
 
 ## Options
 
