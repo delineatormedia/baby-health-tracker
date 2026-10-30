@@ -29,10 +29,13 @@ export const KEYS = {
   baby: 'bht.baby',
   setupAt: 'bht.setupAt',
   homeNoteDismissed: 'bht.homeNoteDismissed',
+  account: 'bht.account',
+  joining: 'bht.joining',
   seeded: 'bht.seeded',
 } as const;
 
 type KV = Pick<Storage, 'getItem' | 'setItem'>;
+type KVRemove = KV & Pick<Storage, 'removeItem'>;
 
 function readJson(kv: KV, key: string): unknown {
   try {
@@ -68,6 +71,56 @@ export function authorId(kv: KV): Id {
   const id = newId();
   kv.setItem(KEYS.author, id);
   return id;
+}
+
+/**
+ * Replaces this phone's author id with a fresh one (#5 step 3): the server refused the old
+ * one at sign-in, as a removed phone or another household's. Entries already logged keep
+ * the id they were logged under.
+ */
+export function mintAuthorId(kv: KV): Id {
+  const id = newId();
+  kv.setItem(KEYS.author, id);
+  return id;
+}
+
+/** The household this phone signed in to; the session itself is an HttpOnly cookie. */
+export interface StoredAccount {
+  householdId: Id;
+  memberId: Id;
+  /** False from sign-in until the household has loaded and this phone's baby is placed. */
+  placed?: false;
+}
+
+export function loadAccount(kv: KV): StoredAccount | null {
+  const raw = readJson(kv, KEYS.account) as Partial<StoredAccount> | null;
+  const ok = (x: unknown): x is Id => typeof x === 'string' && ULID.test(x);
+  if (!raw || !ok(raw.householdId) || !ok(raw.memberId)) return null;
+  const { householdId, memberId } = raw;
+  return raw.placed === false
+    ? { householdId, memberId, placed: false }
+    : { householdId, memberId };
+}
+
+export function saveAccount(kv: KVRemove, account: StoredAccount | null): void {
+  if (account) kv.setItem(KEYS.account, JSON.stringify(account));
+  else kv.removeItem(KEYS.account);
+}
+
+/**
+ * The household baby a signed-in phone still has to choose about (#5 step 3): its own baby
+ * is not in the household, so its entries are moved or kept off first. Written before the
+ * account, cleared once the move or archive commits; a reload in between asks again.
+ */
+export function loadJoining(kv: KV): Baby | null {
+  return parseBaby(readJson(kv, KEYS.joining));
+}
+
+export function saveJoining(kv: KVRemove, baby: Baby | null): void {
+  const parsed = baby && parseBaby(baby);
+  if (baby && !parsed) throw new Error('Invalid baby');
+  if (parsed) kv.setItem(KEYS.joining, JSON.stringify(parsed));
+  else kv.removeItem(KEYS.joining);
 }
 
 export function loadBaby(kv: KV): Baby | null {
@@ -108,9 +161,10 @@ export function saveHomeNoteDismissed(kv: KV): void {
 /**
  * Set once dev test data (#58) has been loaded into this browser. Nothing in the app clears
  * it, so only clearing the browser's site data does. The app badges the screen while it is
- * set, and sync must refuse any server but localhost (#55).
+ * set, and sync must refuse any server but localhost (#55). Any value counts, so a corrupted
+ * or hand-edited marker blocks sync instead of opening it; only a missing key is unseeded.
  */
-export const loadSeeded = (kv: KV): boolean => kv.getItem(KEYS.seeded) === '1';
+export const loadSeeded = (kv: KV): boolean => kv.getItem(KEYS.seeded) !== null;
 
 export function markSeeded(kv: KV): void {
   kv.setItem(KEYS.seeded, '1');

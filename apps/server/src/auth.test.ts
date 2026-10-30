@@ -305,6 +305,20 @@ describe('sessions', () => {
     expect(db.prepare('SELECT counter FROM credentials').get()).toEqual({ counter: 1 });
   });
 
+  test('a login begun before sign-out, then logged out once verified, ends signed out', async () => {
+    const { app } = server();
+    const { phone } = await register(app, ORIGIN);
+    const login = await phone.ceremony('login', { deviceId: phone.deviceId });
+    // Sign-out pressed here; the phone holds logout until verify has answered.
+    expect((await login.verify()).status).toBe(200);
+    const late = phone.cookie!;
+    await phone.json('/api/auth/logout', {});
+
+    expect((await phone.request('/api/household')).status).toBe(401);
+    phone.cookie = late;
+    expect((await phone.request('/api/household')).status).toBe(401);
+  });
+
   test('a passkey this server does not hold, or a forged signature, does not sign in', async () => {
     const { app } = server();
     const { phone } = await register(app, ORIGIN);

@@ -2,6 +2,7 @@
   import '../app.css';
   import type { Snippet } from 'svelte';
   import { app } from '../lib/ui/app.svelte.ts';
+  import JoinChoice from '../lib/ui/JoinChoice.svelte';
   import Setup from '../lib/ui/Setup.svelte';
   import { watchForUpdates } from '../lib/ui/update.ts';
 
@@ -45,6 +46,8 @@
   </main>
 {:else if app.ready && !app.baby}
   <Setup />
+{:else if app.ready && app.baby && app.joining}
+  <JoinChoice own={app.baby} to={app.joining} />
 {:else if app.ready}
   {@render children()}
 {/if}

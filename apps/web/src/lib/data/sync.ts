@@ -7,6 +7,7 @@ import {
   type PushResult,
   type SyncTransport,
 } from './protocol.ts';
+import { SeededRefusal } from './seeded.ts';
 
 export type SyncStatus = 'idle' | 'syncing' | 'offline' | 'signed_out';
 
@@ -20,24 +21,40 @@ export interface SyncOptions {
   maxPushBytes?: number;
   random?: () => number;
   onRejected?: (results: PushResult[]) => void;
+  /**
+   * Runs before each push with the batch about to go up, e.g. to add a baby the server does
+   * not have yet. A throw fails the run like a failed push: nothing is sent, and it retries.
+   */
+  prepare?: (batch: BabyEvent[]) => Promise<void>;
+  /** The household this client syncs; its pull cursor is kept under this id. */
+  household?: string;
 }
+
+/** Thrown inside a run that stop() has fenced off; the run ends without touching anything. */
+const FENCED = Symbol('fenced');
 
 /**
  * Pushes pending versions, then pulls everything after the cursor. Failures retry with
  * exponential backoff and jitter. A 401 pauses every trigger until resume() after sign-in.
  * Runs are single-flight: a request during a run schedules exactly one more run. Once
- * stopped, nothing in flight schedules more work.
+ * stopped, a run in flight is fenced: it sends no further request, writes nothing more to the
+ * store, and reports no status.
  */
 export class SyncClient {
   #status: SyncStatus = 'idle';
   #error: string | null = null;
   #stopped = false;
+  /** Bumped by stop(). A run checks it after every await and ends if it moved. */
+  #epoch = 0;
+  /** The store write a run has in progress, which stop() waits for. */
+  #writing: Promise<unknown> | null = null;
   #failures = 0;
   #running: Promise<void> | null = null;
   #again = false;
   #timer: ReturnType<typeof setTimeout> | null = null;
   readonly #listeners = new Set<(s: SyncStatus) => void>();
-  readonly #opts: Required<Omit<SyncOptions, 'onRejected'>> & Pick<SyncOptions, 'onRejected'>;
+  readonly #opts: Required<Omit<SyncOptions, 'onRejected' | 'prepare'>> &
+    Pick<SyncOptions, 'onRejected' | 'prepare'>;
 
   constructor(
     readonly store: EventStore,
@@ -51,6 +68,7 @@ export class SyncClient {
       pushByteBudget: PUSH_BYTE_BUDGET,
       maxPushBytes: MAX_PUSH_BYTES,
       random: Math.random,
+      household: '',
       ...opts,
     };
   }
@@ -92,7 +110,7 @@ export class SyncClient {
   }
 
   /** Wires browser triggers: local writes, coming back online, and returning to the app. */
-  start(): () => void {
+  start(): () => Promise<void> {
     this.#stopped = false;
     const onChange = () => void this.sync();
     const onVisible = () => {
@@ -106,15 +124,25 @@ export class SyncClient {
       unsubscribe();
       window.removeEventListener('online', onChange);
       document.removeEventListener('visibilitychange', onVisible);
-      this.stop();
+      return this.stop();
     };
   }
 
-  /** Stops syncing: cancels a scheduled retry, and a run in flight schedules nothing more. */
-  stop(): void {
+  /**
+   * Stops syncing: cancels a scheduled retry and fences the run in flight. Resolves once any
+   * store write that run had started has finished, so a caller can reset the cursor or switch
+   * accounts with nothing landing afterwards. It does not wait on the network: a response
+   * still on its way is dropped when it arrives.
+   */
+  stop(): Promise<void> {
     this.#stopped = true;
     this.#again = false;
+    this.#epoch += 1;
     this.#clearTimer();
+    return (this.#writing ?? Promise.resolve()).then(
+      () => {},
+      () => {},
+    );
   }
 
   /** Call after a successful sign-in: lifts the 401 pause and syncs. */
@@ -130,13 +158,16 @@ export class SyncClient {
   }
 
   async #run(): Promise<void> {
+    const epoch = this.#epoch;
     this.#setStatus('syncing');
     try {
-      await this.#push();
-      await this.#pull();
+      await this.#push(epoch);
+      await this.#pull(epoch);
+      this.#fence(epoch);
       this.#failures = 0;
       this.#setStatus('idle');
     } catch (err) {
+      if (err === FENCED || epoch !== this.#epoch) return;
       if (err instanceof HttpError && err.status === 401) {
         this.#setStatus('signed_out');
         return;
@@ -154,20 +185,24 @@ export class SyncClient {
    * own (over maxPushBytes, or over pushByteBudget and answered 413) is refused on this phone
    * (`too_large`), kept and counted like a server refusal, so the rest of the backlog drains.
    */
-  async #push() {
+  async #push(epoch: number) {
     let cap = MAX_PUSH_BATCH;
     for (;;) {
       const pending = await this.store.pending(MAX_PUSH_BATCH);
+      this.#fence(epoch);
       if (pending.length === 0) return;
       const batch = takeBatch(pending, cap, this.#opts.pushByteBudget);
       if (pushBytes(batch.slice(0, 1)) > this.#opts.maxPushBytes) {
         await this.#refuseLocally(batch[0]!);
         continue;
       }
+      await this.#opts.prepare?.(batch);
+      this.#fence(epoch);
       let results: PushResult[];
       try {
         ({ results } = await this.transport.push(batch));
       } catch (err) {
+        this.#fence(epoch);
         if (!(err instanceof HttpError && err.status === 413)) throw err;
         if (batch.length > 1) cap = Math.ceil(batch.length / 2);
         else if (pushBytes(batch) > this.#opts.pushByteBudget) await this.#refuseLocally(batch[0]!);
@@ -176,7 +211,9 @@ export class SyncClient {
         else throw err;
         continue;
       }
-      const rejected = await this.store.applyPushResults(batch, results);
+      this.#fence(epoch);
+      const rejected = await this.#write(this.store.applyPushResults(batch, results));
+      this.#fence(epoch);
       if (rejected.length > 0) this.#opts.onRejected?.(rejected);
       if (batch.length === pending.length && pending.length < MAX_PUSH_BATCH) return;
     }
@@ -185,7 +222,7 @@ export class SyncClient {
   async #refuseLocally(event: BabyEvent) {
     const { id, version } = event;
     const refusal: PushResult = { id, version, status: 'rejected', error: TOO_LARGE };
-    const rejected = await this.store.applyPushResults([event], [refusal]);
+    const rejected = await this.#write(this.store.applyPushResults([event], [refusal]));
     if (rejected.length > 0) this.#opts.onRejected?.(rejected);
   }
 
@@ -193,15 +230,33 @@ export class SyncClient {
    * Pages until the server's `through` from the first page. Versions pushed while this pull
    * runs land past it and wait for the next pull, so one pull reads one snapshot's worth.
    */
-  async #pull() {
+  async #pull(epoch: number) {
+    const { household, pullLimit } = this.#opts;
     let through: number | undefined;
     for (;;) {
-      const after = await this.store.cursor();
-      const page = await this.transport.pull(after, this.#opts.pullLimit, through);
+      const after = await this.store.cursor(household);
+      this.#fence(epoch);
+      const page = await this.transport.pull(after, pullLimit, through);
+      this.#fence(epoch);
       through ??= page.through;
-      await this.store.applyPull(page);
+      await this.#write(this.store.applyPull(page, household));
       if (!page.more) return;
     }
+  }
+
+  /** Records a store write in progress for stop() to wait on. Call only right after #fence. */
+  async #write<T>(write: Promise<T>): Promise<T> {
+    this.#writing = write;
+    try {
+      return await write;
+    } finally {
+      if (this.#writing === write) this.#writing = null;
+    }
+  }
+
+  /** Ends a run that stop() fenced off, before its next request or store write. */
+  #fence(epoch: number) {
+    if (epoch !== this.#epoch) throw FENCED;
   }
 
   #setStatus(s: SyncStatus, error: string | null = null) {
@@ -219,6 +274,7 @@ export class SyncClient {
 
 /** A failed run's reason as Settings shows it. */
 export function failureReason(err: unknown): string {
+  if (err instanceof SeededRefusal) return err.message;
   if (!(err instanceof HttpError)) return 'No connection to the server';
   if (err.status === 413) return 'Server rejected upload size';
   if (err.status === 409) return 'Server needs an update before this app can sync';

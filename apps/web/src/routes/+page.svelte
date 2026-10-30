@@ -10,6 +10,7 @@
   import LogKey from '../lib/ui/LogKey.svelte';
   import PumpKey from '../lib/ui/PumpKey.svelte';
   import { keyLines } from '../lib/ui/keys.ts';
+  import { homeLine } from '../lib/ui/sync.ts';
   import Toast from '../lib/ui/Toast.svelte';
   import HomeScreenNote from '../lib/ui/HomeScreenNote.svelte';
   import {
@@ -133,7 +134,9 @@
     <span><Glyph kind="dirty" />Dirty <b class="num">{counts.dirty}</b></span>
     <span><Glyph kind="pump" />Pump <b class="num">{counts.pump}</b></span>
   </div>
-  <p class="quiet lab">Saved on this phone · not synced</p>
+  <p class="quiet lab">
+    {homeLine({ signedIn: app.account !== null, status: app.syncStatus, error: app.syncError })}
+  </p>
 
   <div class="dock" bind:clientHeight={dockHeight}>
     <Toast />
