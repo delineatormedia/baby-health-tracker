@@ -4,7 +4,17 @@ import type {
   PublicKeyCredentialRequestOptionsJSON,
   RegistrationResponseJSON,
 } from '@simplewebauthn/server';
-import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } from 'node:crypto';
+import {
+  createHash,
+  createPrivateKey,
+  generateKeyPairSync,
+  randomBytes,
+  sign,
+  type KeyObject,
+} from 'node:crypto';
+
+/** A passkey as JSON: its private key as a JWK, so a fixture can carry it between builds. */
+export type SavedKey = { id: string; jwk: object; userHandle: string; counter: number };
 
 /**
  * A software passkey authenticator for tests: what a phone's platform authenticator returns
@@ -15,6 +25,29 @@ export class SoftAuthenticator {
   readonly #keys = new Map<string, { key: KeyObject; userHandle: string; counter: number }>();
 
   constructor(readonly origin: string) {}
+
+  /** The passkeys this authenticator holds, as JSON. */
+  save(): SavedKey[] {
+    return [...this.#keys].map(([id, k]) => ({
+      id,
+      jwk: k.key.export({ format: 'jwk' }),
+      userHandle: k.userHandle,
+      counter: k.counter,
+    }));
+  }
+
+  /** An authenticator holding passkeys saved earlier, e.g. by an older server's test run. */
+  static load(origin: string, saved: SavedKey[]): SoftAuthenticator {
+    const a = new SoftAuthenticator(origin);
+    for (const k of saved) {
+      a.#keys.set(k.id, {
+        key: createPrivateKey({ key: k.jwk as never, format: 'jwk' }),
+        userHandle: k.userHandle,
+        counter: k.counter,
+      });
+    }
+    return a;
+  }
 
   /** navigator.credentials.create(): a new passkey for the options' rp and user. */
   create(options: PublicKeyCredentialCreationOptionsJSON): RegistrationResponseJSON {

@@ -45,6 +45,11 @@ const validData: Record<EventType, unknown> = {
   weight: { grams: 3450, source: 'clinic' },
   weighted_feed: { beforeGrams: 3450, afterGrams: 3512, side: 'right' },
   missed_logs: { start: '2026-10-28T03:00:00.000Z', end: '2026-10-29T03:00:00.000Z' },
+  count_without: {
+    deviceId: '01JBHT0DEV1CE00000000000AA',
+    start: '2026-10-28T03:00:00.000Z',
+    end: '2026-10-29T03:00:00.000Z',
+  },
 };
 
 describe('envelope', () => {
@@ -496,5 +501,23 @@ describe('missed_logs', () => {
     { start: '2026-10-28T03:00:00.000Z' },
   ])('rejects %j', (data) => {
     expectInvalid(event('missed_logs', data));
+  });
+});
+
+describe('count_without', () => {
+  const deviceId = '01JBHT0DEV1CE00000000000AA';
+
+  test('a null start covers everything before the tap', () => {
+    expectValid(event('count_without', { deviceId, start: null, end: '2026-10-29T03:00:00.000Z' }));
+  });
+
+  test.each([
+    { deviceId, start: '2026-10-29T03:00:00.000Z', end: '2026-10-29T03:00:00.000Z' },
+    { deviceId, start: '2026-10-29T03:00:00.000Z', end: '2026-10-28T03:00:00.000Z' },
+    { deviceId, end: '2026-10-29T03:00:00.000Z' },
+    { deviceId: 'phone', start: null, end: '2026-10-29T03:00:00.000Z' },
+    { start: null, end: '2026-10-29T03:00:00.000Z' },
+  ])('rejects %j', (data) => {
+    expectInvalid(event('count_without', data));
   });
 });

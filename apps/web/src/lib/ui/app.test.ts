@@ -55,11 +55,35 @@ beforeEach(() => {
     visibilityState: 'visible',
   });
   vi.spyOn(globalThis, 'setInterval').mockImplementation(() => 0 as never);
+  // Each test is its own browser: a fresh Web Locks registry, and no other tabs unless a test
+  // wires them (step 3b sign-out).
+  vi.stubGlobal('navigator', { locks: fakeLocks() });
+  vi.stubGlobal('BroadcastChannel', undefined);
 });
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+/** navigator.locks with only what sign-out uses: { ifAvailable: true } requests. */
+function fakeLocks() {
+  const held = new Set<string>();
+  return {
+    async request(
+      name: string,
+      _opts: { ifAvailable: true },
+      run: (lock: { name: string } | null) => unknown,
+    ) {
+      if (held.has(name)) return run(null);
+      held.add(name);
+      try {
+        return await run({ name });
+      } finally {
+        held.delete(name);
+      }
+    },
+  };
+}
 
 function serve(handler: Fetch) {
   vi.stubGlobal(
@@ -84,6 +108,7 @@ const signedIn = (householdId: string) => async () =>
   ({ householdId, memberId: newId() }) as SignedIn;
 
 describe('sign-out fences the sync run in flight', () => {
+  // "Sign out anyway" skips the barrier: these hold a request open and sign out past it.
   test('a pull answered after sign-out leaves the reset cursor alone and pages no further', async () => {
     const old = baby();
     kv.set('bht.baby', JSON.stringify(old));
@@ -95,7 +120,7 @@ describe('sign-out fences the sync run in flight', () => {
     await vi.waitFor(() => expect(pulls()).toHaveLength(1));
     expect(pulls()[0]).toContain('after=5');
 
-    await app.signOut();
+    await app.signOut({ anyway: true });
     expect(await app.store.cursor(old.householdId)).toBe(0);
     pull.release(json({ versions: [], next: 91, through: 200, more: true }));
     await settle();
@@ -123,7 +148,7 @@ describe('sign-out fences the sync run in flight', () => {
     await vi.waitFor(() => expect(pushes()).toHaveLength(1));
     const [sent] = (await app.store.pending(10)) as [BabyEvent];
 
-    await app.signOut();
+    await app.signOut({ anyway: true });
     push.release(
       json({ results: [{ id: sent.id, version: sent.version, status: 'accepted', seq: 7 }] }),
     );
@@ -146,7 +171,7 @@ describe('sign-out fences the sync run in flight', () => {
     const app = await loadApp();
     await vi.waitFor(() => expect(requests).toContain('POST /api/babies'));
 
-    await app.signOut();
+    await app.signOut({ anyway: true });
     addBaby.release(json(old));
     await settle();
 
@@ -584,12 +609,15 @@ describe('a seeded dev browser stays off real servers', () => {
 
 describe('Readings waits on the other phones (#5 step 3b)', () => {
   const W = Date.parse('2026-10-29T12:00:00.000Z');
+  /** The end of the span from the distant past, or null. */
+  const through = (spans: [number, number][]) => (spans[0]?.[0] === -Infinity ? spans[0][1] : null);
   const sam = (watermark: number | null) => ({
     deviceId: newId(),
     memberName: 'Sam',
     watermark,
     lastSeenAt: W,
     removedAt: null,
+    signedOutAt: null,
   });
 
   test('after a reload the kept list names the phone, and windows wait until a pull', async () => {
@@ -603,8 +631,8 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     const app = await loadApp();
     await vi.waitFor(() => expect(app.devices).toEqual([kept]));
     const now = W + 60_000;
-    expect(app.syncedThrough(now, 0)).toBeNull();
-    expect(app.waitingOn(W - 3_600_000, now, 0)).toEqual([kept]);
+    expect(through(app.syncedSpans(now, 0))).toBeNull();
+    expect(app.waitingOn(-Infinity, W - 3_600_000, now, 0)).toEqual([kept]);
 
     // The pull reaches through: the new list and its clock sample are adopted together.
     const fresh = { ...kept, watermark: W };
@@ -612,10 +640,10 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     await vi.waitFor(() => expect(app.devices).toEqual([fresh]));
     const sample = app.clockSample!;
     expect(sample.serverNow).toBe(W);
-    const through = app.syncedThrough(sample.tSend, sample.pSend)!;
-    expect(through).toBe(W - (W - sample.tSend) - 2_000);
-    expect(app.waitingOn(through + 1, sample.tSend, sample.pSend)).toEqual([fresh]);
-    expect(app.waitingOn(through, sample.tSend, sample.pSend)).toEqual([]);
+    const line = through(app.syncedSpans(sample.tSend, sample.pSend))!;
+    expect(line).toBe(W - (W - sample.tSend) - 2_000);
+    expect(app.waitingOn(-Infinity, line + 1, sample.tSend, sample.pSend)).toEqual([fresh]);
+    expect(app.waitingOn(-Infinity, line, sample.tSend, sample.pSend)).toEqual([]);
   });
 
   test('another tab pulled the rows: an empty pull still re-reads the log with the watermarks', async () => {
@@ -654,7 +682,7 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     });
     const app = await loadApp();
     await vi.waitFor(() => expect(app.devicesCurrent).toBe(true));
-    expect(app.syncedThrough(Date.now(), performance.now())).toBeNull();
+    expect(through(app.syncedSpans(Date.now(), performance.now()))).toBeNull();
     expect(app.events).toEqual([]);
 
     const sam = new EventStore(await openDatabase(`sam-${newId()}`), remote);
@@ -683,7 +711,7 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     // Published in the same step: the coverage that includes the entry, and the entry.
     expect(app.events).toEqual([wet]);
     const sample = app.clockSample!;
-    expect(app.syncedThrough(sample.tSend, sample.pSend)).toBeGreaterThan(Date.parse(at));
+    expect(through(app.syncedSpans(sample.tSend, sample.pSend))).toBeGreaterThan(Date.parse(at));
     await app.signOut();
   });
 
@@ -701,13 +729,13 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     const app = await loadApp();
     await vi.waitFor(() => expect(app.devices).toEqual([me]));
     expect(app.clockSample).toBeNull();
-    expect(app.syncedThrough(Date.now(), performance.now())).toBeNull();
+    expect(through(app.syncedSpans(Date.now(), performance.now()))).toBeNull();
 
     const joined = sam(null);
     pull.release(json({ ...emptyPull(), serverNow: Date.now(), devices: [me, joined] }));
     await vi.waitFor(() => expect(app.devicesCurrent).toBe(true));
     expect(app.devices).toEqual([me, joined]);
-    expect(app.syncedThrough(Date.now(), performance.now())).toBeNull();
+    expect(through(app.syncedSpans(Date.now(), performance.now()))).toBeNull();
     await app.signOut();
   });
 
@@ -731,13 +759,12 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     const app = await loadApp();
     await vi.waitFor(() => expect(app.syncStatus).toBe('offline'));
     expect(app.devices).toEqual([me]);
-    expect(app.syncedThrough(Date.now(), performance.now())).toBeNull();
+    expect(through(app.syncedSpans(Date.now(), performance.now()))).toBeNull();
 
     reachable = true;
     online.dispatchEvent(new Event('online'));
     await vi.waitFor(() => expect(app.devicesCurrent).toBe(true));
-    const now = Date.now();
-    expect(app.syncedThrough(now, performance.now())).toBe(now);
+    expect(app.syncedSpans(Date.now(), performance.now())).toEqual([[-Infinity, Infinity]]);
     await app.signOut();
   });
 
@@ -752,12 +779,304 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     );
     const app = await loadApp();
     await vi.waitFor(() => expect(app.devices).toHaveLength(1));
-    expect(app.syncedThrough(W, 0)).toBeNull();
+    expect(through(app.syncedSpans(W, 0))).toBeNull();
     await app.signOut();
     expect(app.devices).toBeNull();
     expect(app.clockSample).toBeNull();
     expect(app.devicesCurrent).toBe(false);
-    expect(app.syncedThrough(W, 0)).toBe(W);
-    expect(app.waitingOn(W, W, 0)).toEqual([]);
+    expect(app.syncedSpans(W, 0)).toEqual([[-Infinity, Infinity]]);
+    expect(app.waitingOn(-Infinity, W, W, 0)).toEqual([]);
+  });
+});
+
+describe('sign-out quiesces and covers this phone (#5 step 3b)', () => {
+  const W = Date.parse('2026-10-30T12:00:00.000Z');
+
+  /** A signed-in, placed phone with one pending entry. */
+  async function signedInWithEntry() {
+    const home = baby();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    const store = new EventStore(await openDatabase(), newId());
+    await store.log(home.id, 'diaper', { kind: 'wet' });
+    return home;
+  }
+
+  /** A server that accepts every push and records barrier and logout bodies. */
+  function household(home: ReturnType<typeof baby>, opts: { offline?: boolean } = {}) {
+    const bodies: Record<string, unknown[]> = {};
+    let seq = 0;
+    serve(async (url, init) => {
+      const body = init?.body ? JSON.parse(init.body as string) : undefined;
+      (bodies[url] ??= []).push(body);
+      if (opts.offline && url.startsWith('/api/sync')) throw new TypeError('Failed to fetch');
+      if (url === '/api/sync') {
+        const results = (body as { events: BabyEvent[] }).events.map((e) => ({
+          id: e.id,
+          version: e.version,
+          status: 'accepted',
+          seq: ++seq,
+        }));
+        return json({ results, serverNow: W });
+      }
+      if (url.startsWith('/api/sync?')) return json({ ...emptyPull(seq), serverNow: W });
+      if (url === '/api/sync/barrier') return json({ watermark: W, serverNow: W });
+      if (url === '/api/babies') return json(home);
+      return json({ ok: true });
+    });
+    return bodies;
+  }
+
+  test('barrier first, then logout with the generation it covered; writes resume after', async () => {
+    const home = await signedInWithEntry();
+    const bodies = household(home);
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+    await app.store.log(home.id, 'bottle', { contents: 'formula', volumeMl: 60 });
+
+    await app.signOut();
+
+    const barrier = bodies['/api/sync/barrier']!.at(-1) as { gen: number };
+    expect(barrier.gen).toBe(2);
+    expect(bodies['/api/auth/logout']).toEqual([{ gen: 2 }]);
+    expect(requests.indexOf('POST /api/auth/logout')).toBeGreaterThan(
+      requests.lastIndexOf('POST /api/sync/barrier'),
+    );
+    expect(await app.store.pending(10)).toEqual([]);
+    expect(app.account).toBeNull();
+    expect(app.signOutBlocked).toBeNull();
+    expect(await app.store.signingOut()).toBe(false);
+    await app.store.log(home.id, 'diaper', { kind: 'wet' });
+  });
+
+  test('offline it blocks with writes stopped; cancel resumes, anyway signs out here only', async () => {
+    const home = await signedInWithEntry();
+    const bodies = household(home, { offline: true });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('offline'));
+
+    await app.signOut();
+    expect(app.signOutBlocked).toContain('could not confirm');
+    expect(app.account).not.toBeNull();
+    await expect(app.store.log(home.id, 'diaper', { kind: 'wet' })).rejects.toThrow('signing out');
+
+    await app.cancelSignOut();
+    expect(app.signOutBlocked).toBeNull();
+    await app.store.log(home.id, 'diaper', { kind: 'wet' });
+
+    await app.signOut();
+    expect(app.signOutBlocked).not.toBeNull();
+    serve(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    await app.signOut({ anyway: true });
+    expect(app.account).toBeNull();
+    expect(app.signOutBlocked).toBeNull();
+    expect(bodies['/api/auth/logout']).toBeUndefined();
+    // Kept for the next sign-in, which uploads them as a returning phone.
+    expect(await app.store.pending(10)).toHaveLength(2);
+    expect(await app.store.signingOut()).toBe(false);
+  });
+
+  test('a refused entry blocks sign-out and says so', async () => {
+    const home = await signedInWithEntry();
+    serve(async (url, init) => {
+      if (url === '/api/sync') {
+        const events = (JSON.parse(init!.body as string) as { events: BabyEvent[] }).events;
+        const results = events.map((e) => ({
+          id: e.id,
+          version: e.version,
+          status: 'rejected',
+          error: 'nope',
+        }));
+        return json({ results, serverNow: W });
+      }
+      if (url.startsWith('/api/sync?')) return json({ ...emptyPull(), serverNow: W });
+      if (url === '/api/babies') return json(home);
+      return json({ ok: true });
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.rejected).toBe(1));
+
+    await app.signOut();
+    expect(app.signOutBlocked).toBe('The server refused an entry from this phone.');
+    expect(requests).not.toContain('POST /api/sync/barrier');
+    expect(requests).not.toContain('POST /api/auth/logout');
+    await app.cancelSignOut();
+  });
+
+  test('a flag left by a closed tab is cleared at startup; one held by a live tab is not', async () => {
+    const home = baby();
+    kv.set('bht.baby', JSON.stringify(home));
+    const db = await openDatabase();
+    await db.put('meta', 1, 'signingOut');
+    serve(async () => json({}));
+    const app = await loadApp();
+    expect(await app.store.signingOut()).toBe(false);
+    expect(app.signingOutElsewhere).toBe(false);
+
+    await db.put('meta', 1, 'signingOut');
+    const locks = (globalThis.navigator as unknown as { locks: ReturnType<typeof fakeLocks> })
+      .locks;
+    let release!: () => void;
+    void locks.request(
+      'bht-sign-out',
+      { ifAvailable: true },
+      () => new Promise<void>((r) => (release = r)),
+    );
+    vi.resetModules();
+    const other = await loadApp();
+    expect(await other.store.signingOut()).toBe(true);
+    expect(other.signingOutElsewhere).toBe(true);
+    release();
+  });
+
+  test('other tabs hear about it: a banner while it runs, then they are signed out too', async () => {
+    const channels = new Set<{
+      name: string;
+      onmessage: ((e: { data: unknown }) => void) | null;
+    }>();
+    vi.stubGlobal(
+      'BroadcastChannel',
+      class {
+        onmessage: ((e: { data: unknown }) => void) | null = null;
+        constructor(readonly name: string) {
+          channels.add(this);
+        }
+        postMessage(data: unknown) {
+          for (const c of channels) if (c !== this) queueMicrotask(() => c.onmessage?.({ data }));
+        }
+      },
+    );
+    const home = await signedInWithEntry();
+    household(home, { offline: true });
+    const a = await loadApp();
+    vi.resetModules();
+    const b = await loadApp();
+    await vi.waitFor(() => expect(b.syncStatus).toBe('offline'));
+
+    await a.signOut();
+    await vi.waitFor(() => expect(b.signingOutElsewhere).toBe(true));
+    await expect(b.store.log(home.id, 'diaper', { kind: 'wet' })).rejects.toThrow('signing out');
+
+    await a.signOut({ anyway: true });
+    await vi.waitFor(() => expect(b.account).toBeNull());
+    expect(b.signingOutElsewhere).toBe(false);
+    expect(b.syncStatus).toBe('idle');
+    await b.store.log(home.id, 'diaper', { kind: 'wet' });
+  });
+});
+
+describe('removing a lost phone (#5 step 3b)', () => {
+  test('posts the device id, then pulls so the list shows it', async () => {
+    const home = baby();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    const bodies: unknown[] = [];
+    serve(async (url, init) => {
+      if (url === '/api/devices/remove') {
+        bodies.push(JSON.parse(init!.body as string));
+        return json({ removedAt: 1 });
+      }
+      return json(emptyPull());
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+    const before = pulls().length;
+    const lost = newId();
+
+    await app.removeDevice(lost);
+    expect(bodies).toEqual([{ deviceId: lost }]);
+    await vi.waitFor(() => expect(pulls().length).toBeGreaterThan(before));
+  });
+
+  test("the server's refusal reaches the caller", async () => {
+    const home = baby();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    serve(async (url) =>
+      url === '/api/devices/remove'
+        ? json({ error: 'No such phone in this household' }, 404)
+        : json(emptyPull()),
+    );
+    const app = await loadApp();
+    await expect(app.removeDevice(newId())).rejects.toThrow('No such phone in this household');
+  });
+});
+
+describe('a sign-out in another tab (#5 step 3b)', () => {
+  /** Two AppStates over one storage and channel, like two tabs; the session is the cookie. */
+  async function twoTabs() {
+    /** Messages wait here while `hold` is set, so a test can deliver one late. */
+    const late = { hold: false, queued: [] as (() => void)[] };
+    const channels = new Set<{ onmessage: ((e: { data: unknown }) => void) | null }>();
+    vi.stubGlobal(
+      'BroadcastChannel',
+      class {
+        onmessage: ((e: { data: unknown }) => void) | null = null;
+        constructor() {
+          channels.add(this);
+        }
+        postMessage(data: unknown) {
+          for (const c of channels) {
+            if (c === this) continue;
+            const deliver = () => c.onmessage?.({ data });
+            if (late.hold) late.queued.push(deliver);
+            else queueMicrotask(deliver);
+          }
+        }
+      },
+    );
+    const home = baby();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    const state = { session: true };
+    serve(async (url) => {
+      if (url === '/api/auth/logout') {
+        state.session = false;
+        return json({});
+      }
+      if (url === '/api/household')
+        return json({ id: home.householdId, members: [], babies: [home] });
+      return json(emptyPull());
+    });
+    const a = await loadApp();
+    vi.resetModules();
+    const b = await loadApp();
+    const signIn = (verified: Promise<unknown>) =>
+      b.signIn(async () => {
+        await verified;
+        state.session = true;
+        return { householdId: home.householdId, memberId: newId() } as SignedIn;
+      });
+    return { a, b, state, signIn, late };
+  }
+
+  test('revokes a sign-in here whose verify was already sent', async () => {
+    const { a, b, state, signIn } = await twoTabs();
+    const verify = held();
+    const login = signIn(verify.response);
+    await settle();
+    await a.signOut({ anyway: true });
+    await settle();
+    verify.release(json({}));
+    await login;
+    await settle();
+    expect(b.account).toBeNull();
+    expect(state.session).toBe(false);
+    expect(kv.has('bht.account')).toBe(false);
+  });
+
+  test('revokes a sign-in here that finished just before the message arrived', async () => {
+    const { a, b, state, signIn, late } = await twoTabs();
+    late.hold = true;
+    await a.signOut({ anyway: true });
+    await signIn(Promise.resolve());
+    expect(kv.has('bht.account')).toBe(true);
+    for (const deliver of late.queued) deliver();
+    await settle();
+    expect(b.account).toBeNull();
+    expect(state.session).toBe(false);
+    expect(kv.has('bht.account')).toBe(false);
   });
 });

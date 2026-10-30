@@ -130,8 +130,17 @@ export class Account {
     return this.#ceremony('login', (deviceId) => ({ deviceId }), signal);
   }
 
-  async logout(): Promise<void> {
-    await this.http.post('/api/auth/logout', {});
+  /**
+   * Ends this phone's session. `gen` says it stopped writing and its barrier covered that write
+   * generation, so the household stops waiting for it (step 3b).
+   */
+  async logout(gen?: number): Promise<void> {
+    await this.http.post('/api/auth/logout', gen === undefined ? {} : { gen });
+  }
+
+  /** Removes another phone of the household (step 3b). Resolves to its removal time (ms). */
+  removeDevice(deviceId: string): Promise<{ removedAt: number }> {
+    return this.http.post('/api/devices/remove', { deviceId });
   }
 
   household(): Promise<HouseholdView> {

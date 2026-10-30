@@ -54,6 +54,7 @@ export class FakeServer {
       watermark: null,
       lastSeenAt: this.now,
       removedAt: null,
+      signedOutAt: null,
     });
   }
 

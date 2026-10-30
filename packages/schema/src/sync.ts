@@ -1,4 +1,6 @@
+import * as v from 'valibot';
 import type { BabyEvent } from './events.ts';
+import { HouseholdDevice } from './protocol.ts';
 
 /**
  * One version of an event as a replica holds it. `seq` is the server sequence number, or
@@ -98,4 +100,13 @@ export function resolveAll(versions: Iterable<StoredVersion>): Map<string, Store
     if (!best || compareVersions(v, best) > 0) current.set(v.event.id, v);
   }
   return current;
+}
+
+/**
+ * Whether a pull's device row has the wire shape (step 3b). A client adopts no device list
+ * with a bad row: a missing or malformed watermark, removedAt or signedOutAt must never read
+ * as synced.
+ */
+export function isHouseholdDevice(input: unknown): input is HouseholdDevice {
+  return v.is(HouseholdDevice, input);
 }

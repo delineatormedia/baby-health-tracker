@@ -66,7 +66,8 @@ const PALE: ReadonlySet<StoolColor> = new Set(['pale_yellow', 'clay', 'white']);
 interface Ctx {
   birth: number;
   now: number;
-  synced: number | null;
+  /** Synced spans in ms, merged and sorted; ±Infinity where unbounded. */
+  synced: [number, number][];
   sex: EvaluateInput['baby']['sex'];
   /** Fully logged periods, merged and sorted. */
   covered: [number, number][];
@@ -85,7 +86,7 @@ export function evaluate(input: EvaluateInput): CheckResult[] {
   const ctx: Ctx = {
     birth,
     now,
-    synced: input.syncedThrough === null ? null : Date.parse(input.syncedThrough),
+    synced: syncedSpans(input),
     sex: input.baby.sex,
     covered: merge(input.fullyLogged.map((i) => [Date.parse(i.start), Date.parse(i.end)])),
     events: input.events
@@ -395,10 +396,13 @@ function noUrine(ctx: Ctx): CheckResult | null {
       noWording,
     );
   }
-  if (ctx.synced === null) {
+  // The last synced span that has begun by now. Its end, or now, is the latest time the log
+  // can vouch for.
+  const span = ctx.synced.findLast(([s]) => s <= ctx.now);
+  if (!span) {
     return notEnough('no_urine', ctx.now - gapMs, ctx.now, present, 'not_synced');
   }
-  const end = Math.min(ctx.now, ctx.synced);
+  const end = Math.min(ctx.now, span[1]);
   const start = end - gapMs;
   // Pulled before day 2, or a wet diaper inside the 8 h before the pull: now is unknown.
   if (!activeAt(rule, end - ctx.birth) || (last && at(last) >= start)) {
@@ -844,11 +848,25 @@ function observeExpected(
   return { value, unit, expected };
 }
 
-/** Is [start, end] inside the fully-logged periods, and pulled by this device? */
+/** Is [start, end] inside the fully-logged periods, and inside one synced span? */
 function coverage(ctx: Ctx, start: number, end: number): NotEnoughDataReason | null {
-  if (ctx.synced === null || end > ctx.synced) return 'not_synced';
+  if (!ctx.synced.some(([s, e]) => s <= start && end <= e)) return 'not_synced';
   const span = ctx.covered.find(([s, e]) => s <= start && end <= e);
   return span ? null : 'not_fully_logged';
+}
+
+/** The synced spans in ms. syncedThrough is the single span from the distant past to it. */
+function syncedSpans(input: EvaluateInput): [number, number][] {
+  if (input.synced === undefined) {
+    const t = input.syncedThrough;
+    return t === null ? [] : [[-Infinity, Date.parse(t)]];
+  }
+  return merge(
+    input.synced.map((s) => [
+      s.start === null ? -Infinity : Date.parse(s.start),
+      s.end === null ? Infinity : Date.parse(s.end),
+    ]),
+  );
 }
 
 /** Sorted, with overlapping or touching periods joined, so back-to-back days cover a span. */

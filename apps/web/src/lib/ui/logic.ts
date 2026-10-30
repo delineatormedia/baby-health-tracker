@@ -41,6 +41,9 @@ export function stopSeconds(startedAt: string, now: number): number | null {
 export function saveFailure(e: unknown): string {
   const name = e instanceof Error || e instanceof DOMException ? e.name : '';
   if (name === 'QuotaExceededError') return 'Not saved: this phone is out of storage space.';
+  // store.ts SigningOut, by name so this module stays free of IndexedDB.
+  if (name === 'SigningOut')
+    return 'Not saved while this phone signs out. Finish or cancel sign-out in Settings.';
   return 'Not saved: this phone could not write to its storage.';
 }
 
@@ -461,6 +464,17 @@ export function swatch(color: StoolColor | null | undefined): Swatch | undefined
   return [...NORMAL_SWATCHES, ...FLAG_SWATCHES].find((s) => s.color === color);
 }
 
+/**
+ * Marks are statements about the log, not logs: "We missed some" and "Count without Sam's
+ * phone" (#24, #5 step 3b). They never show as rows, on the dial or in counts.
+ */
+export type LogMark = Extract<BabyEvent, { type: 'missed_logs' | 'count_without' }>;
+/** A logged entry: every event that is not a mark. */
+export type LogEvent = Exclude<BabyEvent, LogMark>;
+
+export const isLogMark = (e: BabyEvent): e is LogMark =>
+  e.type === 'missed_logs' || e.type === 'count_without';
+
 /** Whole minutes for a feed, at least 1. */
 export const minutes = (seconds: number) => `${Math.max(1, Math.round(seconds / 60))} min`;
 
@@ -503,6 +517,8 @@ export function describe(e: BabyEvent, volume: (ml: number) => string): string {
       return 'Weighted feed';
     case 'missed_logs':
       return 'Missed logs';
+    case 'count_without':
+      return 'Counted without a phone';
   }
 }
 
@@ -524,7 +540,7 @@ export function kindName(e: BabyEvent): string {
 export type EditPath = `/diaper/details?id=${string}` | '/feed' | '/pump' | `/logged?id=${string}`;
 
 export function editLink(e: BabyEvent): { label: string; path: EditPath } | undefined {
-  if (e.type === 'missed_logs') return undefined;
+  if (isLogMark(e)) return undefined;
   if (e.type === 'diaper' && e.data.kind !== 'wet')
     return { label: 'Details', path: `/diaper/details?id=${e.id}` };
   if (e.type === 'breastfeed' && e.data.durationSeconds === null)

@@ -134,7 +134,16 @@ export type CheckResult = {
     }
 );
 
-export interface EvaluateInput {
+/**
+ * A stretch of time every other phone of the household has uploaded, or a parent vouched for
+ * (step 3b). null is unbounded: the distant past, or no end yet.
+ */
+export interface SyncedSpan {
+  start: Timestamp | null;
+  end: Timestamp | null;
+}
+
+interface EvaluateBase {
   baby: { birthAt: Timestamp; sex: Sex };
   /** Current versions of this baby's events (after resolveAll). Deleted events are ignored. */
   events: readonly BabyEvent[];
@@ -144,10 +153,29 @@ export interface EvaluateInput {
    * The mark is the only thing that vouches for writes still offline on the other phone.
    */
   fullyLogged: readonly Interval[];
-  /**
-   * This device has no pending writes and last pulled at this time; null otherwise. It says
-   * nothing about the other phone. Checks treat it as a lower bound: nothing after it is
-   * assumed synced.
-   */
-  syncedThrough: Timestamp | null;
 }
+
+/**
+ * Either `synced` or `syncedThrough`. A window is assessable only if one synced span contains
+ * all of it: that is the per-window predicate. `syncedThrough` is the single-timestamp case,
+ * the one span from the distant past to that time (none when null).
+ */
+export type EvaluateInput = EvaluateBase &
+  (
+    | {
+        /**
+         * The synced spans, on this phone's clock. A removed phone, for example, leaves a gap
+         * between its watermark and its removal: windows inside it wait, windows after it do not.
+         */
+        synced: readonly SyncedSpan[];
+        syncedThrough?: never;
+      }
+    | {
+        /**
+         * Everything up to this time is synced; null when nothing is. Checks treat it as a lower
+         * bound: nothing after it is assumed synced.
+         */
+        syncedThrough: Timestamp | null;
+        synced?: never;
+      }
+  );

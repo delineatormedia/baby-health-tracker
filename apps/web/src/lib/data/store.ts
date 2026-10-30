@@ -41,6 +41,21 @@ const devicesKey = (household: string) => `devices:${household}`;
  */
 const GEN_KEY = 'gen';
 
+/**
+ * Set while this phone signs out (step 3b). Every local write reads it in the transaction that
+ * would bump `gen`, and aborts if it is set, so the write barrier's snapshot holds every write
+ * the phone makes as this device.
+ */
+const SIGNING_OUT_KEY = 'signingOut';
+
+/** A local write refused because this phone is signing out, in this tab or another. */
+export class SigningOut extends Error {
+  override name = 'SigningOut';
+  constructor() {
+    super('This phone is signing out');
+  }
+}
+
 /** The pending rows and write generation read in one transaction, for a write barrier. */
 export interface Snapshot {
   gen: number;
@@ -287,6 +302,7 @@ export class EventStore {
     const recordedAt = this.now().toISOString();
     let moved = 0;
     try {
+      await refuseWhileSigningOut(tx);
       const ids = new Set((await store.index('byBaby').getAll(from)).map((r) => r.id));
       for (const id of ids) {
         const rows = await store.index('byId').getAll(id);
@@ -349,6 +365,23 @@ export class EventStore {
    */
   async hasRows(babyId: string): Promise<boolean> {
     return (await this.db.countFromIndex('versions', 'byBaby', babyId)) > 0;
+  }
+
+  /**
+   * Stops local writes for sign-out, in every tab. Resolves once the flag has committed: a
+   * write that started earlier has committed first, and every later one aborts.
+   */
+  async beginSignOut(): Promise<void> {
+    await this.db.put('meta', 1, SIGNING_OUT_KEY);
+  }
+
+  /** Lets local writes resume, after sign-out finishes or is cancelled. */
+  async endSignOut(): Promise<void> {
+    await this.db.delete('meta', SIGNING_OUT_KEY);
+  }
+
+  async signingOut(): Promise<boolean> {
+    return (await this.db.get('meta', SIGNING_OUT_KEY)) !== undefined;
   }
 
   /** Whether any entry of `babyId` reached a server, by this phone's push or a pull. */
@@ -428,6 +461,13 @@ export class EventStore {
    * replace an existing row.
    */
   async #append(tx: WriteTx, candidate: unknown): Promise<BabyEvent> {
+    try {
+      await refuseWhileSigningOut(tx);
+    } catch (e) {
+      tx.abort();
+      await tx.done.catch(() => {});
+      throw e;
+    }
     const parsed = parseEvent(candidate);
     if (!parsed.ok) {
       tx.abort();
@@ -444,6 +484,11 @@ export class EventStore {
 }
 
 type WriteTx = IDBPTransaction<BhtDB, ['versions', 'meta'], 'readwrite'>;
+
+/** Throws SigningOut if the flag is set; the caller aborts `tx`. */
+async function refuseWhileSigningOut(tx: WriteTx): Promise<void> {
+  if ((await tx.objectStore('meta').get(SIGNING_OUT_KEY)) !== undefined) throw new SigningOut();
+}
 
 async function bumpGen(tx: WriteTx): Promise<void> {
   const meta = tx.objectStore('meta');

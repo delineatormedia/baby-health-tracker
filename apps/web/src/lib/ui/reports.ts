@@ -1,5 +1,14 @@
 import { formatWeight, type BabyEvent } from '@bht/schema';
-import { awaitingAmount, isPaused, minutes, pumpSide, sideTimes, swatch } from './logic.ts';
+import {
+  awaitingAmount,
+  isLogMark,
+  isPaused,
+  minutes,
+  pumpSide,
+  sideTimes,
+  swatch,
+  type LogEvent,
+} from './logic.ts';
 import { missedMarks } from './readings.ts';
 
 // Reports (#21): looking back by day, week and month. Days are cut at the household's
@@ -215,14 +224,10 @@ export function feedEnd(e: Extract<BabyEvent, { type: 'breastfeed' }>, now: numb
 }
 
 /** Logged events in [start, end), oldest first. "We missed some" marks are not logs. */
-export function eventsIn(
-  events: readonly BabyEvent[],
-  start: number,
-  end: number,
-): Exclude<BabyEvent, { type: 'missed_logs' }>[] {
+export function eventsIn(events: readonly BabyEvent[], start: number, end: number): LogEvent[] {
   return events
-    .filter((e): e is Exclude<BabyEvent, { type: 'missed_logs' }> => {
-      if (e.type === 'missed_logs') return false;
+    .filter((e): e is LogEvent => {
+      if (isLogMark(e)) return false;
       const t = Date.parse(e.occurredAt);
       return t >= start && t < end;
     })
@@ -373,7 +378,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** A list row: "Bottle 60 mL" with "Breast milk" under it. Glyph is the dial shape, if any. */
 export function rowText(
-  e: Exclude<BabyEvent, { type: 'missed_logs' }>,
+  e: LogEvent,
   volume: (ml: number) => string,
 ): { glyph: 'feed' | 'bottle' | 'wet' | 'dirty' | 'pump' | null; name: string; detail: string } {
   switch (e.type) {

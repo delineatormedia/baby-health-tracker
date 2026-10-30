@@ -4,14 +4,18 @@
   import { app } from '../../lib/ui/app.svelte.ts';
   import { ageDays, countMarks, dayMarks, intake24h } from '../../lib/ui/logic.ts';
   import Toast from '../../lib/ui/Toast.svelte';
+  import { lateIn, lateText } from '../../lib/ui/late.ts';
   import {
     COUNT_CHECKS,
     expectedRangeLine,
     fullyLogged,
     loggingStart,
     marksIn,
+    countWithoutLabel,
     reasonText,
     statusText,
+    vouchesIn,
+    waitingOnPhones,
     waitingText,
   } from '../../lib/ui/readings.ts';
 
@@ -28,7 +32,7 @@
   });
   const results = $derived.by(() => {
     const now = clock.wall;
-    const synced = app.syncedThrough(now, clock.mono);
+    const synced = app.syncedSpans(now, clock.mono);
     return evaluate({
       baby: { birthAt: app.baby!.birthAt, sex: app.baby!.sex },
       events: app.events,
@@ -36,19 +40,36 @@
       // From where logging began, every period counts as fully logged except the ones marked
       // "We missed some" (#24).
       fullyLogged: fullyLogged(app.baby!.birthAt, now, app.events, start),
-      // A window is assessed once every other phone has uploaded what it recorded in it
-      // (step 3b). A phone that is not signed in holds the whole log.
-      syncedThrough: synced === null ? null : new Date(synced).toISOString(),
+      // A window is assessed once every other phone has uploaded what it recorded in it, or a
+      // parent counted without it (step 3b). A phone that is not signed in holds the whole log.
+      synced: synced.map(([s, e]) => ({ start: isoOrNull(s), end: isoOrNull(e) })),
     });
   });
+  const isoOrNull = (ms: number) => (Number.isFinite(ms) ? new Date(ms).toISOString() : null);
+  /** The phones a check's window waits on. */
+  const waitingFor = (r: CheckResult) =>
+    app.waitingOnWindow(
+      Date.parse(r.window.start),
+      Date.parse(r.window.end),
+      clock.wall,
+      clock.mono,
+    );
+  const notSynced = (r: CheckResult) =>
+    r.status === 'not_enough_data' && r.reason === 'not_synced' && app.account !== null;
   /** Why a check waits on the other phones, or its usual reason. */
   const why = (r: CheckResult) =>
-    r.status === 'not_enough_data' && r.reason === 'not_synced' && app.account
-      ? waitingText(app.waitingOnWindow(Date.parse(r.window.end), clock.wall, clock.mono))
-      : reasonText(r, start);
-  const waiting = $derived(
-    app.account && app.waitingOn(clock.wall, clock.wall, clock.mono).length > 0,
-  );
+    notSynced(r) ? waitingText(waitingFor(r)) : reasonText(r, start);
+  /**
+   * "Updated: entries from Sam’s phone arrived late", for a window holding entries that came in
+   * after it was assessed; null otherwise, and while the check waits on a phone again.
+   */
+  const updated = (r: CheckResult) => {
+    if (notSynced(r)) return null;
+    const late = lateIn(app.late, Date.parse(r.window.start), Date.parse(r.window.end));
+    return late.length > 0 ? lateText(late, app.devices) : null;
+  };
+  /** The intake note's "not synced yet" line: only while a check is waiting on a phone. */
+  const waiting = $derived(app.account !== null && waitingOnPhones(results, waitingFor));
 
   let busy = false;
   async function once(fn: () => Promise<unknown>) {
@@ -71,6 +92,35 @@
         day: `Day ${ageDays(app.baby!.birthAt, Date.parse(r.window.start))}`,
       }),
     );
+
+  /**
+   * "Count without Sam’s phone" (step 3b): a mark from Sam's phone's converted watermark, or
+   * from the start of time when there is none, to now. One per waiting phone, one Undo.
+   */
+  const countWithout = (r: CheckResult) =>
+    once(async () => {
+      const wall = Date.now();
+      const mono = performance.now();
+      const phones = waitingFor(r);
+      for (const d of phones) {
+        const from = app.coveredThrough(d, wall, mono);
+        await app.log(
+          'count_without',
+          {
+            deviceId: d.deviceId,
+            start: from === null ? null : new Date(from).toISOString(),
+            end: new Date(wall).toISOString(),
+          },
+          `Counted without ${d.memberName}’s phone`,
+        );
+      }
+    });
+
+  /** "Wait for Sam’s phone": takes back the Count-without marks on this check's window. */
+  const unvouch = (r: CheckResult) =>
+    once(async () => {
+      for (const m of vouchesIn(app.events, r.window)) await app.store.remove(m.id);
+    });
 
   /** "We logged everything": takes back every mark on this check's day. */
   const unmark = (r: CheckResult) =>
@@ -95,6 +145,7 @@
           <!-- A missed log is the likelier cause, so it comes before the pediatrician (#24). -->
           <h2>{r.title}</h2>
           <p>{statusText(r, app.volume)}</p>
+          {@render late(r)}
           <div class="ask">
             <p class="q">Did you miss logging some?</p>
             <button class="mark" onclick={() => markMissed(r)}>We missed some</button>
@@ -104,6 +155,7 @@
           <div class="lab">! {URGENCY_TEXT[r.urgency]}</div>
           <h2>{r.title}</h2>
           <p>{statusText(r, app.volume)}</p>
+          {@render late(r)}
         {/if}
         <details class="more">
           <summary><span>Why?</span><span aria-hidden="true">›</span></summary>
@@ -137,11 +189,23 @@
           <span>{CHECK_LABEL[r.check]}</span>
           <b class:flagged={r.status === 'flag'} class="num">{statusText(r, app.volume)}</b>
         </summary>
+        {@render late(r)}
         {#if r.status === 'not_enough_data'}
           <p class="why">{why(r)}.</p>
           {#if r.reason === 'not_fully_logged' && marksIn(app.events, r.window).length > 0}
             <div><button class="mark" onclick={() => unmark(r)}>We logged everything</button></div>
           {/if}
+          {#if notSynced(r) && waitingFor(r).length > 0}
+            <div>
+              <button class="mark" onclick={() => countWithout(r)}>
+                {countWithoutLabel(waitingFor(r))}
+              </button>
+            </div>
+          {/if}
+        {/if}
+        {#if app.account && vouchesIn(app.events, r.window).length > 0}
+          <p class="why">Counted without a phone that had not synced.</p>
+          <div><button class="mark" onclick={() => unvouch(r)}>Wait for the phone</button></div>
         {/if}
         {@render sources(r)}
       </details>
@@ -171,6 +235,13 @@
     If something about your baby worries you, call your pediatrician. The app does not replace that.
   </p>
 </main>
+
+{#snippet late(r: CheckResult)}
+  {@const text = updated(r)}
+  {#if text}
+    <p class="why">{text}.</p>
+  {/if}
+{/snippet}
 
 {#snippet sources(r: CheckResult)}
   {#if r.citations.length > 0}

@@ -1,4 +1,9 @@
-import { SCHEMA_VERSION, type BabyEvent, type HouseholdDevice } from '@bht/schema';
+import {
+  isHouseholdDevice,
+  SCHEMA_VERSION,
+  type BabyEvent,
+  type HouseholdDevice,
+} from '@bht/schema';
 import type { EventStore } from './store.ts';
 import {
   HttpError,
@@ -64,6 +69,8 @@ export class SyncClient {
   readonly #listeners = new Set<(s: SyncStatus) => void>();
   /** The latest serverNow received: a barrier's `at` must come from before its snapshot. */
   #serverNow: number | null = null;
+  /** The write generation the last barrier covered, for flush(). */
+  #covered: number | null = null;
   readonly #opts: Required<Omit<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt'>> &
     Pick<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt'>;
 
@@ -119,6 +126,18 @@ export class SyncClient {
       if (again) void this.sync();
     });
     return this.#running;
+  }
+
+  /**
+   * One full run that starts after every run in flight, for sign-out (step 3b). Resolves to the
+   * write generation its barrier covered, or null if it sent none: the run failed, the session
+   * ended, or a version is still unanswered or refused.
+   */
+  async flush(): Promise<number | null> {
+    while (this.#running) await this.#running;
+    this.#covered = null;
+    await this.sync();
+    return this.#status === 'idle' ? this.#covered : null;
   }
 
   /** Wires browser triggers: local writes, coming back online, and returning to the app. */
@@ -247,7 +266,7 @@ export class SyncClient {
    *
    * The clock sample is read just before the first page is sent: the server reads serverNow
    * after that, so serverNow − tSend bounds the clock offset from above however slow either
-   * leg is (step 3b). The whole pull keeps the first page's sample and device list, and both
+   * leg is (step 3b). tRecv, read when the page arrives, bounds it from below. The whole pull keeps the first page's sample and device list, and both
    * are adopted with the page that reaches through.
    */
   async #pull(epoch: number) {
@@ -260,12 +279,17 @@ export class SyncClient {
       const sent = first ? null : { tSend: clock.wall(), pSend: clock.mono() };
       const page = await this.transport.pull(after, pullLimit, through);
       this.#fence(epoch);
+      if (page.devices !== undefined && !page.devices.every(isHouseholdDevice)) {
+        throw new MalformedDevices();
+      }
       this.#heard(page.serverNow);
       through ??= page.through;
       first ??= {
         devices: page.devices,
         sample:
-          sent && page.serverNow !== undefined ? { ...sent, serverNow: page.serverNow } : undefined,
+          sent && page.serverNow !== undefined
+            ? { ...sent, serverNow: page.serverNow, tRecv: clock.wall() }
+            : undefined,
       };
       await this.#write(this.store.applyPull(page, household, first.devices));
       if (page.more) continue;
@@ -300,6 +324,7 @@ export class SyncClient {
     });
     this.#fence(epoch);
     this.#heard(serverNow);
+    this.#covered = snapshot.gen;
   }
 
   #heard(serverNow: number | undefined) {
@@ -336,7 +361,7 @@ export class SyncClient {
 
 /** A failed run's reason as Settings shows it. */
 export function failureReason(err: unknown): string {
-  if (err instanceof SeededRefusal) return err.message;
+  if (err instanceof SeededRefusal || err instanceof MalformedDevices) return err.message;
   if (!(err instanceof HttpError)) return 'No connection to the server';
   if (err.status === 413) return 'Server rejected upload size';
   if (err.status === 409) return 'Server needs an update before this app can sync';
@@ -371,4 +396,14 @@ export function takeBatch(pending: BabyEvent[], cap: number, budget: number): Ba
     n += 1;
   }
   return pending.slice(0, n);
+}
+
+/**
+ * A pull page whose device list has a row without the wire shape. The page is rejected before
+ * anything from it is written or adopted, so Readings keeps waiting (step 3b).
+ */
+export class MalformedDevices extends Error {
+  constructor() {
+    super('Server sent an unreadable device list');
+  }
 }

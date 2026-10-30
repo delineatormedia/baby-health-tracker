@@ -25,11 +25,11 @@ const WET = Array.from({ length: 6 }, (_, i) => ({
   },
 }));
 
-const wetDiapers = (page: Page) =>
+const wetDiaperRow = (page: Page) =>
   page
     .locator('.list details')
-    .filter({ has: page.locator('summary span').filter({ hasText: /^Wet diapers$/ }) })
-    .locator('b.num');
+    .filter({ has: page.locator('summary span').filter({ hasText: /^Wet diapers$/ }) });
+const wetDiapers = (page: Page) => wetDiaperRow(page).locator('b.num');
 
 test('a tab whose pull comes back empty still shows what another tab pulled', async ({
   browser,
@@ -79,13 +79,21 @@ test('a tab whose pull comes back empty still shows what another tab pulled', as
         more: false,
         serverNow: T,
         devices: [
-          { deviceId: SELF, memberName: 'Maya', watermark: T, lastSeenAt: T, removedAt: null },
+          {
+            deviceId: SELF,
+            memberName: 'Maya',
+            watermark: T,
+            lastSeenAt: T,
+            removedAt: null,
+            signedOutAt: null,
+          },
           {
             deviceId: SAM,
             memberName: 'Sam',
             watermark: samWatermark,
             lastSeenAt: T,
             removedAt: null,
+            signedOutAt: null,
           },
         ],
       };
@@ -100,6 +108,9 @@ test('a tab whose pull comes back empty still shows what another tab pulled', as
   const a = await ctx.newPage();
   const errors = watchErrors(a);
   await open(a, '/readings');
+  // Adopted: tab A has pulled and waits on Sam's phone, not on its first sync.
+  await expect.poll(() => pulls).toContain(0);
+  await expect(wetDiaperRow(a)).toContainText('Waiting for Sam’s phone');
   await expect(wetDiapers(a)).toHaveText('Not assessed');
 
   // Sam's phone uploads six wet diapers and covers them. Tab B pulls them into the shared

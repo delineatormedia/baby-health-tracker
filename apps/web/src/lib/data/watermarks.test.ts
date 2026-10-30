@@ -5,6 +5,7 @@ import {
   DRIFT_BUDGET_MS,
   localWatermark,
   sampleHolds,
+  syncedSpans,
   syncedThrough,
   waitingOn,
   waitingOnWindow,
@@ -21,7 +22,14 @@ const NOON = Date.parse('2026-10-29T12:00:00.000Z');
 const self = newId();
 
 function device(memberName: string, watermark: number | null): HouseholdDevice {
-  return { deviceId: newId(), memberName, watermark, lastSeenAt: NOON, removedAt: null };
+  return {
+    deviceId: newId(),
+    memberName,
+    watermark,
+    lastSeenAt: NOON,
+    removedAt: null,
+    signedOutAt: null,
+  };
 }
 
 /** A view at the moment the sample was taken, plus `elapsed` on both clocks. */
@@ -38,7 +46,12 @@ function view(
 }
 
 /** Clocks agree: sent at noon, the server read serverNow `delay` later. */
-const agreed = (delay = 0): ClockSample => ({ tSend: NOON, pSend: 5_000, serverNow: NOON + delay });
+const agreed = (delay = 0): ClockSample => ({
+  tSend: NOON,
+  pSend: 5_000,
+  serverNow: NOON + delay,
+  tRecv: NOON + delay,
+});
 
 describe('localWatermark', () => {
   test('delayed response: a window ending between W and arrival is not assessed', () => {
@@ -75,7 +88,7 @@ describe('localWatermark', () => {
       const w = serverNow - Math.round(rand() * 48 * H); // a watermark at or before serverNow
       // A jump the check allows, either way, moves the local instant W names by `jump`.
       const jump = Math.round((rand() - 0.5) * 2 * DRIFT_BUDGET_MS);
-      const sample = { tSend, pSend: 0, serverNow };
+      const sample = { tSend, pSend: 0, serverNow, tRecv: tSend + up };
       expect(sampleHolds(sample, tSend + MIN + jump, MIN)).toBe(true);
       expect(localWatermark(w, sample)).toBeLessThanOrEqual(w - theta + jump);
     }
@@ -85,7 +98,12 @@ describe('localWatermark', () => {
     for (const theta of [-5 * H, -1, 0, 1, 3 * H]) {
       for (const delay of [0, 400, 90 * S]) {
         // This phone's clock reads tSend; the server's reads tSend + theta.
-        const sample = { tSend: NOON, pSend: 0, serverNow: NOON + delay + theta };
+        const sample = {
+          tSend: NOON,
+          pSend: 0,
+          serverNow: NOON + delay + theta,
+          tRecv: NOON + delay,
+        };
         const w = NOON + theta; // the server time at the instant the request left
         const sam = device('Sam', w);
         const localInstant = w - theta;
@@ -126,8 +144,8 @@ describe('clock jumps (#44)', () => {
 describe('syncedThrough', () => {
   test('the only phone of its household is synced through now', () => {
     const me = { ...device('Maya', null), deviceId: self };
-    expect(syncedThrough(view([me], null, 0))).toBe(NOON);
-    expect(syncedThrough(view([], null, 0))).toBe(NOON);
+    expect(syncedThrough(view([me], null, 0))).toBe(Infinity);
+    expect(syncedThrough(view([], null, 0))).toBe(Infinity);
   });
 
   test('a list kept from an earlier session assesses nothing, even with only this phone', () => {
@@ -161,7 +179,7 @@ describe('syncedThrough', () => {
 
   test('a silent phone holds windows back however long it is silent', () => {
     const sam = device('Sam', NOON - 48 * H);
-    const v = view([sam], { tSend: NOON, pSend: 0, serverNow: NOON }, 0);
+    const v = view([sam], { tSend: NOON, pSend: 0, serverNow: NOON, tRecv: NOON }, 0);
     expect(waitingOn(v, NOON)).toEqual([sam]);
     expect(waitingOn(v, NOON - 24 * H)).toEqual([sam]);
   });
@@ -171,6 +189,26 @@ describe('syncedThrough', () => {
     const v = view([sam], null);
     expect(syncedThrough(v)).toBeNull();
     expect(waitingOn(v, NOON - H)).toEqual([sam]);
+  });
+
+  // A row the pull would reject, or one kept from before a field existed, must never read as
+  // synced: only a finite number is a time.
+  test.each([
+    ['missing', undefined],
+    ['a string', '2026-10-29'],
+    ['NaN', NaN],
+    ['Infinity', Infinity],
+    ['-Infinity', -Infinity],
+  ])('a time that is %s grants no coverage', (_label, bad) => {
+    const garbage = bad as unknown as number;
+    for (const field of ['watermark', 'removedAt', 'signedOutAt'] as const) {
+      const sam: HouseholdDevice = { ...device('Sam', null), [field]: garbage };
+      if (bad === undefined) delete (sam as Partial<HouseholdDevice>)[field];
+      const v = view([sam], agreed(), MIN);
+      expect(syncedSpans(v), field).toEqual([]);
+      expect(syncedThrough(v), field).toBeNull();
+      expect(waitingOn(v, NOON - 30 * 24 * H), field).toEqual([sam]);
+    }
   });
 
   test('property: min over phones matches the per-window rule both ways', () => {
@@ -183,7 +221,8 @@ describe('syncedThrough', () => {
         return rand() < 0.2 ? { ...d, removedAt: NOON - Math.round(rand() * 30 * H) } : d;
       });
       if (rand() < 0.3) devices.push({ ...device('Me', null), deviceId: self });
-      const sample = { tSend: NOON, pSend: 0, serverNow: NOON + Math.round((rand() - 0.5) * H) };
+      const offset = Math.round((rand() - 0.5) * H);
+      const sample = { tSend: NOON, pSend: 0, serverNow: NOON + offset, tRecv: NOON };
       const v = view(devices, rand() < 0.1 ? null : sample, Math.round(rand() * MIN));
       const through = syncedThrough(v);
       for (let j = 0; j < 20; j++) {
@@ -213,7 +252,7 @@ describe('waitingOnWindow', () => {
 
   test('no_urine, clamped to the watermark that holds it back, names that phone', () => {
     // Day 3; Sam's phone last synced 3 h ago and the last wet diaper is 9 h old. no_urine's
-    // window ends at syncedThrough, which is Sam's converted watermark (Ignition's probe on #64).
+    // window ends where the synced span does: Sam's converted watermark (Ignition's probe on #64).
     const sam = device('Sam', NOON - 3 * H);
     const v = view([sam], agreed());
     const synced = syncedThrough(v)!;
@@ -222,31 +261,35 @@ describe('waitingOnWindow', () => {
       events: [wet(NOON - 9 * H)],
       now: iso(NOON),
       fullyLogged: [{ start: iso(NOON - 50 * H), end: iso(NOON) }],
-      syncedThrough: iso(synced),
+      synced: syncedSpans(v).map(([s, e]) => ({
+        start: Number.isFinite(s) ? iso(s) : null,
+        end: Number.isFinite(e) ? iso(e) : null,
+      })),
     }).find((c) => c.check === 'no_urine')!;
     expect(r).toMatchObject({ status: 'not_enough_data', reason: 'not_synced' });
     expect(Date.parse(r.window.end)).toBe(synced);
     // The bug: the window's own end is not past Sam's watermark, so nobody was named.
-    expect(waitingOn(v, Date.parse(r.window.end))).toEqual([]);
-    expect(waitingOnWindow(v, Date.parse(r.window.end))).toEqual([sam]);
+    expect(waitingOn(v, Date.parse(r.window.end), Date.parse(r.window.start))).toEqual([]);
+    expect(waitingOnWindow(v, Date.parse(r.window.start), Date.parse(r.window.end))).toEqual([sam]);
   });
 
   test('a clamped window waits on every phone not yet through now', () => {
     const sam = device('Sam', NOON - 3 * H);
     const ana = device('Ana', NOON - H);
     const v = view([sam, ana], agreed());
-    expect(waitingOnWindow(v, syncedThrough(v)!)).toEqual([sam, ana]);
+    const end = syncedThrough(v)!;
+    expect(waitingOnWindow(v, end - 8 * H, end)).toEqual([sam, ana]);
   });
 
   test('a window ending past syncedThrough still names only the phones behind its end', () => {
     const sam = device('Sam', NOON - 3 * H);
     const ana = device('Ana', NOON - H);
     const v = view([sam, ana], agreed());
-    expect(waitingOnWindow(v, NOON - 2 * H)).toEqual([sam]);
+    expect(waitingOnWindow(v, NOON - 3 * H, NOON - 2 * H)).toEqual([sam]);
   });
 
   test('nothing known yet: the window waits on every phone', () => {
     const fresh = device('Sam', null);
-    expect(waitingOnWindow(view([fresh], agreed()), NOON - H)).toEqual([fresh]);
+    expect(waitingOnWindow(view([fresh], agreed()), NOON - 2 * H, NOON - H)).toEqual([fresh]);
   });
 });

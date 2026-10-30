@@ -24,6 +24,13 @@
   <p class="test-data" role="status">Test data</p>
 {/if}
 
+{#if app.signingOutElsewhere}
+  <!-- Step 3b: the meta flag refuses writes; this says why before anyone taps. -->
+  <p class="signing-out" role="status">
+    Signing out in another tab. Nothing new can be saved until it finishes or is cancelled.
+  </p>
+{/if}
+
 {#if app.saveError}
   <div class="save-fail" role="alert">
     <span>{app.saveError?.text}</span>
@@ -63,6 +70,14 @@
     letter-spacing: 0.06em;
     text-align: center;
     text-transform: uppercase;
+  }
+  .signing-out {
+    margin: 0;
+    padding: calc(8px + env(safe-area-inset-top)) 16px 8px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+    font-size: 15px;
+    text-align: center;
   }
   .save-fail {
     position: fixed;

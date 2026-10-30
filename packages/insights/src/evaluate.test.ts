@@ -53,6 +53,8 @@ interface Run {
   logged?: [number, number][];
   /** Default: now. */
   synced?: number | null;
+  /** Synced spans as [start, end] offsets, null unbounded; replaces `synced` when given. */
+  spans?: [number | null, number | null][];
   sex?: Sex;
   /** Default: a breastfeed every 3 h from birth when the test logs no feed of its own. */
   feeds?: 'none';
@@ -60,7 +62,15 @@ interface Run {
 
 const isFeedRecord = (e: BabyEvent) => e.type === 'breastfeed' || e.type === 'bottle';
 
-function run({ now, events = [], logged, synced, sex = 'female', feeds }: Run): CheckResult[] {
+function run({
+  now,
+  events = [],
+  logged,
+  synced,
+  spans,
+  sex = 'female',
+  feeds,
+}: Run): CheckResult[] {
   const fill =
     feeds === 'none' || events.some(isFeedRecord)
       ? []
@@ -70,7 +80,14 @@ function run({ now, events = [], logged, synced, sex = 'female', feeds }: Run): 
     events: [...events, ...fill],
     now: iso(now),
     fullyLogged: (logged ?? [[0, now]]).map(([s, e]) => ({ start: iso(s), end: iso(e) })),
-    syncedThrough: synced === null ? null : iso(synced ?? now),
+    ...(spans
+      ? {
+          synced: spans.map(([s, e]) => ({
+            start: s === null ? null : iso(s),
+            end: e === null ? null : iso(e),
+          })),
+        }
+      : { syncedThrough: synced === null ? null : iso(synced ?? now) }),
   });
 }
 
@@ -849,5 +866,74 @@ describe('results', () => {
 
   test('events after now are ignored', () => {
     expect(status({ now: 30 * H, events: [wet(31 * H)] }, 'no_urine')).toBe('flag');
+  });
+});
+
+describe('synced spans: the per-window predicate (step 3b)', () => {
+  // Every scenario above runs on syncedThrough. The same runs as spans give the same results.
+  const scenarios: Run[] = [
+    { now: after(4), events: inDay(4, 3, wet) },
+    { now: after(4), events: inDay(4, 3, wet), synced: 5 * D - 1 },
+    { now: after(4), events: inDay(4, 3, wet), synced: null },
+    { now: 30 * H, synced: 28 * H, events: [wet(20 * H - 1)] },
+    { now: 30 * H, synced: 28 * H, events: [wet(29 * H)] },
+    { now: 40 * H, synced: 35 * H },
+    { now: 40 * H, synced: 30 * H, events: [wet(22 * H)], logged: [] },
+    { now: 30 * H, synced: 10 * H, logged: [[0, 10 * H]] },
+    { now: 3 * D, events: [wet(30 * H), dirty(20 * H), weight(H, 3000)] },
+  ];
+
+  test.each(scenarios)('one open-start span is syncedThrough (%#)', (r) => {
+    const t = r.synced === undefined ? r.now : r.synced;
+    const spans: [number | null, number | null][] = t === null ? [] : [[null, t]];
+    expect(run({ ...r, spans })).toEqual(run(r));
+  });
+
+  // A phone removed at R whose watermark W is before R: windows ending by W are assessed,
+  // windows in (W, R) wait, and windows after R are assessed.
+  const d = 4;
+  const events = inDay(d, 3, wet);
+  const gap = (w: number, r: number): [number | null, number | null][] => [
+    [null, w],
+    [r, null],
+  ];
+
+  test('a removal gap: a day inside it waits, a day after it is assessed', () => {
+    const now = after(d);
+    expect(get({ now, events, spans: gap(d * D - H, d * D + H) }, 'wet_diapers')).toMatchObject({
+      status: 'not_enough_data',
+      reason: 'not_synced',
+    });
+    expect(status({ now, events, spans: gap(d * D - 2 * H, d * D - H) }, 'wet_diapers')).toBe(
+      'flag',
+    );
+    expect(status({ now, events, spans: gap((d + 1) * D, after(d)) }, 'wet_diapers')).toBe('flag');
+  });
+
+  test('spans that only touch still cover a day', () => {
+    const now = after(d);
+    const spans: [number | null, number | null][] = [
+      [null, d * D + H],
+      [d * D + H, null],
+    ];
+    expect(status({ now, events, spans }, 'wet_diapers')).toBe('flag');
+  });
+
+  test('no urine reads the last span: assessed after a removal, waiting inside the gap', () => {
+    const now = 30 * H;
+    // The feeding is judged over the day before, so that day must be in the span too.
+    expect(status({ now, spans: gap(2 * H, now - D) }, 'no_urine')).toBe('flag');
+    expect(get({ now, spans: gap(2 * H, now - 9 * H) }, 'no_urine')).toMatchObject({
+      reason: 'not_synced',
+    });
+    expect(get({ now, spans: gap(10 * H, now - 7 * H) }, 'no_urine')).toMatchObject({
+      status: 'not_enough_data',
+      reason: 'not_synced',
+      window: { start: iso(now - 8 * H), end: iso(now) },
+    });
+    // A span that has not begun by now is no help.
+    expect(get({ now, spans: [[now + H, null]] }, 'no_urine')).toMatchObject({
+      reason: 'not_synced',
+    });
   });
 });

@@ -133,7 +133,7 @@ export function pullVersions(
 function householdDevices(db: DatabaseSync, householdId: string): HouseholdDevice[] {
   const rows = db
     .prepare(
-      `SELECT d.id, m.display_name, d.watermark, d.last_seen_at, d.removed_at
+      `SELECT d.id, m.display_name, d.watermark, d.last_seen_at, d.removed_at, d.signed_out_at
        FROM devices d JOIN members m ON m.id = d.member_id
        WHERE m.household_id = ? ORDER BY d.created_at, d.id`,
     )
@@ -143,6 +143,7 @@ function householdDevices(db: DatabaseSync, householdId: string): HouseholdDevic
     watermark: number | null;
     last_seen_at: string;
     removed_at: string | null;
+    signed_out_at: string | null;
   }[];
   return rows.map((r) => ({
     deviceId: r.id,
@@ -150,6 +151,7 @@ function householdDevices(db: DatabaseSync, householdId: string): HouseholdDevic
     watermark: r.watermark,
     lastSeenAt: Date.parse(r.last_seen_at),
     removedAt: r.removed_at === null ? null : Date.parse(r.removed_at),
+    signedOutAt: r.signed_out_at === null ? null : Date.parse(r.signed_out_at),
   }));
 }
 
