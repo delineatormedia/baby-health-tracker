@@ -944,12 +944,7 @@ describe('sign-out quiesces and covers this phone (#5 step 3b)', () => {
           channels.add(this);
         }
         postMessage(data: unknown) {
-          for (const c of channels) {
-            if (c === this) continue;
-            const deliver = () => c.onmessage?.({ data });
-            if (late.hold) late.queued.push(deliver);
-            else queueMicrotask(deliver);
-          }
+          for (const c of channels) if (c !== this) queueMicrotask(() => c.onmessage?.({ data }));
         }
       },
     );
