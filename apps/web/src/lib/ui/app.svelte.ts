@@ -43,6 +43,7 @@ import {
 } from './prefs.ts';
 import { babyPreparer, placeBaby } from './session.ts';
 import { editLink, saveFailure, type EditPath } from './logic.ts';
+import { LateTracker, type LateEntry } from './late.ts';
 import { vouches } from './readings.ts';
 import { ensurePersisted, isStandalone, showHomeScreenNote, type Persistence } from './storage.ts';
 import { time, when } from './time.ts';
@@ -131,6 +132,8 @@ class AppState {
   signOutBlocked = $state<string | null>(null);
   /** Another tab is signing out; local writes are refused until it finishes or cancels. */
   signingOutElsewhere = $state(false);
+  /** Entries from other phones that arrived after their windows were assessed (step 3b). */
+  late = $state.raw<readonly LateEntry[]>([]);
 
   #store: EventStore | null = null;
   #kv: Storage | null = null;
@@ -140,6 +143,7 @@ class AppState {
   #account: Account | null = null;
   #sync: SyncClient | null = null;
   #stopSync: (() => Promise<void>) | null = null;
+  #late: LateTracker | null = null;
   /**
    * Baby ids the server has, from the last household load. Replaced, not cleared, so a
    * stopped client's late prepare cannot add to the set the next client reads.
@@ -619,6 +623,8 @@ class AppState {
         this.devices = devices;
         this.clockSample = sample;
         this.devicesCurrent = true;
+        const wall = Date.now();
+        this.#lateTracker()?.record(this.syncedSpans(wall, performance.now()), wall);
       },
       prepare: babyPreparer(
         (b) => this.#api.addBaby(b),
@@ -758,6 +764,31 @@ class AppState {
     this.#toastTimer = setTimeout(() => (this.toast = null), TOAST_MS);
   }
 
+  /** The signed-in household's late-arrival tracker; null while logs stay on this phone. */
+  #lateTracker(): LateTracker | null {
+    const household = this.account?.householdId;
+    if (!household) return null;
+    if (this.#late?.household !== household) this.#late = new LateTracker(this.#storage, household);
+    return this.#late;
+  }
+
+  /**
+   * Marks the entries in a fresh read that arrived from another phone dated where Readings had
+   * already counted, against the spans Readings used until now (step 3b). Runs before the read
+   * replaces `events`, so the "Count without" marks in that view are the ones counted so far.
+   */
+  #observeLate(events: BabyEvent[]) {
+    const tracker = this.#lateTracker();
+    if (!tracker || !this.baby) {
+      this.late = [];
+      return;
+    }
+    const wall = Date.now();
+    const spans = this.syncedSpans(wall, performance.now());
+    tracker.observe(this.baby.id, events, spans, wall, this.store.authorId);
+    this.late = tracker.late;
+  }
+
   /** Re-reads the log after any change. Overlapping calls coalesce into one more read. */
   #reload(): Promise<void> {
     if (this.#loading) {
@@ -767,7 +798,9 @@ class AppState {
     this.#loading = (async () => {
       do {
         this.#reloadAgain = false;
-        this.events = this.baby ? await this.store.events(this.baby.id) : [];
+        const events = this.baby ? await this.store.events(this.baby.id) : [];
+        this.#observeLate(events);
+        this.events = events;
         this.rejected = await this.store.rejectedCount();
       } while (this.#reloadAgain);
     })().finally(() => (this.#loading = null));

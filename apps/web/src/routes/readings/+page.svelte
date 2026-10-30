@@ -4,6 +4,7 @@
   import { app } from '../../lib/ui/app.svelte.ts';
   import { ageDays, countMarks, dayMarks, intake24h } from '../../lib/ui/logic.ts';
   import Toast from '../../lib/ui/Toast.svelte';
+  import { lateIn, lateText } from '../../lib/ui/late.ts';
   import {
     COUNT_CHECKS,
     expectedRangeLine,
@@ -58,6 +59,15 @@
   /** Why a check waits on the other phones, or its usual reason. */
   const why = (r: CheckResult) =>
     notSynced(r) ? waitingText(waitingFor(r)) : reasonText(r, start);
+  /**
+   * "Updated: entries from Sam’s phone arrived late", for a window holding entries that came in
+   * after it was assessed; null otherwise, and while the check waits on a phone again.
+   */
+  const updated = (r: CheckResult) => {
+    if (notSynced(r)) return null;
+    const late = lateIn(app.late, Date.parse(r.window.start), Date.parse(r.window.end));
+    return late.length > 0 ? lateText(late, app.devices) : null;
+  };
   /** The intake note's "not synced yet" line: only while a check is waiting on a phone. */
   const waiting = $derived(app.account !== null && waitingOnPhones(results, waitingFor));
 
@@ -135,6 +145,7 @@
           <!-- A missed log is the likelier cause, so it comes before the pediatrician (#24). -->
           <h2>{r.title}</h2>
           <p>{statusText(r, app.volume)}</p>
+          {@render late(r)}
           <div class="ask">
             <p class="q">Did you miss logging some?</p>
             <button class="mark" onclick={() => markMissed(r)}>We missed some</button>
@@ -144,6 +155,7 @@
           <div class="lab">! {URGENCY_TEXT[r.urgency]}</div>
           <h2>{r.title}</h2>
           <p>{statusText(r, app.volume)}</p>
+          {@render late(r)}
         {/if}
         <details class="more">
           <summary><span>Why?</span><span aria-hidden="true">›</span></summary>
@@ -177,6 +189,7 @@
           <span>{CHECK_LABEL[r.check]}</span>
           <b class:flagged={r.status === 'flag'} class="num">{statusText(r, app.volume)}</b>
         </summary>
+        {@render late(r)}
         {#if r.status === 'not_enough_data'}
           <p class="why">{why(r)}.</p>
           {#if r.reason === 'not_fully_logged' && marksIn(app.events, r.window).length > 0}
@@ -222,6 +235,13 @@
     If something about your baby worries you, call your pediatrician. The app does not replace that.
   </p>
 </main>
+
+{#snippet late(r: CheckResult)}
+  {@const text = updated(r)}
+  {#if text}
+    <p class="why">{text}.</p>
+  {/if}
+{/snippet}
 
 {#snippet sources(r: CheckResult)}
   {#if r.citations.length > 0}
