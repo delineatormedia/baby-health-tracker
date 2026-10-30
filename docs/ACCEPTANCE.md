@@ -12,10 +12,8 @@ says something else, that's a failure, even if it seems to mean the same thing.
 What each check needs on the commit under test:
 
 - The "arrived late" lines in check 3 step 6 and check 8 step 5 need #78 (late uploads).
-- Check 7 needs the sign-out barrier, and check 8 needs "Remove" in Settings. Both come in the
-  sign-out and remove-phone PR into `synth/sync-vouch`. Their steps follow SYNC_PLAN step 3b,
-  and the steps marked **(recheck)** use wording that has to be checked against that PR once it
-  lands.
+- Check 7 needs the sign-out barrier, and check 8 needs "Remove" in Settings. Both come in
+  #79 (sign-out and remove phone).
 - Check 9 runs at the baby's next day boundary, after checks 7 and 8.
 - Check 10 needs #74 (app updates).
 
@@ -39,7 +37,7 @@ certificates turned on for the tailnet (DEPLOY.md step 1).
 The Mac serves the production build through `bht-server` and `tailscale serve`, the same
 way the family server does. The server also serves the web bundle, so `vite preview` isn't
 needed. Run this from a checkout of the commit under test. Until #55, #64 and #72 merge,
-that's `synth/sync-vouch` with #78 and the sign-out and remove-phone PR merged into it.
+that's `synth/sync-vouch` with #78 and #79 merged into it.
 
 ```sh
 nix develop                     # or Node 24 + pnpm 11.27.0
@@ -107,7 +105,8 @@ there.
 *Expected:*
 - While the passkey sheet is up, the button reads "Waiting for passkey…".
 - Afterwards, Settings shows "Synced with your household." and the buttons **Invite the
-  other parent** and **Sign out**, with "Signing out keeps this phone's logs here." below.
+  other parent** and **Sign out**, with "Signing out keeps this phone's logs here. It first
+  makes sure the other phone has them." below.
 - Home's line under the legend reads "Synced".
 
 ### 2. Second parent joins by invite (A + B, 3 min)
@@ -219,18 +218,25 @@ synced. Both Home lines read "Synced".
 ### 7. Sign out (B, 5 min)
 
 Signing out first uploads everything on the phone (the sign-out barrier). If the phone can't
-reach the server, the parent chooses: cancel and stay signed in, or sign out anyway and
-keep the unsent entries on the phone. Button and message wording in this check is
-**(recheck)** against the sign-out PR.
+reach the server, the parent chooses: try again, cancel and stay signed in, or sign out
+anyway and keep the unsent entries on the phone. Until they choose, nothing new can be
+saved on that phone.
 
 1. **Offline, then cancel.** On B, turn on airplane mode and log a wet diaper. Settings →
    **Sign out**.
-   *Expected:* B doesn't sign out. It says it can't reach the server and offers **Sign out
-   anyway** and **Cancel** **(recheck)**. Tap **Cancel**. B still reads "Not synced: No
-   connection to the server. …" and shows **Sign out**. Log a dirty diaper: it saves, with
-   no "Signing out" message.
-2. **Offline, sign out anyway.** Still in airplane mode, Settings → **Sign out** →
-   **Sign out anyway**.
+   *Expected:*
+   - B doesn't sign out. Settings reads "This phone could not confirm its logs reached the
+     server: No connection to the server." followed by "Sign out anyway and the other phone
+     keeps waiting for this one until a parent counts without it. Logs not synced stay here
+     and upload when you sign back in." There are three buttons: **Try again**, **Sign out
+     anyway** and **Cancel**.
+   - While it's like this, go to Home and log a dirty diaper. It isn't saved, and a banner
+     reads "Not saved while this phone signs out. Finish or cancel sign-out in Settings."
+   - Back in Settings, tap **Cancel**. B reads "Not synced: No connection to the server. …"
+     again and shows **Sign out**. Log the dirty diaper again: this time it saves, with no
+     banner.
+2. **Offline, sign out anyway.** Still in airplane mode, Settings → **Sign out**. The same
+   three buttons come back. Tap **Sign out anyway**.
    *Expected:* Settings reads "Logs are saved on this phone only." and offers **Share with
    the other parent**, **Join the other parent** and **Sign in**. Home reads "Saved on this
    phone · not synced". Both diapers from step 1 are still on B.
@@ -241,8 +247,8 @@ keep the unsent entries on the phone. Button and message wording in this check i
 4. **Online, with an entry that hasn't synced.** On B, turn on airplane mode, log a wet
    diaper, turn airplane mode off, and tap **Settings → Sign out** right away, before
    Settings says "Synced with your household."
-   *Expected:* B signs out without asking: Settings reads "Logs are saved on this phone
-   only." Switch away from the app on A and back: A already has this wet diaper. The
+   *Expected:* the button reads "Signing out…" for a moment. Then B signs out without
+   asking: Settings reads "Logs are saved on this phone only." Switch away from the app on A and back: A already has this wet diaper. The
    barrier uploads it before the sign-out finishes, so unlike step 2 it is never left
    behind.
 5. **Sign back in.** On B, Settings → **Sign in** → **Sign in with a passkey**.
@@ -252,17 +258,22 @@ keep the unsent entries on the phone. Button and message wording in this check i
 ### 8. Remove a phone, and it comes back (A + B, 5 min, Mac rig)
 
 A parent removes a lost phone in Settings. The removed phone can still sign in again, as
-a new phone, and anything it logged meanwhile uploads then. Wording for the Settings rows is
-**(recheck)** against the remove-phone PR.
+a new phone, and anything it logged meanwhile uploads then.
 
 1. **B logs into a day A already judged.** On B, turn on airplane mode. Log a wet diaper and
    use the time row to set it to **B's late diaper at**: yesterday, an hour after the birth
    time. That is inside day 1, which A has judged since check 3.
-2. **Remove B on A.** On A, Settings. The household's phones are listed by name, with
-   **Remove** on every phone except A's own **(recheck)**. Remove <B's name>’s phone and
-   confirm.
-   *Expected:* the row shows B as removed, or is gone **(recheck)**. A stays "Synced with
-   your household."
+2. **Remove B on A.** On A, open Settings.
+   *Expected:* under **Phones**, one row: "<B's name>’s phone" with "Last synced <time>"
+   below it and a **Remove** button. A's own phone isn't listed.
+
+   Tap **Remove**.
+   *Expected:* "For a lost or replaced phone. It is signed out and can't sync as this phone
+   again. Checks from now on stop waiting for it; anything it logged that never synced only
+   arrives if it signs back in." with **Remove <B's name>’s phone** and **Keep**. Tap
+   **Remove <B's name>’s phone**.
+   *Expected:* B's row is gone, and with it the **Phones** heading, since A has no other
+   phone left. A stays "Synced with your household."
 3. **B finds out.** On B, turn airplane mode off and switch away from the app and back.
    *Expected:* Settings reads "Signed out on this phone. Logs stay here until you sign in
    again." with **Sign in with a passkey**. The wet diaper from step 1 is still on B.
@@ -273,8 +284,8 @@ a new phone, and anything it logged meanwhile uploads then. Wording for the Sett
 5. **A sees B's diaper arrive late.** On A, switch away from the app and back, wait for
    "Synced", and open Readings. Open Wet diapers.
    *Expected:* "Updated: entries from <B's name>’s phone arrived late." B's backdated diaper
-   is in A's History at yesterday's time, once. A's Settings lists B's new phone
-   **(recheck)**.
+   is in A's History at yesterday's time, once. A's Settings lists "<B's name>’s phone"
+   again under **Phones**, with "Last synced <time>". That row is B's new phone.
 
 ### 9. The next day: what stops the wait (A + B, 5 min)
 
@@ -285,6 +296,7 @@ is 24 hours after check 3, so keep the server and database until then.
    then Settings → **Sign out**. B signs out without asking, as in check 7 step 4.
 2. **After the day ends**, on A, switch away from the app and back, wait for "Synced", and
    open Readings. Open Wet diapers.
+   *Expected on A's Settings:* B's row under **Phones** reads "Signed out <time>".
    *Expected on the family server:* no "Waiting for" line. B signed out after uploading
    everything, so A stops waiting for it.
    *Expected on the Mac rig, after check 8:* exactly one line, "Waiting for <B's name>’s
