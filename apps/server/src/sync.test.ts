@@ -264,6 +264,8 @@ describe('POST and GET /api/sync', () => {
       next: three.next,
       more: false,
       through: three.next,
+      serverNow: Date.parse(T),
+      devices: [],
     });
   });
 
@@ -381,7 +383,7 @@ describe('database', () => {
         .run(A, babyA, T);
       old.close();
       const db = openDatabase(path);
-      expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
+      expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: MIGRATIONS.length });
       expect(db.prepare('SELECT event_id, member_id FROM event_versions').all()).toEqual([
         { event_id: 'e1', member_id: null },
       ]);

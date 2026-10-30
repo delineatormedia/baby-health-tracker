@@ -1,4 +1,5 @@
 import {
+  BarrierRequest,
   MAX_PULL_LIMIT,
   MAX_PUSH_BATCH,
   MAX_PUSH_BYTES,
@@ -6,6 +7,7 @@ import {
   SCHEMA_VERSION,
 } from '@bht/schema';
 import { Hono, type Context } from 'hono';
+import * as v from 'valibot';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { DatabaseSync } from 'node:sqlite';
@@ -19,7 +21,7 @@ import {
   type Result,
   type Session,
 } from './auth.ts';
-import { pullVersions, pushVersions } from './events.ts';
+import { pullVersions, pushVersions, recordBarrier } from './events.ts';
 
 export type { Session } from './auth.ts';
 
@@ -71,6 +73,7 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
     await next();
   };
   app.use('/api/sync', signedIn);
+  app.use('/api/sync/*', signedIn);
   app.use('/api/household', signedIn);
   app.use('/api/invites', signedIn);
   app.use('/api/babies', signedIn);
@@ -170,10 +173,24 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
       if (!isPushRequestBody(body)) {
         return c.json({ error: 'Expected { schemaVersion, events }' }, 400);
       }
-      const results = pushVersions(db, c.var.session, body.events, now());
-      return c.json({ results });
+      const at = now();
+      const results = pushVersions(db, c.var.session, body.events, at);
+      return c.json({ results, serverNow: at.getTime() });
     },
   );
+
+  // A phone's write barrier (step 3b): everything it held at `gen` is on the server.
+  app.post('/api/sync/barrier', authBody, async (c) => {
+    const body = await json(c);
+    if (!v.is(BarrierRequest, body))
+      return c.json({ error: 'Expected { deviceId, gen, at }' }, 400);
+    const { householdId, deviceId } = c.var.session;
+    if (body.deviceId !== deviceId) return c.json({ error: 'Not this session’s device' }, 409);
+    const at = now();
+    const watermark = recordBarrier(db, householdId, body, at);
+    if (watermark === null) return c.json({ error: 'Sign in' }, 401);
+    return c.json({ watermark, serverNow: at.getTime() });
+  });
 
   app.get('/api/sync', (c) => {
     const after = intParam(c.req.query('after'), 0);
@@ -183,11 +200,16 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
       return c.json({ error: 'Expected after >= 0, limit >= 1 and through >= 0' }, 400);
     }
     return c.json(
-      pullVersions(db, c.var.session.householdId, {
-        after,
-        limit: Math.min(limit, MAX_PULL_LIMIT),
-        through: through < 0 ? null : through,
-      }),
+      pullVersions(
+        db,
+        c.var.session.householdId,
+        {
+          after,
+          limit: Math.min(limit, MAX_PULL_LIMIT),
+          through: through < 0 ? null : through,
+        },
+        now(),
+      ),
     );
   });
 

@@ -3,11 +3,17 @@ import { newId, SCHEMA_VERSION, type BabyEvent } from '@bht/schema';
 import { afterEach, describe, expect, test } from 'vitest';
 // The real server (#5), in process: the client is tested against it, not only the fake.
 import { createApp } from '../../../../server/src/app.ts';
-import { ensureHousehold, openDatabase as openServerDb } from '../../../../server/src/db.ts';
+import {
+  ensureDevice,
+  ensureHousehold,
+  openDatabase as openServerDb,
+} from '../../../../server/src/db.ts';
 import { openDatabase } from './db.ts';
-import { HttpError, type SyncTransport } from './protocol.ts';
+import { HttpError, type BarrierRequest, type SyncTransport } from './protocol.ts';
 import { EventStore } from './store.ts';
 import { SyncClient } from './sync.ts';
+import { syncedThrough, waitingOn, type ClockSample, type SyncView } from './watermarks.ts';
+import type { HouseholdDevice } from '@bht/schema';
 
 const babyId = newId();
 const clients: SyncClient[] = [];
@@ -16,17 +22,32 @@ afterEach(() => {
   for (const c of clients.splice(0)) c.stop();
 });
 
+/** The real app, whose session is the phone named in the x-test-device header. */
 function realServer() {
   const db = openServerDb(':memory:');
   const household = newId();
   ensureHousehold(db, household, [babyId]);
-  return createApp(db, { session: () => ({ householdId: household }) });
+  const app = createApp(db, {
+    session: (c) => {
+      const deviceId = c.req.header('x-test-device');
+      if (!deviceId) return null;
+      ensureDevice(db, household, deviceId);
+      return { householdId: household, memberId: `m-${deviceId}`, deviceId };
+    },
+  });
+  return Object.assign(app, { db });
 }
 
-/** httpTransport's requests, sent to the in-process app instead of the network. */
-function transportTo(app: ReturnType<typeof createApp>, schemaVersion = SCHEMA_VERSION) {
-  const call = async <T>(path: string, init?: RequestInit): Promise<T> => {
-    const res = await app.request(path, init);
+/** httpTransport's requests from phone `deviceId`, sent to the in-process app. */
+function transportTo(
+  app: ReturnType<typeof createApp>,
+  schemaVersion = SCHEMA_VERSION,
+  deviceId = newId(),
+) {
+  const call = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+    const headers = new Headers(init.headers);
+    headers.set('x-test-device', deviceId);
+    const res = await app.request(path, { ...init, headers });
     if (!res.ok) throw new HttpError(res.status);
     return (await res.json()) as T;
   };
@@ -42,14 +63,36 @@ function transportTo(app: ReturnType<typeof createApp>, schemaVersion = SCHEMA_V
         `/api/sync?after=${after}&limit=${limit}` +
           (through === undefined ? '' : `&through=${through}`),
       ),
-  } satisfies SyncTransport;
+    barrier: (req: BarrierRequest) =>
+      call('/api/sync/barrier', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(req),
+      }),
+    deviceId,
+  } satisfies SyncTransport & { deviceId: string };
 }
 
-async function phone(transport: SyncTransport) {
-  const store = new EventStore(await openDatabase(`test-${newId()}`), newId());
-  const sync = new SyncClient(store, transport, { baseDelayMs: 3_600_000, random: () => 1 });
+async function phone(transport: SyncTransport & { deviceId: string }) {
+  const store = new EventStore(await openDatabase(`test-${newId()}`), transport.deviceId);
+  const seen: {
+    devices: HouseholdDevice[] | null;
+    current: boolean;
+    sample: ClockSample | null;
+  } = { devices: null, current: false, sample: null };
+  const sync = new SyncClient(store, transport, {
+    baseDelayMs: 3_600_000,
+    random: () => 1,
+    onAdopt: (devices, sample) => Object.assign(seen, { devices, current: true, sample }),
+  });
   clients.push(sync);
-  return { store, sync };
+  const view = (): SyncView => ({
+    ...seen,
+    self: store.authorId,
+    wall: Date.now(),
+    mono: performance.now(),
+  });
+  return { store, sync, view };
 }
 
 describe('SyncClient against the real server', () => {
@@ -107,12 +150,45 @@ describe('SyncClient against the real server', () => {
     expect(await ahead.store.rejectedCount()).toBe(0);
 
     // The same phone once the server runs the app's schema: everything it held goes up.
-    const after = new SyncClient(ahead.store, transportTo(app), { baseDelayMs: 3_600_000 });
+    const after = new SyncClient(
+      ahead.store,
+      transportTo(app, SCHEMA_VERSION, ahead.store.authorId),
+      {
+        baseDelayMs: 3_600_000,
+      },
+    );
     clients.push(after);
     await after.sync();
     expect(await ahead.store.pending(10)).toEqual([]);
     const other = await phone(transportTo(app));
     await other.sync.sync();
     expect(await other.store.events(babyId)).toEqual([event]);
+  });
+
+  test('watermarks: a phone holding an unsynced write holds windows back until it syncs', async () => {
+    const app = realServer();
+    const mom = await phone(transportTo(app));
+    const dad = await phone(transportTo(app));
+    await dad.sync.sync();
+    await mom.sync.sync();
+    // Both phones have a watermark now; mom's windows wait only up to dad's.
+    const dadRow = () => mom.view().devices!.find((d) => d.deviceId === dad.store.authorId)!;
+    expect(dadRow().watermark).not.toBeNull();
+    await new Promise((r) => setTimeout(r, 5));
+    const wet = await dad.store.log(babyId, 'diaper', { kind: 'wet' });
+    const at = Date.parse(wet.event.recordedAt);
+    await mom.sync.sync();
+    expect(syncedThrough(mom.view())!).toBeLessThan(at);
+    expect(waitingOn(mom.view(), at)).toEqual([dadRow()]);
+
+    await dad.sync.sync();
+    await mom.sync.sync();
+    expect(await mom.store.current(wet.event.id)).toEqual(wet.event);
+    // The drift budget keeps the line two seconds behind dad's barrier.
+    await new Promise((r) => setTimeout(r, 2_100));
+    await dad.sync.sync();
+    await mom.sync.sync();
+    expect(waitingOn(mom.view(), at)).toEqual([]);
+    expect(syncedThrough(mom.view())!).toBeGreaterThanOrEqual(at);
   });
 });

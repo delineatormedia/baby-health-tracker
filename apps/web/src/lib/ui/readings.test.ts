@@ -9,8 +9,10 @@ import {
   marksIn,
   observedText,
   REASON_TEXT,
+  lastSyncedTime,
   reasonText,
   statusText,
+  waitingText,
 } from './readings.ts';
 
 const window = { start: '2026-10-28T00:00:00.000Z', end: '2026-10-29T00:00:00.000Z' };
@@ -308,5 +310,46 @@ describe('"We missed some" (#24)', () => {
       ]);
     });
     const m0 = () => ev('missed_logs', BIRTH, { start: iso(BIRTH), end: iso(BIRTH + D) });
+  });
+});
+
+describe('waiting on other phones (#5 step 3b)', () => {
+  const sam = {
+    deviceId: '01JBC0000000000000000000SA',
+    memberName: 'Sam',
+    watermark: Date.parse('2026-10-28T01:14:00.000Z'),
+    lastSeenAt: 0,
+    removedAt: null,
+  };
+  const time = (ms: number) => new Date(ms).toISOString().slice(11, 16);
+
+  test('a check waiting on another phone reads "Not assessed"', () => {
+    const r: CheckResult = {
+      check: 'wet_diapers',
+      window,
+      citations: [],
+      status: 'not_enough_data',
+      reason: 'not_synced',
+    } as CheckResult;
+    expect(statusText(r, String)).toBe('Not assessed');
+  });
+
+  test('names the phone and when it last synced', () => {
+    expect(waitingText([sam], time)).toBe('Waiting for Sam’s phone (last synced 01:14)');
+  });
+
+  test('a phone with no watermark has not synced yet; several are listed', () => {
+    const ana = { ...sam, memberName: 'Ana', watermark: null };
+    expect(waitingText([sam, ana], time)).toBe(
+      'Waiting for Sam’s phone (last synced 01:14) and Ana’s phone (not synced yet)',
+    );
+  });
+
+  test('before the first full pull there is no list to name', () => {
+    expect(waitingText([])).toBe('Waiting for the first sync with your household');
+  });
+
+  test('the default time reads like "Tue 9:14 PM"', () => {
+    expect(lastSyncedTime(sam.watermark!)).toMatch(/^[A-Z][a-z]{2} \d{1,2}:\d{2}\s[AP]M$/);
   });
 });

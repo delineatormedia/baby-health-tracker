@@ -1,6 +1,8 @@
 import {
   SCHEMA_VERSION,
   type BabyEvent,
+  type BarrierRequest,
+  type BarrierResponse,
   type PullResponse,
   type PushRequest,
   type PushResponse,
@@ -11,6 +13,9 @@ import { refuseSeeded } from './seeded.ts';
 export {
   MAX_PUSH_BATCH,
   MAX_PUSH_BYTES,
+  type BarrierRequest,
+  type BarrierResponse,
+  type HouseholdDevice,
   type PullResponse,
   type PushResponse,
   type PushResult,
@@ -20,6 +25,8 @@ export interface SyncTransport {
   push(events: BabyEvent[]): Promise<PushResponse>;
   /** One page after `after`. Pass the first page's `through` on every later page of a pull. */
   pull(after: number, limit: number, through?: number): Promise<PullResponse>;
+  /** Everything this phone held at `gen` is on the server (step 3b). */
+  barrier(req: BarrierRequest): Promise<BarrierResponse>;
 }
 
 export class HttpError extends Error {
@@ -52,5 +59,11 @@ export function httpTransport(base = ''): SyncTransport {
         `/api/sync?after=${after}&limit=${limit}` +
           (through === undefined ? '' : `&through=${through}`),
       ),
+    barrier: (req) =>
+      call('/api/sync/barrier', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(req),
+      }),
   };
 }
