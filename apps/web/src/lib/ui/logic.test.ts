@@ -1,5 +1,6 @@
 import { newId, parseEvent, toMl, type BabyEvent } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
+import { SigningOut } from '../data/store.ts';
 import {
   ageDays,
   CAPTION_RADIUS,
@@ -517,6 +518,10 @@ describe('saveFailure', () => {
     expect(saveFailure(new DOMException('full', 'QuotaExceededError'))).toMatch(/out of storage/);
     expect(saveFailure(new Error('boom'))).toMatch(/^Not saved/);
     expect(saveFailure('weird')).toMatch(/^Not saved/);
+  });
+
+  test('a write refused during sign-out points to Settings', () => {
+    expect(saveFailure(new SigningOut())).toMatch(/signs out\. Finish or cancel sign-out/);
   });
 });
 

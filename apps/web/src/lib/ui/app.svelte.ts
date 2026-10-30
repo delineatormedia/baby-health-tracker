@@ -9,7 +9,7 @@ import {
 } from '@bht/schema';
 import { Account, AccountError, browserPasskeys, httpAccount } from '../data/account.ts';
 import { openDatabase } from '../data/db.ts';
-import { httpTransport } from '../data/protocol.ts';
+import { HttpError, httpTransport } from '../data/protocol.ts';
 import { EventStore, type Change } from '../data/store.ts';
 import { failureReason, SyncClient, type SyncStatus } from '../data/sync.ts';
 import {
@@ -66,6 +66,14 @@ export interface SaveError {
 
 const TOAST_MS = 6_000;
 
+/** How long sign-out waits for its write barrier before offering "Sign out anyway". */
+const FLUSH_MS = 15_000;
+/** Held by the tab that is signing out; a sign-out flag with nobody holding it is stale. */
+const SIGN_OUT_LOCK = 'bht-sign-out';
+/** Tells the other tabs about a sign-out. The meta flag, not this, is what stops their writes. */
+const ACCOUNT_CHANNEL = 'bht-account';
+type AccountMessage = 'signing-out' | 'cancelled' | 'signed-out';
+
 /**
  * App state shared by every screen. Writes go to IndexedDB through EventStore and are visible
  * as soon as the local transaction commits; nothing here waits on the network.
@@ -116,6 +124,13 @@ class AppState {
    * `devices` is the cached list and signed-in checks are not assessed.
    */
   devicesCurrent = $state(false);
+  /**
+   * Why sign-out could not confirm this phone's logs reached the server. While set, local
+   * writes stay stopped and Settings offers "Sign out anyway" or Cancel (step 3b).
+   */
+  signOutBlocked = $state<string | null>(null);
+  /** Another tab is signing out; local writes are refused until it finishes or cancels. */
+  signingOutElsewhere = $state(false);
 
   #store: EventStore | null = null;
   #kv: Storage | null = null;
@@ -140,6 +155,9 @@ class AppState {
   #transitions: Promise<unknown> = Promise.resolve();
   /** Sign-ins queued or running; a sign-out aborts their ceremonies. */
   #ceremonies = new Set<AbortController>();
+  /** Releases SIGN_OUT_LOCK; set while this tab has stopped local writes for sign-out. */
+  #releaseSignOut: (() => void) | null = null;
+  #channel: BroadcastChannel | null = null;
 
   async init(): Promise<void> {
     if (this.#store) return;
@@ -171,6 +189,8 @@ class AppState {
         mint: () => (this.store.authorId = mintAuthorId(kv)),
       });
       this.#store.subscribe(() => void this.#reload());
+      this.#listen();
+      await this.#staleSignOut();
       await this.#reload();
       if (this.account?.placed === false) this.place().catch(() => {});
       else if (this.account && !this.joining) this.#startSync();
@@ -304,22 +324,35 @@ class AppState {
    * Revokes this phone's session. Logs stay here; the next sign-in pulls from the start. Sync
    * is stopped and drained first, so no late response lands after the cursor is reset.
    *
+   * While syncing, it quiesces first (step 3b): local writes stop in every tab, then a write
+   * barrier covers everything this phone wrote, and logout carries that generation so the
+   * household stops waiting for this phone. If the barrier cannot finish (offline, or an entry
+   * is unanswered or refused), it resolves with `signOutBlocked` set and writes still stopped;
+   * the parent then signs out `anyway` or cancels. Signed out anyway, the household keeps
+   * waiting for this phone, and when offline the sign-out is on this phone only.
+   *
    * A sign-in in flight is aborted, and logout waits for it to settle: a verify already sent
    * may set a session cookie, and logout after it revokes that session as well.
    */
-  signOut(): Promise<void> {
+  signOut(opts: { anyway?: boolean } = {}): Promise<void> {
     for (const ceremony of this.#ceremonies) ceremony.abort();
     return this.#serial('signOut', async () => {
+      const gen = opts.anyway ? undefined : await this.#quiesce();
+      if (gen === null) return;
+      this.signOutBlocked = null;
       this.#transition();
       const household = this.account?.householdId;
       await this.#dropSync();
       try {
-        await this.#api.logout();
+        await this.#api.logout(gen);
       } catch (e) {
-        // An expired session is signed out already.
-        if (!(e instanceof AccountError && e.status === 401)) {
+        // An expired session is signed out already. Offline, "anyway" signs out here only.
+        const expired = e instanceof AccountError && e.status === 401;
+        if (!expired && !(opts.anyway && !(e instanceof HttpError))) {
           this.#resumeAccount();
-          throw e;
+          if (!this.#releaseSignOut) throw e;
+          this.signOutBlocked = `Could not sign out: ${failureReason(e)}.`;
+          return;
         }
       }
       if (household) await this.store.resetCursor(household);
@@ -329,7 +362,125 @@ class AppState {
       this.#setAccount(null);
       this.syncStatus = 'idle';
       this.syncError = null;
+      await this.#endSignOut();
+      this.#broadcast('signed-out');
     });
+  }
+
+  /** Gives up a blocked sign-out: writes resume in every tab and sync carries on. */
+  cancelSignOut(): Promise<void> {
+    return this.#serial('signOut', async () => {
+      this.signOutBlocked = null;
+      if (!this.#releaseSignOut) return;
+      await this.#endSignOut();
+      this.#broadcast('cancelled');
+      void this.#sync?.sync();
+    });
+  }
+
+  /**
+   * Stops local writes and runs the barrier. Resolves to the write generation it covered,
+   * undefined when there is nothing to cover (no sync running, or the session is over), or
+   * null when it could not finish and the sign-out is blocked.
+   */
+  async #quiesce(): Promise<number | undefined | null> {
+    const sync = this.#sync;
+    if (!sync || this.syncStatus === 'signed_out') return undefined;
+    await this.#lockSignOut();
+    await this.store.beginSignOut();
+    this.#broadcast('signing-out');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const gen = await Promise.race([
+      sync.flush(),
+      new Promise<null>((r) => (timer = setTimeout(() => r(null), FLUSH_MS))),
+    ]).finally(() => clearTimeout(timer));
+    if (gen !== null) return gen;
+    if (sync.status === 'signed_out') return undefined;
+    const refused = await this.store.rejectedCount();
+    this.signOutBlocked =
+      refused > 0
+        ? `The server refused ${refused === 1 ? 'an entry' : `${refused} entries`} from this phone.`
+        : `This phone could not confirm its logs reached the server: ${sync.error ?? 'no answer'}.`;
+    return null;
+  }
+
+  /** Takes SIGN_OUT_LOCK for this tab, or throws if another tab is signing out. */
+  async #lockSignOut(): Promise<void> {
+    if (this.#releaseSignOut) return;
+    const locks = globalThis.navigator?.locks;
+    if (!locks) {
+      this.#releaseSignOut = () => {};
+      return;
+    }
+    const held = await new Promise<boolean>((resolve) => {
+      void locks.request(SIGN_OUT_LOCK, { ifAvailable: true }, (lock) => {
+        resolve(lock !== null);
+        if (lock) return new Promise<void>((release) => (this.#releaseSignOut = release));
+      });
+    });
+    if (!held) throw new Error('Signing out in another tab');
+  }
+
+  /** Clears this tab's sign-out flag and lock, if it holds them. */
+  async #endSignOut() {
+    const release = this.#releaseSignOut;
+    if (!release) return;
+    await this.store.endSignOut();
+    this.#releaseSignOut = null;
+    release();
+  }
+
+  /**
+   * At startup: a sign-out flag nobody holds the lock for was left by a tab that closed mid
+   * sign-out, and would stop writes for good, so it is cleared. Held, another tab is signing out.
+   */
+  async #staleSignOut() {
+    if (!(await this.store.signingOut())) return;
+    const locks = globalThis.navigator?.locks;
+    if (!locks) {
+      await this.store.endSignOut();
+      return;
+    }
+    await locks.request(SIGN_OUT_LOCK, { ifAvailable: true }, async (lock) => {
+      if (lock) await this.store.endSignOut();
+      else this.signingOutElsewhere = true;
+    });
+  }
+
+  #listen() {
+    if (typeof BroadcastChannel === 'undefined') return;
+    this.#channel = new BroadcastChannel(ACCOUNT_CHANNEL);
+    this.#channel.onmessage = (e: MessageEvent<AccountMessage>) => {
+      this.signingOutElsewhere = e.data === 'signing-out';
+      if (e.data === 'signed-out') void this.#signedOutElsewhere();
+    };
+  }
+
+  #broadcast(message: AccountMessage) {
+    this.#channel?.postMessage(message);
+  }
+
+  /** Another tab signed out: it cleared the stored account and reset the cursor already. */
+  #signedOutElsewhere(): Promise<void> {
+    return this.#serial('signOut', async () => {
+      if (!this.account) return;
+      this.#transition();
+      await this.#dropSync();
+      this.#knownBabies = new Set();
+      this.joining = null;
+      this.account = null;
+      this.syncStatus = 'idle';
+      this.syncError = null;
+    });
+  }
+
+  /**
+   * Removes another phone of the household (step 3b): its sessions end and checks from now on
+   * stop waiting for it. A pull follows, so the device list shows the removal.
+   */
+  async removeDevice(deviceId: string): Promise<void> {
+    await this.#api.removeDevice(deviceId);
+    void this.#sync?.sync();
   }
 
   /** An invite code for the other parent. */

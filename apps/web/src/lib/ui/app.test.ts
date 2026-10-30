@@ -55,11 +55,35 @@ beforeEach(() => {
     visibilityState: 'visible',
   });
   vi.spyOn(globalThis, 'setInterval').mockImplementation(() => 0 as never);
+  // Each test is its own browser: a fresh Web Locks registry, and no other tabs unless a test
+  // wires them (step 3b sign-out).
+  vi.stubGlobal('navigator', { locks: fakeLocks() });
+  vi.stubGlobal('BroadcastChannel', undefined);
 });
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+/** navigator.locks with only what sign-out uses: { ifAvailable: true } requests. */
+function fakeLocks() {
+  const held = new Set<string>();
+  return {
+    async request(
+      name: string,
+      _opts: { ifAvailable: true },
+      run: (lock: { name: string } | null) => unknown,
+    ) {
+      if (held.has(name)) return run(null);
+      held.add(name);
+      try {
+        return await run({ name });
+      } finally {
+        held.delete(name);
+      }
+    },
+  };
+}
 
 function serve(handler: Fetch) {
   vi.stubGlobal(
@@ -84,6 +108,7 @@ const signedIn = (householdId: string) => async () =>
   ({ householdId, memberId: newId() }) as SignedIn;
 
 describe('sign-out fences the sync run in flight', () => {
+  // "Sign out anyway" skips the barrier: these hold a request open and sign out past it.
   test('a pull answered after sign-out leaves the reset cursor alone and pages no further', async () => {
     const old = baby();
     kv.set('bht.baby', JSON.stringify(old));
@@ -95,7 +120,7 @@ describe('sign-out fences the sync run in flight', () => {
     await vi.waitFor(() => expect(pulls()).toHaveLength(1));
     expect(pulls()[0]).toContain('after=5');
 
-    await app.signOut();
+    await app.signOut({ anyway: true });
     expect(await app.store.cursor(old.householdId)).toBe(0);
     pull.release(json({ versions: [], next: 91, through: 200, more: true }));
     await settle();
@@ -123,7 +148,7 @@ describe('sign-out fences the sync run in flight', () => {
     await vi.waitFor(() => expect(pushes()).toHaveLength(1));
     const [sent] = (await app.store.pending(10)) as [BabyEvent];
 
-    await app.signOut();
+    await app.signOut({ anyway: true });
     push.release(
       json({ results: [{ id: sent.id, version: sent.version, status: 'accepted', seq: 7 }] }),
     );
@@ -146,7 +171,7 @@ describe('sign-out fences the sync run in flight', () => {
     const app = await loadApp();
     await vi.waitFor(() => expect(requests).toContain('POST /api/babies'));
 
-    await app.signOut();
+    await app.signOut({ anyway: true });
     addBaby.release(json(old));
     await settle();
 
@@ -761,5 +786,220 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     expect(app.devicesCurrent).toBe(false);
     expect(app.syncedSpans(W, 0)).toEqual([[-Infinity, Infinity]]);
     expect(app.waitingOn(-Infinity, W, W, 0)).toEqual([]);
+  });
+});
+
+describe('sign-out quiesces and covers this phone (#5 step 3b)', () => {
+  const W = Date.parse('2026-10-30T12:00:00.000Z');
+
+  /** A signed-in, placed phone with one pending entry. */
+  async function signedInWithEntry() {
+    const home = baby();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    const store = new EventStore(await openDatabase(), newId());
+    await store.log(home.id, 'diaper', { kind: 'wet' });
+    return home;
+  }
+
+  /** A server that accepts every push and records barrier and logout bodies. */
+  function household(home: ReturnType<typeof baby>, opts: { offline?: boolean } = {}) {
+    const bodies: Record<string, unknown[]> = {};
+    let seq = 0;
+    serve(async (url, init) => {
+      const body = init?.body ? JSON.parse(init.body as string) : undefined;
+      (bodies[url] ??= []).push(body);
+      if (opts.offline && url.startsWith('/api/sync')) throw new TypeError('Failed to fetch');
+      if (url === '/api/sync') {
+        const results = (body as { events: BabyEvent[] }).events.map((e) => ({
+          id: e.id,
+          version: e.version,
+          status: 'accepted',
+          seq: ++seq,
+        }));
+        return json({ results, serverNow: W });
+      }
+      if (url.startsWith('/api/sync?')) return json({ ...emptyPull(seq), serverNow: W });
+      if (url === '/api/sync/barrier') return json({ watermark: W, serverNow: W });
+      if (url === '/api/babies') return json(home);
+      return json({ ok: true });
+    });
+    return bodies;
+  }
+
+  test('barrier first, then logout with the generation it covered; writes resume after', async () => {
+    const home = await signedInWithEntry();
+    const bodies = household(home);
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+    await app.store.log(home.id, 'bottle', { contents: 'formula', volumeMl: 60 });
+
+    await app.signOut();
+
+    const barrier = bodies['/api/sync/barrier']!.at(-1) as { gen: number };
+    expect(barrier.gen).toBe(2);
+    expect(bodies['/api/auth/logout']).toEqual([{ gen: 2 }]);
+    expect(requests.indexOf('POST /api/auth/logout')).toBeGreaterThan(
+      requests.lastIndexOf('POST /api/sync/barrier'),
+    );
+    expect(await app.store.pending(10)).toEqual([]);
+    expect(app.account).toBeNull();
+    expect(app.signOutBlocked).toBeNull();
+    expect(await app.store.signingOut()).toBe(false);
+    await app.store.log(home.id, 'diaper', { kind: 'wet' });
+  });
+
+  test('offline it blocks with writes stopped; cancel resumes, anyway signs out here only', async () => {
+    const home = await signedInWithEntry();
+    const bodies = household(home, { offline: true });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('offline'));
+
+    await app.signOut();
+    expect(app.signOutBlocked).toContain('could not confirm');
+    expect(app.account).not.toBeNull();
+    await expect(app.store.log(home.id, 'diaper', { kind: 'wet' })).rejects.toThrow('signing out');
+
+    await app.cancelSignOut();
+    expect(app.signOutBlocked).toBeNull();
+    await app.store.log(home.id, 'diaper', { kind: 'wet' });
+
+    await app.signOut();
+    expect(app.signOutBlocked).not.toBeNull();
+    serve(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    await app.signOut({ anyway: true });
+    expect(app.account).toBeNull();
+    expect(app.signOutBlocked).toBeNull();
+    expect(bodies['/api/auth/logout']).toBeUndefined();
+    // Kept for the next sign-in, which uploads them as a returning phone.
+    expect(await app.store.pending(10)).toHaveLength(2);
+    expect(await app.store.signingOut()).toBe(false);
+  });
+
+  test('a refused entry blocks sign-out and says so', async () => {
+    const home = await signedInWithEntry();
+    serve(async (url, init) => {
+      if (url === '/api/sync') {
+        const events = (JSON.parse(init!.body as string) as { events: BabyEvent[] }).events;
+        const results = events.map((e) => ({
+          id: e.id,
+          version: e.version,
+          status: 'rejected',
+          error: 'nope',
+        }));
+        return json({ results, serverNow: W });
+      }
+      if (url.startsWith('/api/sync?')) return json({ ...emptyPull(), serverNow: W });
+      if (url === '/api/babies') return json(home);
+      return json({ ok: true });
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.rejected).toBe(1));
+
+    await app.signOut();
+    expect(app.signOutBlocked).toBe('The server refused an entry from this phone.');
+    expect(requests).not.toContain('POST /api/sync/barrier');
+    expect(requests).not.toContain('POST /api/auth/logout');
+    await app.cancelSignOut();
+  });
+
+  test('a flag left by a closed tab is cleared at startup; one held by a live tab is not', async () => {
+    const home = baby();
+    kv.set('bht.baby', JSON.stringify(home));
+    const db = await openDatabase();
+    await db.put('meta', 1, 'signingOut');
+    serve(async () => json({}));
+    const app = await loadApp();
+    expect(await app.store.signingOut()).toBe(false);
+    expect(app.signingOutElsewhere).toBe(false);
+
+    await db.put('meta', 1, 'signingOut');
+    const locks = (globalThis.navigator as unknown as { locks: ReturnType<typeof fakeLocks> })
+      .locks;
+    let release!: () => void;
+    void locks.request(
+      'bht-sign-out',
+      { ifAvailable: true },
+      () => new Promise<void>((r) => (release = r)),
+    );
+    vi.resetModules();
+    const other = await loadApp();
+    expect(await other.store.signingOut()).toBe(true);
+    expect(other.signingOutElsewhere).toBe(true);
+    release();
+  });
+
+  test('other tabs hear about it: a banner while it runs, then they are signed out too', async () => {
+    const channels = new Set<{
+      name: string;
+      onmessage: ((e: { data: unknown }) => void) | null;
+    }>();
+    vi.stubGlobal(
+      'BroadcastChannel',
+      class {
+        onmessage: ((e: { data: unknown }) => void) | null = null;
+        constructor(readonly name: string) {
+          channels.add(this);
+        }
+        postMessage(data: unknown) {
+          for (const c of channels) if (c !== this) queueMicrotask(() => c.onmessage?.({ data }));
+        }
+      },
+    );
+    const home = await signedInWithEntry();
+    household(home, { offline: true });
+    const a = await loadApp();
+    vi.resetModules();
+    const b = await loadApp();
+    await vi.waitFor(() => expect(b.syncStatus).toBe('offline'));
+
+    await a.signOut();
+    await vi.waitFor(() => expect(b.signingOutElsewhere).toBe(true));
+    await expect(b.store.log(home.id, 'diaper', { kind: 'wet' })).rejects.toThrow('signing out');
+
+    await a.signOut({ anyway: true });
+    await vi.waitFor(() => expect(b.account).toBeNull());
+    expect(b.signingOutElsewhere).toBe(false);
+    expect(b.syncStatus).toBe('idle');
+    await b.store.log(home.id, 'diaper', { kind: 'wet' });
+  });
+});
+
+describe('removing a lost phone (#5 step 3b)', () => {
+  test('posts the device id, then pulls so the list shows it', async () => {
+    const home = baby();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    const bodies: unknown[] = [];
+    serve(async (url, init) => {
+      if (url === '/api/devices/remove') {
+        bodies.push(JSON.parse(init!.body as string));
+        return json({ removedAt: 1 });
+      }
+      return json(emptyPull());
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+    const before = pulls().length;
+    const lost = newId();
+
+    await app.removeDevice(lost);
+    expect(bodies).toEqual([{ deviceId: lost }]);
+    await vi.waitFor(() => expect(pulls().length).toBeGreaterThan(before));
+  });
+
+  test("the server's refusal reaches the caller", async () => {
+    const home = baby();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    serve(async (url) =>
+      url === '/api/devices/remove'
+        ? json({ error: 'No such phone in this household' }, 404)
+        : json(emptyPull()),
+    );
+    const app = await loadApp();
+    await expect(app.removeDevice(newId())).rejects.toThrow('No such phone in this household');
   });
 });

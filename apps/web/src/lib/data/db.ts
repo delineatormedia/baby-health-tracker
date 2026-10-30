@@ -32,8 +32,8 @@ export interface BhtDB extends DBSchema {
     indexes: { byId: string; byBaby: string; byPending: number; byRejected: number };
   };
   /**
-   * Pull cursors (cursor:<household>), the write generation (gen) and each household's adopted
-   * device list (devices:<household>).
+   * Pull cursors (cursor:<household>), the write generation (gen), each household's adopted
+   * device list (devices:<household>) and the sign-out flag (signingOut, 1 while set).
    */
   meta: { key: string; value: number | HouseholdDevice[] };
 }
