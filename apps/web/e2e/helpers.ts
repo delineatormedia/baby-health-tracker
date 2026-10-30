@@ -29,9 +29,10 @@ export async function phone(
   browser: Browser,
   width: 320 | 390,
   theme: Theme = 'light',
-  opts: { baby?: boolean } = {},
+  opts: { baby?: boolean; serviceWorkers?: 'allow' } = {},
 ): Promise<BrowserContext> {
   const c = await browser.newContext({
+    ...(opts.serviceWorkers ? { serviceWorkers: opts.serviceWorkers } : {}),
     viewport: { width, height: width === 320 ? 568 : 844 },
     deviceScaleFactor: 2,
     hasTouch: true,
