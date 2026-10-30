@@ -6,15 +6,28 @@
   /**
    * An event icon (#53): one colour, its kind's (currentColor), drawn on a 24 grid and centred
    * in the shared .g box, so the text after it lines up whichever kind it is (#50). Wet, Dirty
-   * and Bottle are concept set A and Pump is set B, as the owner picked; Feed is still
-   * today's shape until the owner picks one.
+   * and Bottle are concept set A, Pump is set B and Feed is the parent–baby embrace, as the
+   * owner picked.
    */
   let { kind }: { kind: GlyphKind } = $props();
 </script>
 
 <svg class="g g-{kind}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
   {#if kind === 'feed'}
-    <rect x="8" y="2" width="8" height="20" rx="3.5" fill="currentColor" />
+    <circle cx="8" cy="5.5" r="2.5" fill="currentColor" />
+    <circle cx="15.5" cy="11" r="2.5" fill="currentColor" />
+    <path
+      d="M6 9C3 10 2 14 3 17c1 3 4 5 8 5h5c4 0 6-3 6-6h-3c0 2-1.5 3-3.5 3H11c-3 0-5-2-5-4 0-1 .5-2 1.5-2l3 3 2-2-4-4C8 9 7 9 6 9Z"
+      fill="currentColor"
+    />
+    <path
+      d="M12.5 17c0-2 1-3 3-3s3 1 3 3"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
   {:else}
     <g
       fill="none"
