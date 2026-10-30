@@ -15,11 +15,20 @@ self.addEventListener('install', (event) => {
   );
 });
 
+// A page still running an older build loads its route files from that build's cache until its
+// next reload, since the server only has the newest build's files. Three covers a guarded page
+// surviving several takeovers without tracking which build each window runs; a build is ~52 small files.
+const KEPT_BUILDS = 3;
+
+// Cache names list in creation order, so the last KEPT_BUILDS other names are the newest previous builds.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => {
+        const old = keys.filter((k) => k !== CACHE);
+        return Promise.all(old.slice(0, -KEPT_BUILDS).map((k) => caches.delete(k)));
+      })
       .then(() => self.clients.claim()),
   );
 });
@@ -36,7 +45,12 @@ self.addEventListener('fetch', (event) => {
     (async () => {
       const cache = await caches.open(CACHE);
       const hit = await cache.match(req.mode === 'navigate' ? '/' : req);
-      return hit ?? fetch(req);
+      if (hit) return hit;
+      // A hashed file this build lacks belongs to a kept older build, for a page not yet reloaded.
+      const kept = url.pathname.startsWith('/_app/immutable/')
+        ? await caches.match(req)
+        : undefined;
+      return kept ?? fetch(req);
     })(),
   );
 });

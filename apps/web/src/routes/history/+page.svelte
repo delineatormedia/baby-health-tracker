@@ -3,6 +3,7 @@
   import type { Change } from '../../lib/data/store.ts';
   import { app, time } from '../../lib/ui/app.svelte.ts';
   import { entryPath, glyph, historyDays, rowText, type HistoryDay } from '../../lib/ui/history.ts';
+  import Glyph from '../../lib/ui/Glyph.svelte';
   import { marksIn } from '../../lib/ui/readings.ts';
   import { localZone } from '../../lib/ui/reports.ts';
   import Toast from '../../lib/ui/Toast.svelte';
@@ -81,7 +82,7 @@
               <span class="at num">{time(e.occurredAt)}</span>
               <span class="what">
                 <span class="title">
-                  {#if g}<i class="g g-{g}" aria-hidden="true"></i>{/if}{t.title}
+                  {#if g}<Glyph kind={g} />{/if}{t.title}
                 </span>
                 {#if t.caption}<span class="cap">{t.caption}</span>{/if}
               </span>
