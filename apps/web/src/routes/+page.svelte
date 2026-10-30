@@ -6,6 +6,7 @@
   import Dial from '../lib/ui/Dial.svelte';
   import { dialFace } from '../lib/ui/dial.ts';
   import FeedKey from '../lib/ui/FeedKey.svelte';
+  import Glyph from '../lib/ui/Glyph.svelte';
   import LogKey from '../lib/ui/LogKey.svelte';
   import PumpKey from '../lib/ui/PumpKey.svelte';
   import { keyLines } from '../lib/ui/keys.ts';
@@ -126,11 +127,11 @@
   </a>
 
   <div class="legend">
-    <span><i class="g g-feed"></i>Feed <b class="num">{counts.feed}</b></span>
-    <span><i class="g g-bottle"></i>Bottle <b class="num">{counts.bottle}</b></span>
-    <span><i class="g g-wet"></i>Wet <b class="num">{counts.wet}</b></span>
-    <span><i class="g g-dirty"></i>Dirty <b class="num">{counts.dirty}</b></span>
-    <span><i class="g g-pump"></i>Pump <b class="num">{counts.pump}</b></span>
+    <span><Glyph kind="feed" />Feed <b class="num">{counts.feed}</b></span>
+    <span><Glyph kind="bottle" />Bottle <b class="num">{counts.bottle}</b></span>
+    <span><Glyph kind="wet" />Wet <b class="num">{counts.wet}</b></span>
+    <span><Glyph kind="dirty" />Dirty <b class="num">{counts.dirty}</b></span>
+    <span><Glyph kind="pump" />Pump <b class="num">{counts.pump}</b></span>
   </div>
   <p class="quiet lab">Saved on this phone · not synced</p>
 
