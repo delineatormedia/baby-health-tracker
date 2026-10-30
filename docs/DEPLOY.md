@@ -137,8 +137,8 @@ Android 9 or later, with a screen lock).
 ## Upgrading from a single-phone deploy
 
 Use this if the server already runs a build from before sign-in (it has no **Share with
-the other parent** button) and a phone already holds real logs. Nothing is lost on the way.
-Before sign-in, every log on the phone is saved there and waiting to upload. When that
+the other parent** button) and a phone already holds real logs. The upgrade keeps those
+logs where they are, in the app's storage on that phone. Before sign-in, every log on the phone is saved there and waiting to upload. When that
 phone creates the household, the household is built around the baby already on it, and
 every one of those logs uploads. The server keeps its database and upgrades it in place
 the first time the new build starts. There's nothing to migrate by hand.
@@ -148,7 +148,8 @@ the first time the new build starts. There's nothing to migrate by hand.
    *Check:* the logs are there. Don't remove that icon or add the app to the Home Screen
    again, and don't change the server's name. On iPhone the Home Screen app keeps its logs
    apart from Safari, so the same address opened in a Safari tab shows an empty app.
-2. **Back up the server** (step 9).
+2. **Back up the server** (step 9). This backs up the server only. The phone's logs have
+   never been uploaded, so they are not in it: until step 5 they exist only on that phone.
 3. **Upgrade the server.** Pin the release in `inputs.bht.url`, then
    `nix flake update bht` and step 5 again, with its check.
 4. **Load the new build on the phone with the logs.** Open the app from its icon, close it
