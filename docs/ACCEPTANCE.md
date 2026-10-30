@@ -84,6 +84,8 @@ there.
   - **B silent by:** 8:17 PM, 3 minutes before the day ends.
   - **Readings at:** 8:21 PM, 1 minute after the day ends.
   - **B's late diaper at:** yesterday at 9:20 PM, 1 hour into the first day. Check 8 needs it.
+  - **A's first stool at:** yesterday at 10:20 PM, 2 hours into the first day. Check 8 needs
+    it too.
 - Keep each phone in the **Home Screen app** for the whole pass, not in a Safari tab. On
   iPhone, the Home Screen app keeps its own logs, separate from Safari's, so a household
   set up in Safari isn't there when you open the icon.
@@ -260,9 +262,22 @@ saved on that phone.
 A parent removes a lost phone in Settings. The removed phone can still sign in again, as
 a new phone, and anything it logged meanwhile uploads then.
 
-1. **B logs into a day A already judged.** On B, turn on airplane mode. Log a wet diaper and
-   use the time row to set it to **B's late diaper at**: yesterday, an hour after the birth
-   time. That is inside day 1, which A has judged since check 3.
+The late note in step 5 has to be a new one. Every day-1 check on A already carries
+check 3's note, because B's diaper from check 3 step 1 is dated inside day 1. So this check
+reads the note on **First stool** instead. That check looks at birth up to the first stool,
+and A's first stool in step 1 ends that stretch 2 hours into day 1, well before check 3's
+diaper.
+
+1. **A logs the first stool, and B logs into a stretch A already judged.** On A, tap
+   **Dirty**, use the time row to set it to **A's first stool at** (yesterday, 2 hours after
+   the birth time), and tap a color in the top row. Then open Readings and open **First
+   stool**.
+   *Expected:* First stool shows a result, with no "Updated" line under it. (Wet diapers
+   still has check 3's "Updated" line. That one is old and doesn't count here.)
+
+   On B, turn on airplane mode. Log a wet diaper and use the time row to set it to **B's late
+   diaper at**: yesterday, an hour after the birth time. That is between the birth and A's
+   first stool, which A has had synced since check 3.
 2. **Remove B on A.** On A, open Settings.
    *Expected:* under **Phones**, one row: "<B's name>’s phone" with "Last synced <time>"
    below it and a **Remove** button. A's own phone isn't listed.
@@ -282,8 +297,9 @@ a new phone, and anything it logged meanwhile uploads then.
    starts again as a new phone. That counts as a pass, as long as there's no dead end.
    *Expected:* "Synced with your household." No error is left on screen.
 5. **A sees B's diaper arrive late.** On A, switch away from the app and back, wait for
-   "Synced", and open Readings. Open Wet diapers.
-   *Expected:* "Updated: entries from <B's name>’s phone arrived late." B's backdated diaper
+   "Synced", and open Readings. Open **First stool**.
+   *Expected:* "Updated: entries from <B's name>’s phone arrived late." under First stool,
+   which had no such line in step 1. B's backdated diaper
    is in A's History at yesterday's time, once. A's Settings lists "<B's name>’s phone"
    again under **Phones**, with "Last synced <time>". That row is B's new phone.
 
