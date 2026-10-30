@@ -106,7 +106,7 @@ there.
 - While the passkey sheet is up, the button reads "Waiting for passkey…".
 - Afterwards, Settings shows "Synced with your household." and the buttons **Invite the
   other parent** and **Sign out**, with "Signing out keeps this phone's logs here. It first
-  makes sure the other phone has them." below.
+  makes sure the server has them, so the other phone gets them when it syncs." below.
 - Home's line under the legend reads "Synced".
 
 ### 2. Second parent joins by invite (A + B, 3 min)

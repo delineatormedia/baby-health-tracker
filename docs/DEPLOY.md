@@ -125,6 +125,44 @@ Android 9 or later, with a screen lock).
 `nix flake update bht`, then step 5 again with its check. Take a backup first
 (step 9).
 
+## Upgrading from a single-phone deploy
+
+Use this if the server already runs a build from before sign-in (it has no **Share with
+the other parent** button) and a phone already holds real logs. Nothing is lost on the way.
+Before sign-in, every log on the phone is saved there and waiting to upload. When that
+phone creates the household, the household is built around the baby already on it, and
+every one of those logs uploads. The server keeps its database and upgrades it in place
+the first time the new build starts. There's nothing to migrate by hand.
+
+1. **Check the phone with the logs.** Open the app from the Home Screen icon it has always
+   used, and look through History.
+   *Check:* the logs are there. Don't remove that icon or add the app to the Home Screen
+   again, and don't change the server's name. On iPhone the Home Screen app keeps its logs
+   apart from Safari, so the same address opened in a Safari tab shows an empty app.
+2. **Back up the server** (step 9).
+3. **Upgrade the server.** Pin the release in `inputs.bht.url`, then
+   `nix flake update bht` and step 5 again, with its check.
+4. **Load the new build on the phone with the logs.** Open the app from its icon, close it
+   fully (swipe it away), then open it again. If a screen fails to open on the first
+   launch, close and reopen once more: the old build can't fetch its screens once the new
+   one has replaced them. Logs saved on the phone are not affected.
+   *Check:* Settings shows **Share with the other parent**, and Home says
+   "Saved on this phone · not synced".
+5. **Create the household from that phone** (step 7), not from the other one.
+   *Check:* Settings says "Synced with your household." and Home says "Synced". On the
+   server, `sudo -u bht sqlite3 /var/lib/bht/bht.db 'SELECT COUNT(*) FROM households'`
+   prints `1` and `… 'SELECT COUNT(*) FROM event_versions'` is not `0`.
+6. **Join from the second phone** (step 8).
+   *Check:* the second phone's History shows the first phone's logs.
+
+   If the second phone also logged on the old build, it shows **Joined the household**
+   and asks about its own logs. **Move them into <baby>** uploads them to the household
+   baby, and you remove any duplicates in History. **Keep them off this household** keeps
+   them on that phone only, and they never upload.
+
+   If the second phone created the household first, the phone with the logs gets the same
+   question when it joins. Choose **Move them into <baby>**, or its logs never upload.
+
 ## Options
 
 | Option | Default | |
