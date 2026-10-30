@@ -194,7 +194,8 @@
       {/if}
     </div>
     <p class="note">
-      Signing out keeps this phone's logs here. It first makes sure the other phone has them.
+      Signing out keeps this phone's logs here. It first makes sure the server has them, so the
+      other phone gets them when it syncs.
     </p>
 
     {#if app.account.placed !== false && phones.length > 0}

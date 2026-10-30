@@ -944,7 +944,12 @@ describe('sign-out quiesces and covers this phone (#5 step 3b)', () => {
           channels.add(this);
         }
         postMessage(data: unknown) {
-          for (const c of channels) if (c !== this) queueMicrotask(() => c.onmessage?.({ data }));
+          for (const c of channels) {
+            if (c === this) continue;
+            const deliver = () => c.onmessage?.({ data });
+            if (late.hold) late.queued.push(deliver);
+            else queueMicrotask(deliver);
+          }
         }
       },
     );
@@ -1001,5 +1006,82 @@ describe('removing a lost phone (#5 step 3b)', () => {
     );
     const app = await loadApp();
     await expect(app.removeDevice(newId())).rejects.toThrow('No such phone in this household');
+  });
+});
+
+describe('a sign-out in another tab (#5 step 3b)', () => {
+  /** Two AppStates over one storage and channel, like two tabs; the session is the cookie. */
+  async function twoTabs() {
+    /** Messages wait here while `hold` is set, so a test can deliver one late. */
+    const late = { hold: false, queued: [] as (() => void)[] };
+    const channels = new Set<{ onmessage: ((e: { data: unknown }) => void) | null }>();
+    vi.stubGlobal(
+      'BroadcastChannel',
+      class {
+        onmessage: ((e: { data: unknown }) => void) | null = null;
+        constructor() {
+          channels.add(this);
+        }
+        postMessage(data: unknown) {
+          for (const c of channels) {
+            if (c === this) continue;
+            const deliver = () => c.onmessage?.({ data });
+            if (late.hold) late.queued.push(deliver);
+            else queueMicrotask(deliver);
+          }
+        }
+      },
+    );
+    const home = baby();
+    kv.set('bht.baby', JSON.stringify(home));
+    kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
+    const state = { session: true };
+    serve(async (url) => {
+      if (url === '/api/auth/logout') {
+        state.session = false;
+        return json({});
+      }
+      if (url === '/api/household')
+        return json({ id: home.householdId, members: [], babies: [home] });
+      return json(emptyPull());
+    });
+    const a = await loadApp();
+    vi.resetModules();
+    const b = await loadApp();
+    const signIn = (verified: Promise<unknown>) =>
+      b.signIn(async () => {
+        await verified;
+        state.session = true;
+        return { householdId: home.householdId, memberId: newId() } as SignedIn;
+      });
+    return { a, b, state, signIn, late };
+  }
+
+  test('revokes a sign-in here whose verify was already sent', async () => {
+    const { a, b, state, signIn } = await twoTabs();
+    const verify = held();
+    const login = signIn(verify.response);
+    await settle();
+    await a.signOut({ anyway: true });
+    await settle();
+    verify.release(json({}));
+    await login;
+    await settle();
+    expect(b.account).toBeNull();
+    expect(state.session).toBe(false);
+    expect(kv.has('bht.account')).toBe(false);
+  });
+
+  test('revokes a sign-in here that finished just before the message arrived', async () => {
+    const { a, b, state, signIn, late } = await twoTabs();
+    late.hold = true;
+    await a.signOut({ anyway: true });
+    await signIn(Promise.resolve());
+    expect(kv.has('bht.account')).toBe(true);
+    for (const deliver of late.queued) deliver();
+    await settle();
+    expect(b.account).toBeNull();
+    expect(state.session).toBe(false);
+    expect(kv.has('bht.account')).toBe(false);
   });
 });

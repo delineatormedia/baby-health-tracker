@@ -226,7 +226,8 @@ class AppState {
    * session cookie, so none of its requests go out under the new account. Each household
    * keeps its own pull cursor, so signing in to another one pulls it from the start.
    *
-   * A sign-out aborts the ceremony and queues behind it. Aborted before verify, it returns
+   * A sign-out, in this tab or another, aborts the ceremony and queues behind it. Aborted
+   * before verify, it returns
    * with nothing sent. Once verify is out, the server has the session whatever happens here,
    * so the account is stored (the sign-out behind clears it) but not placed.
    */
@@ -452,7 +453,13 @@ class AppState {
     this.#channel = new BroadcastChannel(ACCOUNT_CHANNEL);
     this.#channel.onmessage = (e: MessageEvent<AccountMessage>) => {
       this.signingOutElsewhere = e.data === 'signing-out';
-      if (e.data === 'signed-out') void this.#signedOutElsewhere();
+      if (e.data !== 'signed-out') return;
+      // The other tab cleared the stored account before saying so. A sign-in here that is still
+      // running, or that stored its account since, may hold a session set after that logout:
+      // sign out here too, which revokes it and clears storage again.
+      if (this.#ceremonies.size > 0 || loadAccount(this.#storage)) {
+        void this.signOut({ anyway: true }).catch(() => {});
+      } else void this.#signedOutElsewhere();
     };
   }
 
