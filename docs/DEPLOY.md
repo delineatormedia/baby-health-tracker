@@ -89,8 +89,9 @@ Android 9 or later, with a screen lock).
 
 8. **Second parent: join, before logging anything.** On the first phone, Settings →
    **Invite the other parent** shows a code. It works once, for 24 hours. On the second
-   phone, open the URL and add it to the Home Screen. On its first screen, tap **Join the
-   other parent ›** instead of adding the baby. Enter the code and **Your name**, tap
+   phone, open the URL, add it to the Home Screen, and open the app from that icon (on
+   iPhone a Safari tab keeps separate storage). On its first screen, tap **Join the other
+   parent ›** instead of adding the baby. Enter the code and **Your name**, tap
    **Join with a passkey**, and save the passkey. The phone takes the household's baby.
    *Check:* log a wet diaper on each phone. Each shows up on the other phone once it syncs (reopen the app if it hasn't).
 
