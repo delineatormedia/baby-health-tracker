@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { gramsToLbOz } from '@bht/schema';
   import { app } from '../../lib/ui/app.svelte.ts';
-  import { grams, lbOz } from '../../lib/ui/history.ts';
+  import { grams, lbOz, weightPair, weightText } from '../../lib/ui/history.ts';
   import TimeRow from '../../lib/ui/TimeRow.svelte';
   import { when } from '../../lib/ui/time.ts';
   import {
@@ -21,7 +21,8 @@
 
   // A clinic visit and the home scale are both common; start where the last one was taken.
   let source = $state<'home' | 'clinic'>(weights(app.events)[0]?.data.source ?? 'home');
-  let unit = $state<'g' | 'lb'>('g');
+  // Opens in the parent's unit (#84); the toggle below switches for this entry only.
+  let unit = $state(app.prefs.weight);
   let digits = $state('');
   let lb = $state('');
   let oz = $state('');
@@ -61,9 +62,14 @@
     if (busy || value === null) return;
     busy = true;
     try {
-      await app.log('weight', { grams: value, source }, `Weight ${grams(value)} logged`, {
-        occurredAt: at ?? undefined,
-      });
+      await app.log(
+        'weight',
+        { grams: value, source },
+        `Weight ${weightText(value, unit)} logged`,
+        {
+          occurredAt: at ?? undefined,
+        },
+      );
       await goto(resolve('/'), { replaceState: true });
     } catch (e) {
       app.fail(e);
@@ -116,10 +122,10 @@
       Between {grams(MIN_GRAMS)} and {grams(MAX_GRAMS)}{unit === 'lb' ? ', under 16 oz' : ''}
     {:else if value !== null}
       {unit === 'g' ? lbOz(value) : grams(value)}{latest
-        ? ` · last ${grams(latest.data.grams)}`
+        ? ` · last ${weightText(latest.data.grams, unit)}`
         : ''}
     {:else if latest}
-      Last {grams(latest.data.grams)} · {lbOz(latest.data.grams)}
+      Last {weightPair(latest.data.grams, unit)}
     {:else}
       No weight logged yet
     {/if}
@@ -145,12 +151,12 @@
         <li>
           <a href={resolve(`/history/entry?id=${w.id}`)}>
             <span class="what">
-              <span class="title num">{grams(w.data.grams)}</span>
+              <span class="title num">{weightText(w.data.grams, app.prefs.weight)}</span>
               <span class="cap num"
-                >{lbOz(w.data.grams)} · {w.data.source === 'clinic' ? 'Clinic' : 'Home scale'} · {when(
-                  w.occurredAt,
-                  app.now,
-                )}</span
+                >{weightText(w.data.grams, app.prefs.weight === 'lb' ? 'g' : 'lb')} · {w.data
+                  .source === 'clinic'
+                  ? 'Clinic'
+                  : 'Home scale'} · {when(w.occurredAt, app.now)}</span
               >
             </span>
             <span class="chev" aria-hidden="true">›</span>
@@ -161,7 +167,7 @@
   {/if}
 
   <button class="go" disabled={value === null} onclick={log}
-    >{value === null ? 'Log weight' : `Log ${grams(value)}`}</button
+    >{value === null ? 'Log weight' : `Log ${weightText(value, unit)}`}</button
   >
 </main>
 

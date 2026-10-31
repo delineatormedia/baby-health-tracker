@@ -1,4 +1,5 @@
 import { gramsToLbOz, type BabyEvent } from '@bht/schema';
+import type { WeightUnit } from './prefs.ts';
 import {
   awaitingAmount,
   currentSide,
@@ -101,6 +102,16 @@ export function lbOz(g: number): string {
   return `${lb} lb ${oz} oz`;
 }
 
+/** One weight in the parent's unit (#84): "3 610 g" or "7 lb 15.3 oz". */
+export function weightText(g: number, unit: WeightUnit): string {
+  return unit === 'lb' ? lbOz(g) : grams(g);
+}
+
+/** The parent's unit first, then the other: "7 lb 15.3 oz · 3 610 g". */
+export function weightPair(g: number, unit: WeightUnit): string {
+  return `${weightText(g, unit)} · ${weightText(g, unit === 'lb' ? 'g' : 'lb')}`;
+}
+
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
@@ -110,6 +121,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export function rowText(
   e: HistoryEvent,
   volume: (ml: number) => string,
+  weight: WeightUnit,
 ): { title: string; caption: string | null } {
   switch (e.type) {
     case 'diaper': {
@@ -163,12 +175,12 @@ export function rowText(
     case 'weight':
       return {
         title: 'Weight',
-        caption: `${e.data.source === 'clinic' ? 'Clinic' : 'Home scale'} · ${grams(e.data.grams)} · ${lbOz(e.data.grams)}`,
+        caption: `${e.data.source === 'clinic' ? 'Clinic' : 'Home scale'} · ${weightPair(e.data.grams, weight)}`,
       };
     case 'weighted_feed':
       return {
         title: 'Weighted feed',
-        caption: `${grams(e.data.beforeGrams)} → ${grams(e.data.afterGrams)}`,
+        caption: `${weightText(e.data.beforeGrams, weight)} → ${weightText(e.data.afterGrams, weight)}`,
       };
   }
 }

@@ -8,8 +8,12 @@ const ULID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 
 export type Theme = 'auto' | 'night' | 'light';
 
+/** Which weight unit reads first (#84). Display only: weights are stored in grams. */
+export type WeightUnit = 'g' | 'lb';
+
 export interface Prefs {
   volume: VolumeDisplay;
+  weight: WeightUnit;
   theme: Theme;
   /**
    * "Day starts at" (#21), minutes after midnight. Groups Reports into days; Readings never
@@ -18,9 +22,15 @@ export interface Prefs {
   dayStart: number;
 }
 
-export const DEFAULT_PREFS: Prefs = { volume: 'ml', theme: 'auto', dayStart: 0 };
+export const DEFAULT_PREFS: Prefs = {
+  volume: 'ml',
+  weight: 'g',
+  theme: 'auto',
+  dayStart: 0,
+};
 
 const VOLUMES: readonly VolumeDisplay[] = ['ml', 'oz', 'both'];
+const WEIGHTS: readonly WeightUnit[] = ['g', 'lb'];
 const THEMES: readonly Theme[] = ['auto', 'night', 'light'];
 
 export const KEYS = {
@@ -51,6 +61,7 @@ export function loadPrefs(kv: KV): Prefs {
   const o = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   return {
     volume: VOLUMES.find((x) => x === o.volume) ?? DEFAULT_PREFS.volume,
+    weight: WEIGHTS.find((x) => x === o.weight) ?? DEFAULT_PREFS.weight,
     theme: THEMES.find((x) => x === o.theme) ?? DEFAULT_PREFS.theme,
     dayStart: isDayStart(o.dayStart) ? o.dayStart : DEFAULT_PREFS.dayStart,
   };

@@ -12,7 +12,9 @@
   // Opened from a History row. Every change is a new version, so Undo and the history hold.
   const id = page.url.searchParams.get('id') ?? '';
   const event = $derived(app.events.find((e) => e.id === id && !isLogMark(e)));
-  const text = $derived(event && !isLogMark(event) ? rowText(event, app.volume) : null);
+  const text = $derived(
+    event && !isLogMark(event) ? rowText(event, app.volume, app.prefs.weight) : null,
+  );
   const stool = $derived(event?.type === 'diaper' && event.data.kind !== 'wet');
 
   let at = $state<string | null>(untrack(() => event?.occurredAt ?? null));

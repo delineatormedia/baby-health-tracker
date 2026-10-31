@@ -1,4 +1,4 @@
-import { formatWeight, type BabyEvent } from '@bht/schema';
+import { formatWeight, GRAMS_PER_OZ, type BabyEvent } from '@bht/schema';
 import {
   awaitingAmount,
   isLogMark,
@@ -9,6 +9,7 @@ import {
   swatch,
   type LogEvent,
 } from './logic.ts';
+import type { WeightUnit } from './prefs.ts';
 import { missedMarks } from './readings.ts';
 
 // Reports (#21): looking back by day, week and month. Days are cut at the household's
@@ -380,6 +381,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export function rowText(
   e: LogEvent,
   volume: (ml: number) => string,
+  weight: WeightUnit,
 ): { glyph: 'feed' | 'bottle' | 'wet' | 'dirty' | 'pump' | null; name: string; detail: string } {
   switch (e.type) {
     case 'breastfeed': {
@@ -432,19 +434,27 @@ export function rowText(
         detail: [side(e.data.leftMl, 'L'), side(e.data.rightMl, 'R')].filter(Boolean).join(' · '),
       };
     }
-    case 'weight':
+    case 'weight': {
+      // The parent's unit first (#84).
+      const kg = formatWeight(e.data.grams, 'kg');
+      const lb = formatWeight(e.data.grams, 'lb_oz');
       return {
         glyph: null,
-        name: `Weight · ${formatWeight(e.data.grams, 'kg')} / ${formatWeight(e.data.grams, 'lb_oz')}`,
+        name: `Weight · ${weight === 'lb' ? `${lb} / ${kg}` : `${kg} / ${lb}`}`,
         detail: e.data.source === 'clinic' ? 'Clinic' : 'Home scale',
       };
+    }
     case 'weighted_feed': {
       // A measurement taken around a breastfeed that is logged on its own, so never a feed.
       const g = e.data.afterGrams - e.data.beforeGrams;
+      const change =
+        weight === 'lb'
+          ? `${Math.round((Math.abs(g) / GRAMS_PER_OZ) * 10) / 10} oz`
+          : `${Math.abs(g)} g`;
       const side = e.data.side ? `${cap(e.data.side)} · ` : '';
       return {
         glyph: null,
-        name: `Test weighing · ${g >= 0 ? '+' : '−'}${Math.abs(g)} g`,
+        name: `Test weighing · ${g >= 0 ? '+' : '−'}${change}`,
         detail: `${side}Approximate, not counted as a feed`,
       };
     }

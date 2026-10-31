@@ -114,7 +114,7 @@
             : `Clocks went forward · no ${skipped}`,
         );
       }
-      const text = rowText(e, app.volume);
+      const text = rowText(e, app.volume, app.prefs.weight);
       return {
         e,
         t,
