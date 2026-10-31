@@ -1,4 +1,4 @@
-import { GRAMS_PER_LB, GRAMS_PER_OZ, newId, type BabyEvent } from '@bht/schema';
+import { GRAMS_PER_LB, GRAMS_PER_OZ, lbOzToGrams, newId, type BabyEvent } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
 import { entryPath, glyph, grams, historyDays, rowText } from './history.ts';
 import { dayWindow, localZone } from './reports.ts';
@@ -124,20 +124,20 @@ describe('rows', () => {
       },
       local(2026, 10, 28, 11, 20),
     );
-    expect(rowText(dirty as never, ml)).toEqual({
+    expect(rowText(dirty as never, ml, 'g')).toEqual({
       title: 'Dirty diaper',
       caption: 'Mustard · seedy · medium',
     });
     expect(glyph(dirty as never)).toBe('dirty');
     const bareDirty = ev('diaper', { kind: 'dirty', stool: null }, local(2026, 10, 28, 1));
-    expect(rowText(bareDirty as never, ml).caption).toBeNull();
+    expect(rowText(bareDirty as never, ml, 'g').caption).toBeNull();
     const bottle = ev('bottle', { contents: 'breast_milk', volumeMl: 60 }, local(2026, 10, 28, 1));
-    expect(rowText(bottle as never, ml)).toEqual({
+    expect(rowText(bottle as never, ml, 'g')).toEqual({
       title: 'Bottle',
       caption: 'Breast milk · 60 mL',
     });
     const pump = ev('pump', { leftMl: 45, rightMl: 38, afterFeed: true }, local(2026, 10, 28, 1));
-    expect(rowText(pump as never, ml).caption).toBe('45 mL L · 38 mL R · after feed');
+    expect(rowText(pump as never, ml, 'g').caption).toBe('45 mL L · 38 mL R · after feed');
     expect(glyph(pump as never)).toBe('pump');
     expect(entryPath(pump as never)).toBe(`/history/entry?id=${pump.id}`);
   });
@@ -148,18 +148,33 @@ describe('rows', () => {
       { side: 'left', durationSeconds: null, leftMl: null, rightMl: null, afterFeed: false },
       local(2026, 10, 28, 3),
     );
-    expect(rowText(running as never, ml).caption).toBe('Left · running');
+    expect(rowText(running as never, ml, 'g').caption).toBe('Left · running');
     expect(entryPath(running as never)).toBe('/pump');
     const stopped = ev(
       'pump',
       { side: 'both', durationSeconds: 900, leftMl: null, rightMl: null, afterFeed: false },
       local(2026, 10, 28, 4),
     );
-    expect(rowText(stopped as never, ml).caption).toBe('15 min · add amount');
+    expect(rowText(stopped as never, ml, 'g').caption).toBe('15 min · add amount');
     expect(entryPath(stopped as never)).toBe('/pump');
     const w = ev('weight', { grams: 3610, source: 'clinic' }, local(2026, 10, 28, 1));
-    expect(rowText(w as never, ml).caption).toBe('Clinic · 3 610 g · 7 lb 15.3 oz');
+    expect(rowText(w as never, ml, 'g').caption).toBe('Clinic · 3 610 g · 7 lb 15.3 oz');
     expect(glyph(w as never)).toBeNull();
+    // The parent's unit reads first (#84); 7 lb 8 oz as typed stays 7 lb 8 oz.
+    expect(rowText(w as never, ml, 'lb').caption).toBe('Clinic · 7 lb 15.3 oz · 3 610 g');
+    const typed = ev(
+      'weight',
+      { grams: lbOzToGrams(7, 8), source: 'home' },
+      local(2026, 10, 28, 2),
+    );
+    expect(rowText(typed as never, ml, 'lb').caption).toBe('Home scale · 7 lb 8 oz · 3 402 g');
+    const fed = ev(
+      'weighted_feed',
+      { beforeGrams: 3500, afterGrams: 3540, side: null },
+      local(2026, 10, 28, 3),
+    );
+    expect(rowText(fed as never, ml, 'g').caption).toBe('3 500 g → 3 540 g');
+    expect(rowText(fed as never, ml, 'lb').caption).toBe('7 lb 11.5 oz → 7 lb 12.9 oz');
   });
 
   test('feeds: running, one side, both sides', () => {
@@ -175,14 +190,14 @@ describe('rows', () => {
       },
       local(2026, 10, 28, 2, 51),
     );
-    expect(rowText(running as never, ml).caption).toBe('Right · running');
+    expect(rowText(running as never, ml, 'g').caption).toBe('Right · running');
     expect(entryPath(running as never)).toBe('/feed');
     const one = ev(
       'breastfeed',
       { side: 'left', durationSeconds: 840 },
       local(2026, 10, 28, 8, 40),
     );
-    expect(rowText(one as never, ml).caption).toBe('Left · 14 min');
+    expect(rowText(one as never, ml, 'g').caption).toBe('Left · 14 min');
     expect(entryPath(one as never)).toBe(`/history/entry?id=${one.id}`);
     const two = ev(
       'breastfeed',
@@ -196,7 +211,7 @@ describe('rows', () => {
       },
       local(2026, 10, 28, 8, 40),
     );
-    expect(rowText(two as never, ml).caption).toBe('Left 8 min · Right 6 min');
+    expect(rowText(two as never, ml, 'g').caption).toBe('Left 8 min · Right 6 min');
   });
 
   test('grams groups thousands with a narrow space', () => {

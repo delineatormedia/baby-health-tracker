@@ -75,7 +75,7 @@
       <h2 class="sec lab">{d.label}</h2>
       <ul class="list">
         {#each d.events as e (e.id)}
-          {@const t = rowText(e, app.volume)}
+          {@const t = rowText(e, app.volume, app.prefs.weight)}
           {@const g = glyph(e)}
           <li>
             <a href={resolve(entryPath(e))}>

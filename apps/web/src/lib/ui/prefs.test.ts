@@ -30,10 +30,11 @@ describe('prefs', () => {
   test('round-trip, with field-by-field fallback for damage', () => {
     const s = kv();
     expect(loadPrefs(s)).toEqual(DEFAULT_PREFS);
-    savePrefs(s, { volume: 'both', theme: 'night', dayStart: 480 });
-    expect(loadPrefs(s)).toEqual({ volume: 'both', theme: 'night', dayStart: 480 });
+    savePrefs(s, { volume: 'both', weight: 'lb', theme: 'night', dayStart: 480 });
+    expect(loadPrefs(s)).toEqual({ volume: 'both', weight: 'lb', theme: 'night', dayStart: 480 });
     expect(loadPrefs(kv({ [KEYS.prefs]: '{"volume":"cups","theme":"light"}' }))).toEqual({
       volume: 'ml',
+      weight: 'g',
       theme: 'light',
       dayStart: 0,
     });
@@ -41,6 +42,10 @@ describe('prefs', () => {
       expect(loadPrefs(kv({ [KEYS.prefs]: JSON.stringify({ dayStart: bad }) })).dayStart).toBe(0);
     }
     expect(loadPrefs(kv({ [KEYS.prefs]: 'not json' }))).toEqual(DEFAULT_PREFS);
+    // Weight unit (#84): damaged values fall back to grams.
+    for (const bad of ['kg', 'lb_oz', 'LB', 1, null]) {
+      expect(loadPrefs(kv({ [KEYS.prefs]: JSON.stringify({ weight: bad }) })).weight).toBe('g');
+    }
   });
 
   test('the author id is minted once and replaced only if invalid', () => {

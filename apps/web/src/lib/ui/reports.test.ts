@@ -25,6 +25,7 @@ import {
   tally,
   ticks,
   wall,
+  weightPair,
   windowHours,
   windowText,
   zoned,
@@ -221,11 +222,19 @@ describe('counts', () => {
     const day = eventsIn([f, weighed], w.start, w.end);
     expect(day).toHaveLength(2);
     expect(tally(day)).toMatchObject({ breast: 1, bottle: 0, bottleMl: 0 });
-    expect(rowText(weighed as Extract<BabyEvent, { type: 'weighted_feed' }>, String)).toEqual({
+    expect(rowText(weighed as Extract<BabyEvent, { type: 'weighted_feed' }>, String, 'g')).toEqual({
       glyph: null,
       name: 'Test weighing · +40 g',
       detail: 'Left · Approximate, not counted as a feed',
     });
+    // The parent's unit (#84): 40 g is 1.4 oz.
+    expect(rowText(weighed as never, String, 'lb').name).toBe('Test weighing · +1.4 oz');
+    const w2 = weight('2026-10-26T10:00:00-04:00', 3610);
+    expect(rowText(w2 as never, String, 'g').name).toBe('Weight · 3.61 kg / 7 lb 15.3 oz');
+    expect(rowText(w2 as never, String, 'lb').name).toBe('Weight · 7 lb 15.3 oz / 3.61 kg');
+    // The day-summary card uses the same order (#87 review).
+    expect(weightPair(3610, 'g')).toEqual(['3.61 kg', '7 lb 15.3 oz']);
+    expect(weightPair(3610, 'lb')).toEqual(['7 lb 15.3 oz', '3.61 kg']);
   });
 
   test('a "We missed some" mark is not a logged event', () => {
@@ -358,7 +367,7 @@ describe('timeline bars', () => {
     expect(tally(eventsIn([long], mon.start, mon.end)).breast).toBe(1);
     expect(tally(eventsIn([long], tue.start, tue.end)).breast).toBe(0);
     const [row] = eventsIn([long], mon.start, mon.end);
-    expect(rowText(row!, String).detail).toBe(`Left · ${minutes(4 * 3600)}`);
+    expect(rowText(row!, String, 'g').detail).toBe(`Left · ${minutes(4 * 3600)}`);
   });
 
   test('bars are clipped on the left edge too, and short feeds keep minimum width', () => {
@@ -381,7 +390,7 @@ describe('pumps and paused feeds (#29, #32)', () => {
     const logged = pump('2026-10-26T11:00:00-04:00', { leftMl: 60, rightMl: 40 });
     const day = [running, stopped, logged, bottle('2026-10-26T12:00:00-04:00', 60)];
     expect(tally(day)).toMatchObject({ pumps: 3, bottle: 1, bottleMl: 60 });
-    const row = (e: BabyEvent) => rowText(e as Extract<BabyEvent, { type: 'pump' }>, String);
+    const row = (e: BabyEvent) => rowText(e as Extract<BabyEvent, { type: 'pump' }>, String, 'g');
     expect(row(running)).toEqual({ glyph: 'pump', name: 'Pump', detail: 'Both · running' });
     expect(row(stopped)).toEqual({
       glyph: 'pump',
@@ -398,7 +407,7 @@ describe('pumps and paused feeds (#29, #32)', () => {
       pausedSeconds: 5 * 60,
     }) as Extract<BabyEvent, { type: 'breastfeed' }>;
     expect(feedEnd(f, 0)).toBe(Date.parse('2026-10-26T09:20:00-04:00'));
-    expect(rowText(f, String).detail).toBe(`Left · ${minutes(15 * 60)}`);
+    expect(rowText(f, String, 'g').detail).toBe(`Left · ${minutes(15 * 60)}`);
     expect(tally([f]).breast).toBe(1);
   });
 
@@ -412,7 +421,7 @@ describe('pumps and paused feeds (#29, #32)', () => {
     }) as Extract<BabyEvent, { type: 'breastfeed' }>;
     const now = Date.parse('2026-10-26T09:30:00-04:00');
     expect(feedEnd(f, now)).toBe(now);
-    expect(rowText(f, String).detail).toBe('Paused');
+    expect(rowText(f, String, 'g').detail).toBe('Paused');
   });
 });
 

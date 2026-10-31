@@ -6,7 +6,7 @@
   import { app } from '../../lib/ui/app.svelte.ts';
   import SignIn from '../../lib/ui/SignIn.svelte';
   import SyncStatus from '../../lib/ui/SyncStatus.svelte';
-  import type { Theme } from '../../lib/ui/prefs.ts';
+  import type { Theme, WeightUnit } from '../../lib/ui/prefs.ts';
   import { dayStartText } from '../../lib/ui/reports.ts';
   import { otherPhones, phoneLine } from '../../lib/ui/sync.ts';
   import { time } from '../../lib/ui/time.ts';
@@ -16,6 +16,10 @@
     ['ml', 'mL'],
     ['oz', 'oz'],
     ['both', 'Both'],
+  ];
+  const WEIGHTS: [WeightUnit, string][] = [
+    ['g', 'Grams'],
+    ['lb', 'lb/oz'],
   ];
   const THEMES: [Theme, string][] = [
     ['auto', 'Auto'],
@@ -66,6 +70,16 @@
       <button
         aria-pressed={app.prefs.volume === value}
         onclick={() => app.setPrefs({ volume: value })}>{label}</button
+      >
+    {/each}
+  </div>
+
+  <div class="sec lab">Weights</div>
+  <div class="opts two">
+    {#each WEIGHTS as [value, label] (value)}
+      <button
+        aria-pressed={app.prefs.weight === value}
+        onclick={() => app.setPrefs({ weight: value })}>{label}</button
       >
     {/each}
   </div>
@@ -240,6 +254,9 @@
 </main>
 
 <style>
+  .two {
+    grid-template-columns: repeat(2, 1fr);
+  }
   .three {
     grid-template-columns: repeat(3, 1fr);
   }
