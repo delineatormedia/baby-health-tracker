@@ -61,8 +61,11 @@
 
 <main class="screen fade">
   <header class="top">
-    <a class="back" href={resolve('/')}>‹ Settings</a><span class="lab">This phone</span>
+    <a class="back" href={resolve('/')}>‹ Settings</a>
   </header>
+
+  <!-- The prefs live in localStorage (prefs.ts), so say plainly that they are per phone (#83). -->
+  <p class="note">These settings stay on this phone. The other phone keeps its own.</p>
 
   <div class="sec lab">Volumes</div>
   <div class="opts three">
@@ -122,7 +125,7 @@
     >{app.prefs.dayStart > 0 && app.prefs.dayStart <= 600
       ? ', so a 3 AM feed counts as the night before'
       : ''}. Readings don't change: they always count from {app.baby?.name ?? 'the baby'}'s birth
-    time. This phone only, until sync.
+    time.
   </p>
 
   <div class="sec lab" id="storage">Storage</div>
