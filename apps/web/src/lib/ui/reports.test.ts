@@ -25,6 +25,7 @@ import {
   tally,
   ticks,
   wall,
+  weightPair,
   windowHours,
   windowText,
   zoned,
@@ -231,6 +232,9 @@ describe('counts', () => {
     const w2 = weight('2026-10-26T10:00:00-04:00', 3610);
     expect(rowText(w2 as never, String, 'g').name).toBe('Weight · 3.61 kg / 7 lb 15.3 oz');
     expect(rowText(w2 as never, String, 'lb').name).toBe('Weight · 7 lb 15.3 oz / 3.61 kg');
+    // The day-summary card uses the same order (#87 review).
+    expect(weightPair(3610, 'g')).toEqual(['3.61 kg', '7 lb 15.3 oz']);
+    expect(weightPair(3610, 'lb')).toEqual(['7 lb 15.3 oz', '3.61 kg']);
   });
 
   test('a "We missed some" mark is not a logged event', () => {

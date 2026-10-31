@@ -377,6 +377,13 @@ export function windowText(w: DayWindow, dayStart: number, tz: string): string {
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** A weight in the parent's unit first, then the other (#84): ["7 lb 15.3 oz", "3.61 kg"]. */
+export function weightPair(grams: number, unit: WeightUnit): [string, string] {
+  const kg = formatWeight(grams, 'kg');
+  const lb = formatWeight(grams, 'lb_oz');
+  return unit === 'lb' ? [lb, kg] : [kg, lb];
+}
+
 /** A list row: "Bottle 60 mL" with "Breast milk" under it. Glyph is the dial shape, if any. */
 export function rowText(
   e: LogEvent,
@@ -435,12 +442,10 @@ export function rowText(
       };
     }
     case 'weight': {
-      // The parent's unit first (#84).
-      const kg = formatWeight(e.data.grams, 'kg');
-      const lb = formatWeight(e.data.grams, 'lb_oz');
+      const [first, second] = weightPair(e.data.grams, weight);
       return {
         glyph: null,
-        name: `Weight · ${weight === 'lb' ? `${lb} / ${kg}` : `${kg} / ${lb}`}`,
+        name: `Weight · ${first} / ${second}`,
         detail: e.data.source === 'clinic' ? 'Clinic' : 'Home scale',
       };
     }

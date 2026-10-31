@@ -2,7 +2,7 @@
   import { resolve } from '$app/paths';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { formatWeight, fromMl } from '@bht/schema';
+  import { fromMl } from '@bht/schema';
   import { app } from '../../lib/ui/app.svelte.ts';
   import Glyph from '../../lib/ui/Glyph.svelte';
   import Timeline from '../../lib/ui/Timeline.svelte';
@@ -32,6 +32,7 @@
     tally,
     wall,
     weekTitle,
+    weightPair,
     windowHours,
     windowText,
     ymdKey,
@@ -279,12 +280,10 @@
       </div>
     </div>
     {#each c.weights as w (w.id)}
+      {@const [first, second] = weightPair(w.data.grams, app.prefs.weight)}
       <div class="wcard">
-        <span class="rl">Weight</span><b class="num">{formatWeight(w.data.grams, 'kg')}</b><span
-          class="sub"
-          >{formatWeight(w.data.grams, 'lb_oz')} · {w.data.source === 'clinic'
-            ? 'Clinic'
-            : 'Home scale'}</span
+        <span class="rl">Weight</span><b class="num">{first}</b><span class="sub"
+          >{second} · {w.data.source === 'clinic' ? 'Clinic' : 'Home scale'}</span
         >
       </div>
     {/each}
