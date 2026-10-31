@@ -28,7 +28,6 @@ import {
   pauseFeedData,
   pickSideData,
   resumeFeedData,
-  hm,
   intake24h,
   lastSide,
   latestStart,
@@ -469,11 +468,10 @@ describe('bottle level', () => {
 });
 
 describe('readouts', () => {
-  test('clock and h:mm', () => {
+  test('clock', () => {
     expect(clock(522_000)).toBe('08:42');
     expect(clock(3_600_000 + 522_000)).toBe('1:08:42');
     expect(clock(-5)).toBe('00:00');
-    expect(hm(2 * 3_600_000 + 5 * 60_000)).toBe('2:05');
   });
 
   test('age in whole days, 0 on the birth day', () => {
