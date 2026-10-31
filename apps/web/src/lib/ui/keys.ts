@@ -27,6 +27,23 @@ export function since(at: number, now: number): KeyLine {
   return { em: h > 0 ? `${h}h ${min % 60}m` : `${min}m`, rest: ' ago' };
 }
 
+/** Full words for the Home dial (#82): "3 hours 10 minutes ago", singular forms ("1 hour 1
+ * minute ago"), "1 day 2 hours ago" past a day, "Just now" under a minute. */
+export function sinceWords(at: number, now: number): string {
+  const ms = Math.max(0, now - at);
+  if (ms < MINUTE) return 'Just now';
+  const min = Math.floor(ms / MINUTE);
+  const days = Math.floor(min / (24 * 60));
+  const hours = Math.floor((min % (24 * 60)) / 60);
+  const minutes = min % 60;
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days} day${days === 1 ? '' : 's'}`);
+  if (hours > 0) parts.push(`${hours} hour${hours === 1 ? '' : 's'}`);
+  // Past a day the minutes drop off; "2 days 1 hour ago" is the finest a day-old feed reads.
+  if (days === 0 && minutes > 0) parts.push(`${minutes} minute${minutes === 1 ? '' : 's'}`);
+  return `${parts.join(' ')} ago`;
+}
+
 const SIDE: Record<Side, string> = { left: 'Left', right: 'Right', both: 'Both' };
 
 export function sideLine(side: Side): KeyLine {
