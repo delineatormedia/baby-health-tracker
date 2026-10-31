@@ -168,7 +168,7 @@
   {:else}
     <section class="verdict">
       <div class="lab">
-        {assessed} of {results.length} checks assessed{app.account ? '' : ' · this phone only'}
+        {assessed} of {results.length} checks assessed
       </div>
       <h2>{inRange ?? 'Not enough data to assess'}</h2>
       <p>
