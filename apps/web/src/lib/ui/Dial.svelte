@@ -15,8 +15,9 @@
    * Keeps every caption row inside the inner ring: each row may be as wide as the ring's chord
    * at its farthest edge. A row of `.alt` spans shows the first that fits (fullest first), a
    * `data-fit="shrink"` row scales its type down to fit, and anything still too wide
-   * ellipsizes. Rows never wrap and only ever get shorter, so every row stays where it was
-   * measured or moves toward the centre, where the chord is wider.
+   * ellipsizes. Rows never wrap, except that a shrink row which cannot fit at the floor even
+   * at its smallest size wraps once and is re-measured against its taller chord (#88). Rows
+   * only ever get shorter or wrap toward the centre, where the chord is wider.
    */
   function fit() {
     const box = dial.getBoundingClientRect();
@@ -25,22 +26,46 @@
     for (const row of center.children) {
       if (!(row instanceof HTMLElement)) continue;
       row.style.fontSize = '';
+      row.style.whiteSpace = '';
       const alts = [...row.children].filter((c) => c instanceof HTMLElement && c.matches('.alt'));
       alts.forEach((alt, i) => ((alt as HTMLElement).style.display = i === 0 ? 'inline' : 'none'));
       const { top, bottom } = row.getBoundingClientRect();
       // Whole pixels, so the comparisons below agree with scrollWidth.
-      const width = Math.floor(chordWidth(radius, top - cy, bottom - cy));
+      let width = Math.floor(chordWidth(radius, top - cy, bottom - cy));
       row.style.maxWidth = `${width}px`;
       for (let i = 1; i < alts.length && row.scrollWidth > width; i++) {
         (alts[i - 1] as HTMLElement).style.display = 'none';
         (alts[i] as HTMLElement).style.display = 'inline';
       }
       if (row.dataset.fit === 'shrink' && row.scrollWidth > width) {
-        let size = parseFloat(getComputedStyle(row).fontSize);
-        size = Math.floor(((size * width) / row.scrollWidth) * 2) / 2;
-        row.style.fontSize = `${size}px`;
-        // Glyph widths do not scale exactly with the size; step down until it fits.
-        while (row.scrollWidth > width && size > 15) row.style.fontSize = `${(size -= 0.5)}px`;
+        // The caption floor (#88): Pepper allows the full-words elapsed line to settle at
+        // 12.5 px, under the design README's 15 px captions. The floor binds the first
+        // proportional step too, not only the step-downs, or a much longer line jumps
+        // straight past it (11 px on the wide CI fonts).
+        const floor = 12.5;
+        const shrink = (chord: number) => {
+          let size = Math.max(
+            floor,
+            Math.floor(
+              ((parseFloat(getComputedStyle(row).fontSize) * chord) / row.scrollWidth) * 2,
+            ) / 2,
+          );
+          row.style.fontSize = `${size}px`;
+          // Glyph widths do not scale exactly with the size; step down until it fits.
+          while (row.scrollWidth > chord && size > floor) row.style.fontSize = `${(size -= 0.5)}px`;
+          return size;
+        };
+        shrink(width);
+        // Even at the floor a long line ("11 hours 59 minutes ago" on a 320 px phone) is
+        // wider than the ring. Wrap once and re-measure against the taller row's chord
+        // rather than ellipsizing the words the owner asked for away.
+        if (row.scrollWidth > width) {
+          row.style.whiteSpace = 'normal';
+          const { top: t2, bottom: b2 } = row.getBoundingClientRect();
+          width = Math.floor(chordWidth(radius, t2 - cy, b2 - cy));
+          row.style.maxWidth = `${width}px`;
+          shrink(width);
+        }
       }
     }
   }

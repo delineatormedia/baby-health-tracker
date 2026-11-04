@@ -75,7 +75,10 @@ export function audit() {
     const size = svg
       ? parseFloat(cs.fontSize) * (svg.getBoundingClientRect().width / svg.viewBox.baseVal.width)
       : parseFloat(cs.fontSize);
-    if (size < 15 - 1e-6) small.push(`${t.slice(0, 30)} @${size.toFixed(1)}`);
+    // A `data-fit="shrink"` caption row may settle at 12.5 px (#88): fit() shrinks it there
+    // only when the full words need it, and caption.spec.ts guards the dial at that floor.
+    const floor = el.closest('[data-fit="shrink"]') ? 12.5 : 15;
+    if (size < floor - 1e-6) small.push(`${t.slice(0, 30)} @${size.toFixed(1)}`);
     if (disabled(el)) continue;
     const ink = rgba(svg ? cs.fill : cs.color);
     if (svg) ink.a *= Number(cs.fillOpacity);
