@@ -275,7 +275,16 @@ covered by `SCHEMA_VERSION` 3.
 | `POST /api/auth/logout` | `{}` | revokes the session, clears the cookie |
 | `GET /api/household` | signed in | `{id, members, babies}` |
 | `POST /api/invites` | signed in | `{code, expiresAt}` |
-| `POST /api/babies` | signed in, `{id, name, birthAt, sex}` | the baby; same id again is a safe retry, another household's id is 409 |
+| `POST /api/babies` | signed in, `{id, name, birthAt, sex, clearId?}` | the baby; same id again is a safe retry, another household's id is 409 |
+| `POST /api/household/clear` | signed in, `{clearId}` (#85) | `{clearId, clearedAt}`: the household's babies and every stored version are deleted; 409 `{cleared}` if `clearId` is not the household's current marker |
+
+- **Clear marker (#85, `SCHEMA_VERSION` 6).** `households.clear_id` is the ULID of the
+  latest clear, null until the first. `GET /api/household` and a pull's first page carry
+  it; push, pull (`?clearId=`), barrier and `/api/babies` send the phone's copy, and the
+  server refuses the whole request with 409 `{error, cleared}` when it differs, absent
+  counting as null. A phone that gets that answer drops its local copy in one IndexedDB
+  transaction with the new marker, then its stored baby, and syncs again. A phone placed
+  in the household for the first time adopts the marker without dropping anything.
 
 - A flow (challenge) is single-use and lives 5 minutes. An invite is single-use
   and lives 24 hours; it is consumed in the same transaction that creates the

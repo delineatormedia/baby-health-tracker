@@ -218,6 +218,55 @@ journalctl -u bht-backup.service -n 5
 systemctl list-timers bht-backup.timer
 ```
 
+## Clearing the household's data (#85)
+
+Either parent can clear every baby and log from **Settings → Clear all data** on their
+phone. The server deletes the household's babies and every stored version of their
+entries in one transaction, and the phone drops its own copy once the server has
+answered. The other phone drops its copy the next time it syncs: the server refuses
+every request from a phone that has not seen the clear, so nothing it logged before,
+or while it was offline, comes back. The household, both sign-ins and the pairing stay;
+both phones go back to "Add a baby", still signed in. Phones on an app version from
+before this feature are refused after the first clear until they update.
+
+The server logs one line per clear, with the household id, the time, who ran it and
+the row counts, never any data:
+
+```sh
+journalctl -u bht | grep ' cleared at '
+```
+
+*Check:* right after a clear, both counts are `0`:
+
+```sh
+sudo -u bht sqlite3 /var/lib/bht/bht.db 'SELECT COUNT(*) FROM babies; SELECT COUNT(*) FROM event_versions'
+```
+
+The database opens with `secure_delete`, and the clear checkpoints and truncates the
+write-ahead log, so the deleted rows are not left in `bht.db` or `bht.db-wal`.
+**Snapshots taken before the clear still hold everything**, in `backup.directory`
+and in any off-site copy, until they age out (`backup.keep`, one week by default).
+The app's copy says as much. Delete those snapshots by hand if the data must go
+sooner, and remember the off-site copy.
+
+### Undo a mistaken clear
+
+The only way back is a restore. Entries logged between the clear and the restore are
+lost, on the server and on both phones.
+
+1. Find when the clear ran: `journalctl -u bht | grep ' cleared at '`.
+2. Pick the newest snapshot from **before** that time: `ls /var/backup/bht`. Names
+   are UTC times.
+3. `sudo bht-restore <that snapshot>` (see "Restore" below).
+
+What happens on the phones: the restored database carries the clear marker from
+before the clear (none at all, if this was the household's first), while the phones
+hold the clear's marker. Their next request is refused as mismatched, so they drop
+their copies, pull the restored log from the start, and show "The household's data
+was cleared" once more. A phone holding the newer marker is refused even when the
+restored marker is "none", so nothing a phone logged after the clear can land on top
+of the restored log. No step on the server is needed beyond the restore.
+
 ## Restore
 
 A restore puts the server back to the snapshot. Entries logged after it are lost (see

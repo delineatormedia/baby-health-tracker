@@ -1,15 +1,18 @@
 import {
   formatVolume,
+  idTime,
   type Baby,
   type BabyEvent,
+  type ClearId,
   type EventData,
   type EventType,
   type HouseholdDevice,
+  type HouseholdView,
   type SignedIn,
 } from '@bht/schema';
 import { Account, AccountError, browserPasskeys, httpAccount } from '../data/account.ts';
 import { openDatabase } from '../data/db.ts';
-import { HttpError, httpTransport } from '../data/protocol.ts';
+import { HttpError, httpTransport, isCleared } from '../data/protocol.ts';
 import { EventStore, type Change } from '../data/store.ts';
 import { failureReason, SyncClient, type SyncStatus } from '../data/sync.ts';
 import {
@@ -26,8 +29,11 @@ import {
   DEFAULT_PREFS,
   loadAccount,
   loadBaby,
+  loadClearedLocal,
+  loadClearNotice,
   loadJoining,
   loadSetupAt,
+  markClearedLocal,
   markSetup,
   loadHomeNoteDismissed,
   loadPrefs,
@@ -36,10 +42,13 @@ import {
   mintAuthorId,
   saveAccount,
   saveBaby,
+  saveClearNotice,
   saveHomeNoteDismissed,
   saveJoining,
   savePrefs,
   saveWelcomed,
+  wipeLocal,
+  type ClearNotice,
   type Prefs,
   type StoredAccount,
 } from './prefs.ts';
@@ -81,7 +90,8 @@ const FLUSH_MS = 15_000;
 const SIGN_OUT_LOCK = 'bht-sign-out';
 /** Tells the other tabs about a sign-out. The meta flag, not this, is what stops their writes. */
 const ACCOUNT_CHANNEL = 'bht-account';
-type AccountMessage = 'signing-out' | 'cancelled' | 'signed-out';
+/** `cleared`: this tab dropped the household's data (#85); the others re-read their state. */
+type AccountMessage = 'signing-out' | 'cancelled' | 'signed-out' | 'cleared';
 
 /**
  * App state shared by every screen. Writes go to IndexedDB through EventStore and are visible
@@ -144,6 +154,8 @@ class AppState {
   signingOutElsewhere = $state(false);
   /** Entries from other phones that arrived after their windows were assessed (step 3b). */
   late = $state.raw<readonly LateEntry[]>([]);
+  /** The household's data was cleared (#85) and this phone dropped its copy; shown until dismissed. */
+  clearNotice = $state.raw<ClearNotice | null>(null);
 
   #store: EventStore | null = null;
   #kv: Storage | null = null;
@@ -187,6 +199,11 @@ class AppState {
       }
       this.seeded = loadSeeded(kv);
       this.#store = new EventStore(await openDatabase(), authorId(kv));
+      this.account = loadAccount(kv);
+      // A clear whose IndexedDB side committed but whose localStorage side did not (#85): the
+      // phone died in between. Finish it before the baby is read.
+      await this.#repairClear();
+      this.clearNotice = loadClearNotice(kv);
       this.baby = loadBaby(kv);
       this.setupAt = loadSetupAt(kv);
       this.standalone = isStandalone({
@@ -197,7 +214,6 @@ class AppState {
       this.homeNoteDismissed = loadHomeNoteDismissed(kv);
       this.welcomed = loadWelcomed(kv);
       if (this.baby) void this.#persist();
-      this.account = loadAccount(kv);
       this.joining = loadJoining(kv);
       this.#account = new Account(httpAccount(), browserPasskeys(), {
         get: () => authorId(kv),
@@ -302,6 +318,10 @@ class AppState {
       }
       throw e;
     }
+    if (!current()) return;
+    // The household's clear marker comes first (#85): a phone that belonged before a clear
+    // drops its copy here, so the placement below sees no baby and takes the household's.
+    await this.#syncClear(account.householdId, household);
     if (!current()) return;
     const placement = placeBaby(this.baby, household);
     const choose = placement.kind === 'choose' && (await this.store.hasRows(this.baby!.id));
@@ -468,6 +488,11 @@ class AppState {
     this.#channel = new BroadcastChannel(ACCOUNT_CHANNEL);
     this.#channel.onmessage = (e: MessageEvent<AccountMessage>) => {
       this.signingOutElsewhere = e.data === 'signing-out';
+      if (e.data === 'cleared') {
+        // The other tab dropped the data and the stored baby; this tab's view follows.
+        this.#afterWipe();
+        return;
+      }
       if (e.data !== 'signed-out') return;
       // The other tab cleared the stored account before saying so. A sign-in here that is still
       // running, or that stored its account since, may hold a session set after that logout:
@@ -508,6 +533,105 @@ class AppState {
   /** An invite code for the other parent. */
   invite() {
     return this.#api.invite();
+  }
+
+  /**
+   * Clears the household's data (#85), after the parent confirmed in Settings: the server
+   * deletes the babies and every stored version, this phone drops its copy, and the other
+   * phone drops its own the next time it syncs. The household and both sign-ins stay, so the
+   * app is back at "Add a baby", still signed in. Nothing local is touched until the server has
+   * answered: a request that fails deletes nothing anywhere, and the caller says so. If the
+   * server answers that the household was cleared already (the other phone got there first, or
+   * this phone was behind), this phone drops its copy and adopts that marker instead.
+   */
+  async clearData(): Promise<void> {
+    const account = this.account;
+    if (!account || this.syncStatus === 'signed_out') throw new Error('Sign in first');
+    const household = account.householdId;
+    const held = (await this.store.clearMark(household))?.clearId ?? null;
+    let clearId: ClearId;
+    try {
+      clearId = (await this.#api.clear(held)).clearId;
+    } catch (e) {
+      if (!isCleared(e)) throw e;
+      clearId = e.cleared;
+    }
+    // A sync run in flight carries the old marker and is refused; none of it lands.
+    await this.#dropSync();
+    await this.#wipe(household, clearId);
+    this.#startSync();
+  }
+
+  dismissClearNotice(): void {
+    this.clearNotice = null;
+    try {
+      saveClearNotice(this.#storage, null);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  /**
+   * Brings this phone's clear marker in line with the household's at placement (#85). A phone
+   * that holds a marker and finds another has missed a clear (or a restore of the server) and
+   * drops its copy. A phone that holds none adopts the household's without dropping anything:
+   * it is joining or signing in, and its own baby and logs were never the household's, so
+   * JoinChoice still gets to offer them. The one exception is a phone from before #85 that has
+   * pulled from this household before (it holds the household's device list): it belonged
+   * before the clear, so it drops its copy like any other.
+   */
+  async #syncClear(household: string, view: HouseholdView): Promise<void> {
+    const held = await this.store.clearMark(household);
+    if (held) {
+      if (held.clearId !== view.clearId) await this.#wipe(household, view.clearId);
+      return;
+    }
+    const belonged = (await this.store.devices(household)) !== null;
+    if (belonged && view.clearId !== null) {
+      await this.#wipe(household, view.clearId);
+      return;
+    }
+    await this.store.adoptClear(household, view.clearId);
+    markClearedLocal(this.#storage, view.clearId);
+  }
+
+  /**
+   * The local side of a clear (#85): every stored version, the household's cursor and device
+   * list and the marker in one IndexedDB transaction, then the baby, its setup time and this
+   * household's late notes in localStorage, then the screens. init() finishes the second step
+   * if the phone dies between the two. Other tabs are told so they re-read their state.
+   */
+  async #wipe(household: string, clearId: ClearId): Promise<void> {
+    await this.store.clearAll(household, clearId);
+    wipeLocal(this.#storage, household, clearId, clearId ? idTime(clearId) : Date.now());
+    this.#afterWipe();
+    this.#broadcast('cleared');
+  }
+
+  /** Re-reads what a wipe (here or in another tab) left in localStorage. */
+  #afterWipe(): void {
+    const kv = this.#storage;
+    this.baby = loadBaby(kv);
+    this.setupAt = loadSetupAt(kv);
+    this.joining = loadJoining(kv);
+    this.clearNotice = loadClearNotice(kv);
+    this.#knownBabies = new Set();
+    this.devices = null;
+    this.clockSample = null;
+    this.devicesCurrent = false;
+    this.#late = null;
+    this.late = [];
+    void this.#reload();
+  }
+
+  /** At startup: the localStorage side of a clear whose IndexedDB side committed (see #wipe). */
+  async #repairClear(): Promise<void> {
+    const household = this.account?.householdId;
+    if (!household) return;
+    const held = await this.store.clearMark(household);
+    if (!held || held.clearId === null) return;
+    if (loadClearedLocal(this.#storage) === held.clearId) return;
+    wipeLocal(this.#storage, household, held.clearId, idTime(held.clearId));
   }
 
   /** Captures the account epoch; the returned check is false once a transition has begun. */
@@ -638,7 +762,8 @@ class AppState {
         this.#lateTracker()?.record(this.syncedSpans(wall, performance.now()), wall);
       },
       prepare: babyPreparer(
-        (b) => this.#api.addBaby(b),
+        async (b) =>
+          this.#api.addBaby(b, (await this.store.clearMark(household))?.clearId ?? undefined),
         this.#knownBabies,
         () => this.baby,
       ),
@@ -646,6 +771,11 @@ class AppState {
         this.#showToast({
           text: `The server refused ${refused.length === 1 ? 'an entry' : `${refused.length} entries`}. See Settings.`,
         }),
+      // The household's data was cleared and this phone had not seen it (#85).
+      onCleared: async (clearId) => {
+        if (this.#sync !== sync) return;
+        await this.#wipe(household, clearId);
+      },
     });
     sync.onStatus((s) => {
       this.syncStatus = s;

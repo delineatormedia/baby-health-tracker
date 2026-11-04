@@ -3,6 +3,9 @@ import {
   DEVICE_REMOVED,
   type Baby,
   type CeremonyOptions,
+  type ClearId,
+  type ClearMarker,
+  type ClearResponse,
   type HouseholdView,
   type Invite,
   type JoinRequest,
@@ -17,13 +20,17 @@ import {
 import { HttpError } from './protocol.ts';
 import { SEEDED_REFUSAL, SeededRefusal, refuseSeeded } from './seeded.ts';
 
-/** A refused account request, with the server's reason ("Invite not found or expired"). */
+/**
+ * A refused account request, with the server's reason ("Invite not found or expired"). A 409
+ * for a cleared household carries the marker as `cleared` (HttpError).
+ */
 export class AccountError extends HttpError {
   constructor(
     status: number,
     readonly reason: string,
+    body?: unknown,
   ) {
-    super(status);
+    super(status, body);
     this.message = reason;
   }
 }
@@ -42,7 +49,7 @@ export function httpAccount(base = ''): AccountTransport {
     const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
     if (!res.ok) {
       const reason = typeof body?.error === 'string' ? body.error : `HTTP ${res.status}`;
-      throw new AccountError(res.status, reason);
+      throw new AccountError(res.status, reason, body);
     }
     return body as T;
   }
@@ -147,10 +154,23 @@ export class Account {
     return this.http.get('/api/household');
   }
 
-  /** Adds a baby this phone made after sign-up. The same id again is a safe retry. */
-  addBaby(baby: Omit<Baby, 'householdId'>): Promise<Baby> {
+  /**
+   * Adds a baby this phone made after sign-up. The same id again is a safe retry. `clearId` is
+   * this phone's clear marker (#85): a stale one is refused, so a cleared baby stays gone.
+   */
+  addBaby(baby: Omit<Baby, 'householdId'>, clearId?: ClearMarker): Promise<Baby> {
     const { id, name, birthAt, sex } = baby;
-    return this.http.post('/api/babies', { id, name, birthAt, sex });
+    return this.http.post('/api/babies', { id, name, birthAt, sex, ...(clearId && { clearId }) });
+  }
+
+  /**
+   * Clears the household's data on the server (#85): its babies and every stored version, for
+   * good. `clearId` is the marker this phone holds; the server runs the clear only if it is
+   * current. Resolves to the new marker. The caller drops this phone's copy only after this
+   * resolves: a failed request deletes nothing anywhere.
+   */
+  clear(clearId: ClearId): Promise<ClearResponse> {
+    return this.http.post('/api/household/clear', { clearId });
   }
 
   invite(): Promise<Invite> {

@@ -6,6 +6,8 @@ import {
   KEYS,
   loadAccount,
   loadBaby,
+  loadClearedLocal,
+  loadClearNotice,
   loadJoining,
   loadPrefs,
   mintAuthorId,
@@ -13,6 +15,7 @@ import {
   saveBaby,
   saveJoining,
   savePrefs,
+  wipeLocal,
 } from './prefs.ts';
 import { fromLocalInput, toLocalInput } from './time.ts';
 
@@ -128,5 +131,53 @@ describe('datetime-local', () => {
     saveJoining(s, null);
     expect(s.m.has(KEYS.joining)).toBe(false);
     expect(() => saveJoining(s, { ...baby, name: '' })).toThrow('Invalid baby');
+  });
+});
+
+describe('the localStorage side of a clear (#85)', () => {
+  test('wipeLocal drops the baby, setup time, join and late notes, keeps the rest, and records the marker', () => {
+    const household = newId();
+    const clearId = newId();
+    const store = kv({
+      'bht.baby': '{"id":"x"}',
+      'bht.setupAt': '1700000000000',
+      'bht.joining': '{"id":"y"}',
+      [`bht.late.${household}`]: '[]',
+      [`bht.late.${newId()}`]: '[]',
+      'bht.prefs': '{"theme":"night"}',
+      'bht.author': 'a',
+      'bht.account': '{"householdId":"h"}',
+      'bht.homeNoteDismissed': '1',
+    });
+    expect(loadClearedLocal(store)).toBeNull();
+    expect(loadClearNotice(store)).toBeNull();
+
+    wipeLocal(store, household, clearId, 1_750_000_000_000);
+    expect([...store.m.keys()].sort()).toEqual(
+      [
+        `bht.late.${[...store.m.keys()].find((k) => k.startsWith('bht.late.'))!.slice(9)}`,
+        'bht.prefs',
+        'bht.author',
+        'bht.account',
+        'bht.homeNoteDismissed',
+        KEYS.cleared,
+        KEYS.clearNotice,
+      ].sort(),
+    );
+    expect(store.m.has(`bht.late.${household}`)).toBe(false);
+    expect(loadClearedLocal(store)).toBe(clearId);
+    expect(loadClearNotice(store)).toEqual({ clearId, at: 1_750_000_000_000 });
+
+    // A restore that took the server back before its first clear: the marker is null again.
+    wipeLocal(store, household, null, 1_760_000_000_000);
+    expect(loadClearedLocal(store)).toBeNull();
+    expect(loadClearNotice(store)).toEqual({ clearId: null, at: 1_760_000_000_000 });
+  });
+
+  test('damaged values read as none', () => {
+    expect(loadClearedLocal(kv({ [KEYS.cleared]: 'not-a-ulid' }))).toBeNull();
+    expect(loadClearNotice(kv({ [KEYS.clearNotice]: '{"clearId":"x","at":1}' }))).toBeNull();
+    expect(loadClearNotice(kv({ [KEYS.clearNotice]: '{"clearId":null,"at":"soon"}' }))).toBeNull();
+    expect(loadClearNotice(kv({ [KEYS.clearNotice]: 'nope' }))).toBeNull();
   });
 });

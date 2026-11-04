@@ -1,5 +1,7 @@
 import {
   BarrierRequest,
+  ClearRequest,
+  Id,
   LogoutRequest,
   MAX_PULL_LIMIT,
   MAX_PUSH_BATCH,
@@ -23,6 +25,7 @@ import {
   type Result,
   type Session,
 } from './auth.ts';
+import { CLEARED, Cleared, clearHousehold } from './clear.ts';
 import { pullVersions, pushVersions, recordBarrier } from './events.ts';
 
 export type { Session } from './auth.ts';
@@ -36,6 +39,8 @@ export interface AppOptions {
    */
   session?: (c: Context) => Session | null | Promise<Session | null>;
   now?: () => Date;
+  /** Operational log lines (a household cleared, with ids and counts, never data). */
+  log?: (line: string) => void;
 }
 
 type Env = { Variables: { session: Session } };
@@ -44,6 +49,9 @@ const AUTH_BODY_BYTES = 64 * 1024;
 
 export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   const now = opts.now ?? (() => new Date());
+  const log = opts.log ?? ((line: string) => console.log(line));
+  /** The 409 a request whose clear marker is not the household's gets (#85). */
+  const cleared = (c: Context, e: Cleared) => c.json({ error: CLEARED, cleared: e.cleared }, 409);
   const accounts = opts.auth ? new Accounts(db, opts.auth, now) : null;
   const resolveSession =
     opts.session ?? ((c: Context) => accounts?.session(getCookie(c, SESSION_COOKIE)) ?? null);
@@ -77,6 +85,7 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   app.use('/api/sync', signedIn);
   app.use('/api/sync/*', signedIn);
   app.use('/api/household', signedIn);
+  app.use('/api/household/*', signedIn);
   app.use('/api/invites', signedIn);
   app.use('/api/babies', signedIn);
   app.use('/api/devices/*', signedIn);
@@ -146,8 +155,25 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   app.post('/api/babies', authBody, async (c) => {
     if (!accounts) return c.json({ error: 'Sign-in is not configured' }, 503);
     const result = accounts.addBaby(c.var.session.householdId, await json(c));
-    if (!result.ok) return c.json({ error: result.error }, result.status);
+    if (!result.ok) return c.json({ error: result.error, ...result.body }, result.status);
     return c.json(result.value);
+  });
+
+  // Clearing the household's data (#85): either parent, once confirmed on the phone. The
+  // marker the phone holds must be the current one, so a phone that missed an earlier clear
+  // cannot clear data it has never seen. Nothing here needs the passkey configuration.
+  app.post('/api/household/clear', authBody, async (c) => {
+    const body = await json(c);
+    if (!v.is(ClearRequest, body)) return c.json({ error: 'Expected { clearId }' }, 400);
+    const { householdId } = c.var.session;
+    const result = clearHousehold(db, householdId, body.clearId, now());
+    if (!result.ok) return c.json({ error: CLEARED, cleared: result.cleared }, 409);
+    const { clearId, clearedAt, babies, versions } = result.value;
+    log(
+      `household ${householdId} cleared at ${clearedAt} by member ${c.var.session.memberId ?? '?'}: ` +
+        `${babies} babies and ${versions} event versions deleted, clear_id ${clearId}`,
+    );
+    return c.json({ clearId, clearedAt });
   });
 
   // Removing a lost phone (step 3b). Removal is the household's vouch from removedAt on.
@@ -190,8 +216,13 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
         return c.json({ error: 'Expected { schemaVersion, events }' }, 400);
       }
       const at = now();
-      const results = pushVersions(db, c.var.session, body.events, at);
-      return c.json({ results, serverNow: at.getTime() });
+      try {
+        const results = pushVersions(db, c.var.session, body.events, at, body.clearId);
+        return c.json({ results, serverNow: at.getTime() });
+      } catch (e) {
+        if (e instanceof Cleared) return cleared(c, e);
+        throw e;
+      }
     },
   );
 
@@ -203,30 +234,46 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
     const { householdId, deviceId } = c.var.session;
     if (body.deviceId !== deviceId) return c.json({ error: 'Not this session’s device' }, 409);
     const at = now();
-    const watermark = recordBarrier(db, householdId, body, at);
-    if (watermark === null) return c.json({ error: 'Sign in' }, 401);
-    return c.json({ watermark, serverNow: at.getTime() });
+    try {
+      const watermark = recordBarrier(db, householdId, body, at);
+      if (watermark === null) return c.json({ error: 'Sign in' }, 401);
+      return c.json({ watermark, serverNow: at.getTime() });
+    } catch (e) {
+      if (e instanceof Cleared) return cleared(c, e);
+      throw e;
+    }
   });
 
+  // `clearId` is the phone's clear marker (#85); absent means it holds none.
   app.get('/api/sync', (c) => {
     const after = intParam(c.req.query('after'), 0);
     const limit = intParam(c.req.query('limit'), MAX_PULL_LIMIT);
     const through = intParam(c.req.query('through'), -1);
+    const clearId = c.req.query('clearId');
     if (after === null || limit === null || limit < 1 || through === null) {
       return c.json({ error: 'Expected after >= 0, limit >= 1 and through >= 0' }, 400);
     }
-    return c.json(
-      pullVersions(
-        db,
-        c.var.session.householdId,
-        {
-          after,
-          limit: Math.min(limit, MAX_PULL_LIMIT),
-          through: through < 0 ? null : through,
-        },
-        now(),
-      ),
-    );
+    if (clearId !== undefined && !v.is(Id, clearId)) {
+      return c.json({ error: 'Expected clearId to be an id' }, 400);
+    }
+    try {
+      return c.json(
+        pullVersions(
+          db,
+          c.var.session.householdId,
+          {
+            after,
+            limit: Math.min(limit, MAX_PULL_LIMIT),
+            through: through < 0 ? null : through,
+          },
+          now(),
+          clearId,
+        ),
+      );
+    } catch (e) {
+      if (e instanceof Cleared) return cleared(c, e);
+      throw e;
+    }
   });
 
   return app;

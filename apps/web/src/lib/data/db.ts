@@ -1,5 +1,15 @@
-import type { BabyEvent, HouseholdDevice } from '@bht/schema';
+import type { BabyEvent, ClearId, HouseholdDevice } from '@bht/schema';
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+
+/**
+ * The household's clear marker as this phone holds it (#85), under meta key clear:<household>.
+ * Absent until the phone's first placement or pull under #85; then the marker it last adopted,
+ * null for "no clear yet". Kept across sign-out: a phone that belonged before a clear must
+ * drop its copy when it comes back, and only then.
+ */
+export interface ClearMark {
+  clearId: ClearId;
+}
 
 /** One stored version. seq is null until the server accepts it. */
 export interface VersionRow {
@@ -33,9 +43,10 @@ export interface BhtDB extends DBSchema {
   };
   /**
    * Pull cursors (cursor:<household>), the write generation (gen), each household's adopted
-   * device list (devices:<household>) and the sign-out flag (signingOut, 1 while set).
+   * device list (devices:<household>), its clear marker (clear:<household>) and the sign-out
+   * flag (signingOut, 1 while set).
    */
-  meta: { key: string; value: number | HouseholdDevice[] };
+  meta: { key: string; value: number | HouseholdDevice[] | ClearMark };
 }
 
 export type Database = IDBPDatabase<BhtDB>;
