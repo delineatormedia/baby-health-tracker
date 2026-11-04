@@ -51,3 +51,16 @@ export function showHomeScreenNote(s: {
 }): boolean {
   return s.hasBaby && !s.standalone && !s.dismissed;
 }
+
+/**
+ * The welcome screen (#86): a phone with no baby that is not signed in, once. A signed-in
+ * phone with no baby (after a clear, #85) goes to Add a baby instead: its household exists,
+ * and registering would refuse a second one.
+ */
+export function showWelcome(s: {
+  hasBaby: boolean;
+  signedIn: boolean;
+  welcomed: boolean;
+}): boolean {
+  return !s.hasBaby && !s.signedIn && !s.welcomed;
+}

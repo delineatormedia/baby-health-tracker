@@ -77,8 +77,13 @@ export function audit() {
       : parseFloat(cs.fontSize);
     // A shrink-fit caption row inside the Home dial may settle at 12.5 px (#88): fit() shrinks
     // it there only when the text needs it, and caption.spec.ts guards the dial at that floor.
-    // Anywhere else, 15 px holds.
-    const floor = el.closest('.dial [data-fit="shrink"]') ? 12.5 : 15;
+    // The welcome screen's eyebrow (#86) is fine print at 11 px by the owner's choice: not
+    // text a parent has to read to use the app. Anywhere else, 15 px holds.
+    const floor = el.closest('.dial [data-fit="shrink"]')
+      ? 12.5
+      : el.closest('.welcome .eyebrow')
+        ? 11
+        : 15;
     if (size < floor - 1e-6) small.push(`${t.slice(0, 30)} @${size.toFixed(1)}`);
     if (disabled(el)) continue;
     const ink = rgba(svg ? cs.fill : cs.color);

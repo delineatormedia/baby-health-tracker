@@ -50,6 +50,12 @@ This applies to every screen, not only Home (#20).
   "11 hours 59 minutes ago" does not fit the 320 px ring at 15 px, and fit()
   wraps it rather than ellipsizing the words away. caption.spec.ts guards the
   dial at that floor; the type audit allows it inside the dial only.
+  Exception (owner, 2026-11-04, #86): the welcome screen's eyebrow, "Sovereign
+  Medical Technology", is 11 px monospaced caps. It is fine print the owner asked
+  to keep small, not something a parent has to read to use the app: the name a
+  parent reads is the 46 px wordmark under it. It keeps 4.5:1 (`dim` on `bg`,
+  5.08 light / 5.21 night), and the type audit allows 11 px for `.welcome .eyebrow`
+  only.
 - All text meets WCAG AA (4.5:1) in both themes, measured after any opacity
   is blended in. There are no exceptions, so text never uses opacity. De-emphasis
   comes from the `dim` token, a lighter weight or a smaller size (see Text
@@ -360,6 +366,17 @@ Core: home (24-hour dial), breastfeed timer, diaper color, diaper details,
 bottle, readings (flag and all-clear states), why.
 
 Remaining: pump, weight, history, add a baby, household settings, sign in.
+
+Welcome (#86, `lib/ui/Welcome.svelte`): first launch only, on a phone with no
+baby that is not signed in, once (`bht.welcomed`). Eyebrow "Sovereign Medical
+Technology" 11 px mono caps `dim`; wordmark `smt` 700 `acc`, a 0.1 em gap, `baby`
+400 `ink`, 46 px (42 px under 360 px wide), no slash and no icon; one-line
+purpose 17 px; "Join with a code" (`.go2`) over "Start a household" (`.go`), both
+in flow at the bottom. The plain-text name stays "SMT/Baby". The wordmark is set in
+the system sans, so the weights are the phone's own 700 and 400. Start opens Add
+a baby; Join opens it on the invite code. A signed-in phone with no baby (after a
+clear, #85) goes to Add a baby instead: registering would refuse a second
+household.
 
 Reports: day (top and scrolled), week, month, Day starts at, and History's
 "Reports ›" header. Cases: 25 h day, 23 h day, Day starts at 8 AM vs midnight.

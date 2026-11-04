@@ -47,6 +47,8 @@ for (const width of [320, 390] as const) {
       const errors = watchErrors(page);
       await page.clock.setFixedTime(T);
       await open(page, '/');
+      // First launch (#86): the welcome screen's main door opens Add a baby.
+      await page.getByRole('button', { name: 'Start a household' }).tap();
       await page.locator('input:not([type])').first().fill('Webkit Baby');
       await page.locator('input[type="datetime-local"]').fill('2026-10-20T08:15');
       await page.getByRole('button', { name: 'Female', exact: true }).tap();

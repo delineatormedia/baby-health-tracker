@@ -4,11 +4,14 @@
   import SignIn from './SignIn.svelte';
   import { fromLocalInput, toLocalInput } from './time.ts';
 
+  /** Opened from the welcome screen's "Join with a code" (#86): start on the invite code. */
+  let { join = false }: { join?: boolean } = $props();
+
   let name = $state('');
   let born = $state(toLocalInput(Date.now()));
   let sex = $state<'female' | 'male' | null>(null);
   /** A second parent's phone joins the household instead of adding the baby again. */
-  let other = $state<'join' | 'login' | null>(null);
+  let other = $state<'join' | 'login' | null>(join ? 'join' : null);
 
   const bornAt = $derived(fromLocalInput(born));
   const valid = $derived(
