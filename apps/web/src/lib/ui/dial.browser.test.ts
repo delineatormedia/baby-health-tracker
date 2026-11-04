@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { chromium, type Browser } from 'playwright-core';
 import { createRawSnippet } from 'svelte';
 import { render } from 'svelte/server';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import Dial from './Dial.svelte';
 import { dialFace, RING } from './dial.ts';
 import { polar } from './logic.ts';
@@ -52,9 +52,14 @@ function feed(minutesAgo: number, left: number, right: number): BabyEvent {
 
 describe.skipIf(!CHROME)('the dial in a real browser', () => {
   let browser: Browser;
+  // Every case drives a real browser: budget it like the hook below, not like a unit test.
+  vi.setConfig({ testTimeout: 30_000 });
 
+  // Chrome's cold start lands on whichever page opens first: ~2 s warm, past 5 s under CI load
+  // (main 9e38d7f). Pay it here, inside the hook's budget, not inside the first case.
   beforeAll(async () => {
     browser = await chromium.launch({ executablePath: CHROME!, headless: true });
+    await (await browser.newPage()).close();
   }, 30_000);
 
   afterAll(async () => {
