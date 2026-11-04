@@ -370,6 +370,54 @@ after the wait, two screen changes and a relaunch, report it as a failure of 10.
 screen reloads while you're entering something, or the feed is lost or logged twice,
 report it as a failure of the step where it happened.
 
+### 11. Clear all data (A + B, 8 min)
+
+Clearing deletes every baby and log from the household, on the server and on both phones
+(#85). The household and both sign-ins stay. Use test data: once cleared, only a server
+restore from a snapshot brings it back. Before you start, both phones show the same baby
+and at least one entry each, and Settings on both reads "Synced with your household."
+
+1. **Both online.** On A, Settings → **Clear all data**.
+   *Expected:* the button does nothing yet. A note appears: "This deletes <baby>'s profile
+   and every log from the household: on this phone, on the other phone the next time it
+   syncs, and on the server. The household and both sign-ins stay. The app can't undo
+   this. The server's backups keep a copy for up to a week." with **Delete everything**
+   and **Keep**. Tap **Keep**: nothing changes. Tap **Clear all data**, then **Delete
+   everything**.
+   *Expected:* A shows "Add a baby" with a banner "The household's data was cleared
+   <date and time>. Logs from before then are gone from this phone and the server." and
+   an **OK**. A is still signed in: Settings reads "Synced with your household." and
+   offers **Clear all data** and **Sign out**, not **Share with the other parent**.
+   Then on B, switch away from the app and back.
+   *Expected:* within a few seconds B shows "Add a baby" with the same banner, still
+   signed in. Nothing of the old baby remains in History on either phone.
+2. **The database is empty.** On the server, run the check from DEPLOY.md, "Clearing the
+   household's data": both counts are `0`. `journalctl -u bht | grep ' cleared at '`
+   shows one new line with the household id and the counts deleted, and no names.
+3. **Next baby.** On A, add a new baby.
+   *Expected:* A's Home shows the new baby with no entries. Readings show no flags and
+   nothing counted from before now. Switch away from the app on B and back: B shows the
+   new baby too.
+4. **The other phone was offline.** On B, turn on airplane mode and log a wet diaper and
+   a bottle. On A, Settings → **Clear all data** → **Delete everything**.
+   *Expected:* A is back at "Add a baby", signed in. On B, still in airplane mode, the
+   two entries are still there. Turn airplane mode off and switch away from the app and
+   back.
+   *Expected:* B shows "Add a baby" with the cleared banner. The two entries B logged
+   offline are gone from B and never reach the server: the check from step 2 still
+   gives `0` and `0`, and after A adds a baby and syncs, A shows no diaper or bottle.
+5. **A clear that cannot reach the server deletes nothing.** On B, add a baby (so B is
+   signed in with a baby), then turn on airplane mode. Settings → **Clear all data**.
+   *Expected:* the button is disabled and the line under it reads "Clearing needs a
+   connection to the server." Turn airplane mode off, wait for "Synced with your
+   household.", tap **Clear all data**, then turn airplane mode on and tap **Delete
+   everything**.
+   *Expected:* B keeps its baby and shows "Nothing was deleted: No connection to the
+   server. Try again." Turn airplane mode off: B still has the baby, and so does A after
+   it syncs.
+6. **Dismiss the banner.** On each phone, tap **OK** on the cleared banner.
+   *Expected:* it goes and stays gone after a reload.
+
 ## What to send back
 
 For each failed check, open a GitHub issue titled `Acceptance <check>.<step>: <what went

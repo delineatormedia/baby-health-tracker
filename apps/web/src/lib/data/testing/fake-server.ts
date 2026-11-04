@@ -1,8 +1,11 @@
 import {
+  newId,
   parseEvent,
   resolveCurrent,
   SCHEMA_VERSION,
   type BabyEvent,
+  type ClearId,
+  type ClearMarker,
   type StoredVersion,
 } from '@bht/schema';
 import {
@@ -25,6 +28,8 @@ export class FakeServer {
   readonly barriers: BarrierRequest[] = [];
   /** The server's clock (epoch ms); tests move it. */
   now = Date.parse('2026-10-29T12:00:00.000Z');
+  /** The household's clear marker (#85): null until clear() runs. */
+  clearId: ClearId = null;
   #seq = 0;
 
   push(events: unknown[]): PushResponse {
@@ -42,7 +47,10 @@ export class FakeServer {
       more: this.log.some((v) => v.seq > next && v.seq <= top),
       through: top,
       serverNow: this.now,
-      ...(through === undefined && { devices: structuredClone([...this.devices.values()]) }),
+      ...(through === undefined && {
+        devices: structuredClone([...this.devices.values()]),
+        clearId: this.clearId,
+      }),
     };
   }
 
@@ -65,6 +73,19 @@ export class FakeServer {
     d.watermark = Math.max(d.watermark ?? 0, Math.min(req.at, this.now));
     d.lastSeenAt = this.now;
     return { watermark: d.watermark, serverNow: this.now };
+  }
+
+  /** The server side of a clear (#85): the log goes, watermarks reset, a new marker is minted. */
+  clear(): ClearId {
+    this.log.length = 0;
+    for (const d of this.devices.values()) d.watermark = null;
+    this.clearId = newId();
+    return this.clearId;
+  }
+
+  /** Whether a request holding `sent` passes the marker check; absent counts as null. */
+  accepts(sent: ClearMarker): boolean {
+    return (sent ?? null) === this.clearId;
   }
 
   current(id: string): BabyEvent | undefined {
@@ -112,11 +133,14 @@ export class FakeTransport implements SyncTransport {
   readonly pushed: BabyEvent[][] = [];
   /** Versions per push attempt, including attempts answered 413. */
   readonly pushSizes: number[] = [];
+  /** The clear marker each request carried (#85), in order, across push, pull and barrier. */
+  readonly markers: ClearMarker[] = [];
 
   constructor(readonly server: FakeServer) {}
 
-  async push(events: BabyEvent[]): Promise<PushResponse> {
+  async push(events: BabyEvent[], clearId?: ClearMarker): Promise<PushResponse> {
     this.#check();
+    this.#checkClear(clearId);
     this.pushSizes.push(events.length);
     const body = JSON.stringify({ schemaVersion: SCHEMA_VERSION, events });
     if (this.maxBytes !== null && new TextEncoder().encode(body).length > this.maxBytes) {
@@ -137,9 +161,15 @@ export class FakeTransport implements SyncTransport {
   /** Runs after each pull is answered, as when another phone pushes between pages. */
   afterPull: (() => void | Promise<void>) | null = null;
 
-  async pull(after: number, limit: number, through?: number): Promise<PullResponse> {
+  async pull(
+    after: number,
+    limit: number,
+    through?: number,
+    clearId?: ClearMarker,
+  ): Promise<PullResponse> {
     this.#check();
     if (this.failPulls) throw new TypeError('network connection lost');
+    this.#checkClear(clearId);
     this.pulls.push({ after, limit, through });
     const page = structuredClone(this.server.pull(after, limit, through));
     await this.afterPull?.();
@@ -153,6 +183,7 @@ export class FakeTransport implements SyncTransport {
 
   async barrier(req: BarrierRequest): Promise<BarrierResponse> {
     this.#check();
+    this.#checkClear(req.clearId);
     this.barriersSent.push(req);
     await this.beforeBarrier?.();
     return structuredClone(this.server.barrier(req));
@@ -161,5 +192,12 @@ export class FakeTransport implements SyncTransport {
   #check() {
     if (!this.online) throw new TypeError('Failed to fetch');
     if (this.status !== null) throw new HttpError(this.status);
+  }
+
+  /** The server's 409 `{cleared}` for a request whose marker is not the household's (#85). */
+  #checkClear(sent: ClearMarker) {
+    this.markers.push(sent);
+    if (this.server.accepts(sent)) return;
+    throw new HttpError(409, { error: 'cleared', cleared: this.server.clearId });
   }
 }

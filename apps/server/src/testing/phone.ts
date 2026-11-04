@@ -85,12 +85,19 @@ export class Phone {
     };
   }
 
-  push(events: unknown[]) {
-    return this.json<PushResponse>('/api/sync', { schemaVersion: SCHEMA_VERSION, events });
+  /** A push; `clearId` is the phone's clear marker (#85), left out when undefined. */
+  push(events: unknown[], clearId?: string | null) {
+    return this.json<PushResponse>('/api/sync', {
+      schemaVersion: SCHEMA_VERSION,
+      events,
+      ...(clearId !== undefined && { clearId }),
+    });
   }
 
-  pull() {
-    return this.json<PullResponse>('/api/sync?after=0&limit=1000');
+  pull(clearId?: string) {
+    return this.json<PullResponse>(
+      `/api/sync?after=0&limit=1000${clearId ? `&clearId=${clearId}` : ''}`,
+    );
   }
 }
 

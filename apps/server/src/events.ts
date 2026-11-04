@@ -4,12 +4,14 @@ import {
   resolveCurrent,
   type BabyEvent,
   type BarrierRequest,
+  type ClearMarker,
   type HouseholdDevice,
   type PullResponse,
   type PushResult,
 } from '@bht/schema';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Session } from './auth.ts';
+import { checkClear } from './clear.ts';
 
 /**
  * Stores pushed versions for one household in a single transaction and returns a verdict
@@ -18,12 +20,15 @@ import type { Session } from './auth.ts';
  * and is superseded if resolveCurrent over that event's versions does not pick it. An event
  * id already held by another household is refused without saying so, and so is a babyId that
  * is not one of this household's babies. Each stored version records the member who pushed it.
+ * The whole push throws Cleared, storing nothing, when `clearId` is not the household's
+ * marker (#85): a phone that missed a clear cannot upload the cleared log again.
  */
 export function pushVersions(
   db: DatabaseSync,
   session: Session,
   inputs: readonly unknown[],
   now = new Date(),
+  clearId?: ClearMarker,
 ): PushResult[] {
   const { householdId } = session;
   const memberId = session.memberId ?? null;
@@ -48,6 +53,7 @@ export function pushVersions(
 
   db.exec('BEGIN IMMEDIATE');
   try {
+    checkClear(db, householdId, clearId);
     const results = inputs.map((input): PushResult => {
       const parsed = parseEvent(input);
       if (!parsed.ok) return rejected(input, parsed.errors.join('; '));
@@ -87,16 +93,20 @@ export function pushVersions(
  * most `limit` of them. The page is read in one transaction, so WAL gives it a fixed snapshot.
  * On a pull's first page `through` is null, and it is set to the household's highest seq in
  * that snapshot; later pages pass it back, so versions pushed mid-pull wait for the next pull.
+ * Every page throws Cleared when `clearId` is not the household's marker (#85); the first page
+ * carries the marker, so a phone that holds none adopts it.
  */
 export function pullVersions(
   db: DatabaseSync,
   householdId: string,
   page: { after: number; limit: number; through: number | null },
   now = new Date(),
+  clearId?: ClearMarker,
 ): PullResponse {
   const { after, limit } = page;
   db.exec('BEGIN');
   try {
+    const marker = checkClear(db, householdId, clearId);
     const first = page.through === null;
     const through =
       page.through ??
@@ -122,6 +132,7 @@ export function pullVersions(
       through,
       serverNow: now.getTime(),
       ...(devices && { devices }),
+      ...(first && { clearId: marker }),
     };
   } catch (e) {
     db.exec('ROLLBACK');
@@ -160,7 +171,8 @@ function householdDevices(db: DatabaseSync, householdId: string): HouseholdDevic
  * `at` is clamped to the server's clock and the watermark never moves back, so a delayed or
  * replayed barrier changes nothing. The versions it covers were committed by earlier requests,
  * so they are on disk before this row is. Null if the device is not this household's, or
- * removed.
+ * removed. Throws Cleared when the barrier's marker is not the household's (#85): a barrier
+ * for a cleared log must not vouch for anything.
  */
 export function recordBarrier(
   db: DatabaseSync,
@@ -168,23 +180,31 @@ export function recordBarrier(
   barrier: BarrierRequest,
   now = new Date(),
 ): number | null {
-  const row = db
-    .prepare(
-      `UPDATE devices
-       SET watermark = max(coalesce(watermark, 0), ?), gen = max(coalesce(gen, 0), ?),
-           last_seen_at = ?
-       WHERE id = ? AND removed_at IS NULL
-         AND member_id IN (SELECT id FROM members WHERE household_id = ?)
-       RETURNING watermark`,
-    )
-    .get(
-      Math.min(barrier.at, now.getTime()),
-      barrier.gen,
-      now.toISOString(),
-      barrier.deviceId,
-      householdId,
-    ) as { watermark: number } | undefined;
-  return row?.watermark ?? null;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    checkClear(db, householdId, barrier.clearId);
+    const row = db
+      .prepare(
+        `UPDATE devices
+         SET watermark = max(coalesce(watermark, 0), ?), gen = max(coalesce(gen, 0), ?),
+             last_seen_at = ?
+         WHERE id = ? AND removed_at IS NULL
+           AND member_id IN (SELECT id FROM members WHERE household_id = ?)
+         RETURNING watermark`,
+      )
+      .get(
+        Math.min(barrier.at, now.getTime()),
+        barrier.gen,
+        now.toISOString(),
+        barrier.deviceId,
+        householdId,
+      ) as { watermark: number } | undefined;
+    db.exec('COMMIT');
+    return row?.watermark ?? null;
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 
 function verdict(

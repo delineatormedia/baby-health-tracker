@@ -56,20 +56,49 @@ export const CeremonyResponse = v.strictObject({
 export const SignedIn = v.strictObject({ householdId: Id, memberId: Id });
 
 /**
+ * The household's clear marker, as a phone holds it (#85). Null until the household's first
+ * clear; after that the ULID of the latest clear, minted on the server. Every sync request
+ * carries the phone's copy (ClearMarker). The server refuses the whole request with 409
+ * `{cleared}` (ClearedRefusal) when it differs from the household's: a phone that has not
+ * seen the latest clear can neither upload nor read until it drops its data. A request without
+ * one (an app from before #85) is treated as holding null.
+ */
+export const ClearId = v.nullable(Id);
+export const ClearMarker = v.optional(ClearId);
+
+/**
  * POST /api/babies: a baby this phone created after sign-up (a second child, say), so its
  * entries are not refused as Unknown baby. Retrying with the same id is safe.
  */
-export const AddBaby = NewBaby;
+export const AddBaby = v.strictObject({ ...NewBaby.entries, clearId: ClearMarker });
 
 /** POST /api/invites. */
 export const Invite = v.strictObject({ code: InviteCode, expiresAt: Timestamp });
 
-/** GET /api/household: what a joining phone adopts. */
+/** GET /api/household: what a joining phone adopts, its clear marker included. */
 export const HouseholdView = v.strictObject({
   id: Id,
   members: v.array(v.strictObject({ id: Id, displayName: DisplayName })),
   babies: v.array(Baby),
+  clearId: ClearId,
 });
+
+/**
+ * POST /api/household/clear (#85): deletes the household's babies and every stored version of
+ * their entries, on the server, for good. clearId is the marker the phone holds; the clear
+ * runs only if it is the household's current one, so a phone that missed an earlier clear
+ * cannot clear data it has never seen. The household, its members, passkeys and phones stay.
+ */
+export const ClearRequest = v.strictObject({ clearId: ClearId });
+
+/** The new marker and when the clear ran. The marker is a ULID, so it carries that time too. */
+export const ClearResponse = v.strictObject({ clearId: Id, clearedAt: Timestamp });
+
+/**
+ * The 409 every sync route answers with when the request's marker is not the household's.
+ * `cleared` is the household's current marker; the phone drops its local data and adopts it.
+ */
+export const ClearedRefusal = v.strictObject({ error: v.string(), cleared: ClearId });
 
 export type RegisterRequest = v.InferOutput<typeof RegisterRequest>;
 export type JoinRequest = v.InferOutput<typeof JoinRequest>;
@@ -80,6 +109,11 @@ export type SignedIn = v.InferOutput<typeof SignedIn>;
 export type AddBaby = v.InferOutput<typeof AddBaby>;
 export type Invite = v.InferOutput<typeof Invite>;
 export type HouseholdView = v.InferOutput<typeof HouseholdView>;
+export type ClearId = v.InferOutput<typeof ClearId>;
+export type ClearMarker = v.InferOutput<typeof ClearMarker>;
+export type ClearRequest = v.InferOutput<typeof ClearRequest>;
+export type ClearResponse = v.InferOutput<typeof ClearResponse>;
+export type ClearedRefusal = v.InferOutput<typeof ClearedRefusal>;
 
 export const ACCOUNT_SCHEMAS = {
   AddBaby,
@@ -91,4 +125,7 @@ export const ACCOUNT_SCHEMAS = {
   SignedIn,
   Invite,
   HouseholdView,
+  ClearRequest,
+  ClearResponse,
+  ClearedRefusal,
 };

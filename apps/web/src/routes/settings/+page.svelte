@@ -36,6 +36,30 @@
   /** The phone whose Remove was tapped, waiting for the confirm. */
   let removing = $state<string | null>(null);
   const phones = $derived(otherPhones(app.devices, app.store.authorId));
+  /** Clear all data was tapped, waiting for the confirm (#85). */
+  let clearing = $state(false);
+  /** The clear needs the server: signed in, not failing, and no sign-out under way. */
+  const canClear = $derived(
+    app.syncStatus !== 'offline' &&
+      app.syncStatus !== 'signed_out' &&
+      app.transition === null &&
+      !app.signOutBlocked &&
+      !app.signingOutElsewhere,
+  );
+
+  /** Runs the confirmed clear. A failed request deleted nothing, and the note says so. */
+  async function clear() {
+    busy = true;
+    syncError = null;
+    try {
+      await app.clearData();
+      clearing = false;
+    } catch (e) {
+      syncError = `Nothing was deleted: ${signInFailure(e)}`;
+    } finally {
+      busy = false;
+    }
+  }
 
   /** Runs a sync-section action; its failure shows under the section. */
   async function act(run: () => Promise<unknown>) {
@@ -214,6 +238,38 @@
       Signing out keeps this phone's logs here. It first makes sure the server has them, so the
       other phone gets them when it syncs.
     </p>
+
+    {#if app.account.placed !== false}
+      <!-- Clearing the household's data (#85). The confirm is the same inline step as Remove. -->
+      <div class="sec lab">Data</div>
+      {#if clearing}
+        <p class="note">
+          This deletes {app.baby
+            ? `${app.baby.name}’s profile and every log`
+            : 'every baby and log'}
+          from the household: on this phone, on the other phone the next time it syncs, and on the server.
+          The household and both sign-ins stay. The app can’t undo this. The server’s backups keep a copy
+          for up to a week.
+        </p>
+        <div class="acts">
+          <button class="go2 danger" disabled={busy || !canClear} onclick={clear}>
+            {busy ? 'Deleting…' : 'Delete everything'}
+          </button>
+          <button class="go2" disabled={busy} onclick={() => (clearing = false)}>Keep</button>
+        </div>
+      {:else}
+        <div class="acts">
+          <button class="go2" disabled={busy || !canClear} onclick={() => (clearing = true)}
+            >Clear all data</button
+          >
+        </div>
+        <p class="note">
+          {canClear
+            ? 'Deletes every baby and log from this household, for both parents.'
+            : 'Clearing needs a connection to the server.'}
+        </p>
+      {/if}
+    {/if}
 
     {#if app.account.placed !== false && phones.length > 0}
       <div class="sec lab">Phones</div>
