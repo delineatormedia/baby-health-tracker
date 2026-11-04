@@ -15,9 +15,9 @@
    * Keeps every caption row inside the inner ring: each row may be as wide as the ring's chord
    * at its farthest edge. A row of `.alt` spans shows the first that fits (fullest first), a
    * `data-fit="shrink"` row scales its type down to fit, and anything still too wide
-   * ellipsizes. Rows never wrap, except that a shrink row which cannot fit at the floor even
-   * at its smallest size wraps once and is re-measured against its taller chord (#88). Rows
-   * only ever get shorter or wrap toward the centre, where the chord is wider.
+   * ellipsizes. Rows never wrap, except that a shrink row which cannot fit on one line at the
+   * floor wraps, capped at its one-line chord, and is re-measured against the taller band's
+   * chord (#88). Rows only ever get shorter or wrap.
    */
   function fit() {
     const box = dial.getBoundingClientRect();
@@ -60,11 +60,21 @@
         // wider than the ring. Wrap once and re-measure against the taller row's chord
         // rather than ellipsizing the words the owner asked for away.
         if (row.scrollWidth > width) {
+          // The line overflows `width` on one line at every size shrink() allows, so a cap no
+          // wider than `width` keeps it wrapped. A wider cap could let it fit on one line again,
+          // back in the one-line band whose chord it overflows.
+          const oneLine = width;
           row.style.whiteSpace = 'normal';
-          const { top: t2, bottom: b2 } = row.getBoundingClientRect();
-          width = Math.floor(chordWidth(radius, t2 - cy, b2 - cy));
-          row.style.maxWidth = `${width}px`;
-          shrink(width);
+          // The wrapped band's chord depends on how many lines the cap wraps it to: re-measure
+          // until the two agree.
+          for (let i = 0; i < 3; i++) {
+            const { top: t2, bottom: b2 } = row.getBoundingClientRect();
+            const chord = Math.min(oneLine, Math.floor(chordWidth(radius, t2 - cy, b2 - cy)));
+            if (i > 0 && chord === width) break;
+            width = chord;
+            row.style.maxWidth = `${width}px`;
+            shrink(width);
+          }
         }
       }
     }
