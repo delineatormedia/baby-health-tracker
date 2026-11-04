@@ -2,11 +2,13 @@ import {
   isHouseholdDevice,
   SCHEMA_VERSION,
   type BabyEvent,
+  type ClearId,
   type HouseholdDevice,
 } from '@bht/schema';
 import type { EventStore } from './store.ts';
 import {
   HttpError,
+  isCleared,
   MAX_PUSH_BATCH,
   MAX_PUSH_BYTES,
   type PushResponse,
@@ -42,6 +44,13 @@ export interface SyncOptions {
   onAdopt?: (devices: HouseholdDevice[], sample: ClockSample) => void;
   /** Wall and monotonic clocks, for the clock sample; tests replace them. */
   clock?: { wall: () => number; mono: () => number };
+  /**
+   * The server refused a request because the household's data was cleared and this phone has
+   * not seen it (#85): drops this phone's copy and records `clearId` as its marker. The run
+   * ends with nothing written and another follows. Defaults to the store's clearAll; the app
+   * adds its localStorage side and screens.
+   */
+  onCleared?: (clearId: ClearId) => Promise<void>;
 }
 
 /** Thrown inside a run that stop() has fenced off; the run ends without touching anything. */
@@ -71,8 +80,14 @@ export class SyncClient {
   #serverNow: number | null = null;
   /** The write generation the last barrier covered, for flush(). */
   #covered: number | null = null;
-  readonly #opts: Required<Omit<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt'>> &
-    Pick<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt'>;
+  /**
+   * The marker the last cleared refusal made this phone adopt. A second refusal naming the same
+   * one means dropping the copy did not satisfy the server, so that run fails and backs off
+   * instead of clearing again and again.
+   */
+  #clearedTo: ClearId | undefined;
+  readonly #opts: Required<Omit<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt' | 'onCleared'>> &
+    Pick<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt' | 'onCleared'>;
 
   constructor(
     readonly store: EventStore,
@@ -191,24 +206,49 @@ export class SyncClient {
   async #run(): Promise<void> {
     const epoch = this.#epoch;
     this.#setStatus('syncing');
-    try {
-      await this.#push(epoch);
-      await this.#pull(epoch);
-      await this.#barrier(epoch);
-      this.#fence(epoch);
-      this.#failures = 0;
-      this.#setStatus('idle');
-    } catch (err) {
-      if (err === FENCED || epoch !== this.#epoch) return;
-      if (err instanceof HttpError && err.status === 401) {
-        this.#setStatus('signed_out');
+    for (;;) {
+      try {
+        await this.#push(epoch);
+        await this.#pull(epoch);
+        await this.#barrier(epoch);
+        this.#fence(epoch);
+        this.#failures = 0;
+        this.#clearedTo = undefined;
+        this.#setStatus('idle');
+        return;
+      } catch (err) {
+        if (err === FENCED || epoch !== this.#epoch) return;
+        if (err instanceof HttpError && err.status === 401) {
+          this.#setStatus('signed_out');
+          return;
+        }
+        if (isCleared(err) && err.cleared !== this.#clearedTo) {
+          // The refusal came before any write: nothing of this run landed. Drop this phone's
+          // copy, then go round again in the same run, now holding the household's marker, so a
+          // caller awaiting this sync (flush, say) sees the whole thing settle.
+          this.#clearedTo = err.cleared;
+          try {
+            await (this.#opts.onCleared ?? this.#clearAll)(err.cleared);
+          } catch (e) {
+            if (epoch !== this.#epoch) return;
+            this.#fail(e);
+            return;
+          }
+          if (epoch !== this.#epoch || this.#stopped) return;
+          continue;
+        }
+        this.#fail(err);
         return;
       }
-      this.#failures += 1;
-      this.#setStatus('offline', failureReason(err));
-      if (this.#stopped) return;
-      this.#timer = setTimeout(() => void this.sync(), this.backoffMs(this.#failures));
     }
+  }
+
+  /** Records a failed run and schedules the retry. */
+  #fail(err: unknown) {
+    this.#failures += 1;
+    this.#setStatus('offline', failureReason(err));
+    if (this.#stopped) return;
+    this.#timer = setTimeout(() => void this.sync(), this.backoffMs(this.#failures));
   }
 
   /**
@@ -230,9 +270,11 @@ export class SyncClient {
       }
       await this.#opts.prepare?.(batch);
       this.#fence(epoch);
+      const marker = await this.#marker();
+      this.#fence(epoch);
       let response: PushResponse;
       try {
-        response = await this.transport.push(batch);
+        response = await this.transport.push(batch, marker);
       } catch (err) {
         this.#fence(epoch);
         if (!(err instanceof HttpError && err.status === 413)) throw err;
@@ -275,9 +317,10 @@ export class SyncClient {
     let first: { devices?: HouseholdDevice[]; sample?: ClockSample } | undefined;
     for (;;) {
       const after = await this.store.cursor(household);
+      const marker = await this.#marker();
       this.#fence(epoch);
       const sent = first ? null : { tSend: clock.wall(), pSend: clock.mono() };
-      const page = await this.transport.pull(after, pullLimit, through);
+      const page = await this.transport.pull(after, pullLimit, through, marker);
       this.#fence(epoch);
       if (page.devices !== undefined && !page.devices.every(isHouseholdDevice)) {
         throw new MalformedDevices();
@@ -315,12 +358,14 @@ export class SyncClient {
     this.#fence(epoch);
     if (!acked) return;
     const refused = await this.store.rejectedCount();
+    const marker = await this.#marker();
     this.#fence(epoch);
     if (refused > 0) return;
     const { serverNow } = await this.transport.barrier({
       deviceId: this.store.authorId,
       gen: snapshot.gen,
       at,
+      ...(marker && { clearId: marker }),
     });
     this.#fence(epoch);
     this.#heard(serverNow);
@@ -330,6 +375,15 @@ export class SyncClient {
   #heard(serverNow: number | undefined) {
     if (serverNow !== undefined) this.#serverNow = serverNow;
   }
+
+  /** This phone's clear marker for the household, as the next request should carry it. */
+  async #marker(): Promise<ClearId | undefined> {
+    return (await this.store.clearMark(this.#opts.household))?.clearId;
+  }
+
+  /** The default onCleared: the store side of the clear alone. */
+  readonly #clearAll = (clearId: ClearId) =>
+    this.#write(this.store.clearAll(this.#opts.household, clearId));
 
   /** Records a store write in progress for stop() to wait on. Call only right after #fence. */
   async #write<T>(write: Promise<T>): Promise<T> {
@@ -364,6 +418,8 @@ export function failureReason(err: unknown): string {
   if (err instanceof SeededRefusal || err instanceof MalformedDevices) return err.message;
   if (!(err instanceof HttpError)) return 'No connection to the server';
   if (err.status === 413) return 'Server rejected upload size';
+  if (isCleared(err))
+    return 'The household’s data was cleared and this phone could not drop its copy';
   if (err.status === 409) return 'Server needs an update before this app can sync';
   return `Server error (HTTP ${err.status})`;
 }

@@ -266,6 +266,7 @@ describe('POST and GET /api/sync', () => {
       through: three.next,
       serverNow: Date.parse(T),
       devices: [],
+      clearId: null,
     });
   });
 

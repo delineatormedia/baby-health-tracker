@@ -1,5 +1,5 @@
 import * as v from 'valibot';
-import { ACCOUNT_SCHEMAS } from './account.ts';
+import { ACCOUNT_SCHEMAS, ClearId, ClearMarker } from './account.ts';
 import { BabyEvent } from './events.ts';
 import { Id } from './model.ts';
 
@@ -25,10 +25,13 @@ const ServerMs = v.pipe(v.number(), v.safeInteger(), v.minValue(0));
  * client answers 409 { upgrade: true } for the whole batch and stores nothing, so the client
  * keeps every version pending instead of having it rejected by an outdated schema. Events are
  * checked one by one with parseEvent, so one invalid version is rejected on its own.
+ * clearId is the phone's clear marker (#85, account.ts): the whole push is 409 `{cleared}`
+ * and nothing is stored when it is not the household's.
  */
 export const PushRequest = v.strictObject({
   schemaVersion: v.pipe(v.number(), v.safeInteger(), v.minValue(1)),
   events: v.pipe(v.array(v.unknown()), v.maxLength(MAX_PUSH_BATCH)),
+  clearId: ClearMarker,
 });
 export type PushRequest = Omit<v.InferOutput<typeof PushRequest>, 'events'> & {
   events: BabyEvent[];
@@ -89,6 +92,10 @@ export type HouseholdDevice = v.InferOutput<typeof HouseholdDevice>;
  * the same snapshot as through: a barrier is stored only after its versions, so a watermark it
  * shows covers nothing past through. A client adopts the list with the page that reaches
  * through, and keeps the first page's serverNow as its clock sample for the whole pull.
+ *
+ * The request carries the phone's clear marker as `clearId=` (#85); a page is 409 `{cleared}`
+ * when it is not the household's. The first page also carries the household's marker, so a
+ * phone from before #85 that holds none adopts it.
  */
 export const PullResponse = v.strictObject({
   versions: v.array(v.strictObject({ seq: Seq, event: BabyEvent })),
@@ -97,6 +104,7 @@ export const PullResponse = v.strictObject({
   through: Cursor,
   serverNow: v.optional(ServerMs),
   devices: v.optional(v.array(HouseholdDevice)),
+  clearId: v.optional(ClearId),
 });
 export type PullResponse = v.InferOutput<typeof PullResponse>;
 
@@ -104,9 +112,16 @@ export type PullResponse = v.InferOutput<typeof PullResponse>;
  * POST /api/sync/barrier (step 3b). Every version this phone held at write generation `gen` is
  * on the server, and `at` is a serverNow it received before reading them. The server sets the
  * device's watermark to max(watermark, min(at, its own now)): it never moves back, so a late or
- * replayed barrier is harmless. deviceId must be the session's own device.
+ * replayed barrier is harmless. deviceId must be the session's own device. clearId is the
+ * phone's clear marker (#85): 409 `{cleared}` and no watermark change when it is not the
+ * household's, so a stale watermark cannot vouch for a cleared log.
  */
-export const BarrierRequest = v.strictObject({ deviceId: Id, gen: Cursor, at: ServerMs });
+export const BarrierRequest = v.strictObject({
+  deviceId: Id,
+  gen: Cursor,
+  at: ServerMs,
+  clearId: ClearMarker,
+});
 export type BarrierRequest = v.InferOutput<typeof BarrierRequest>;
 
 export const BarrierResponse = v.strictObject({ watermark: ServerMs, serverNow: ServerMs });

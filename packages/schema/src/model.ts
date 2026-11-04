@@ -1,5 +1,5 @@
 import * as v from 'valibot';
-import { monotonicFactory } from 'ulid';
+import { decodeTime, monotonicFactory } from 'ulid';
 
 /**
  * Crockford base32 ULID: 26 chars, sortable by creation time. Ids are created on the client.
@@ -13,6 +13,11 @@ const ulid = monotonicFactory();
 
 export function newId(): Id {
   return ulid();
+}
+
+/** When a ULID was minted, in epoch ms: its first ten characters are a 48-bit timestamp. */
+export function idTime(id: Id): number {
+  return decodeTime(id);
 }
 
 /**

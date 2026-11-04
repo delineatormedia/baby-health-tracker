@@ -11,8 +11,8 @@ import {
   type StoredVersion,
 } from '@bht/schema';
 import type { IDBPTransaction } from 'idb';
-import { rowKey, type BhtDB, type Database, type VersionRow } from './db.ts';
-import type { PullResponse, PushResult } from './protocol.ts';
+import { rowKey, type BhtDB, type ClearMark, type Database, type VersionRow } from './db.ts';
+import type { ClearId, PullResponse, PushResult } from './protocol.ts';
 
 export interface Change {
   event: BabyEvent;
@@ -33,6 +33,8 @@ export interface EditFields {
  */
 const cursorKey = (household: string) => (household ? `cursor:${household}` : 'cursor');
 const devicesKey = (household: string) => `devices:${household}`;
+/** The household's clear marker as this phone holds it (#85); see ClearMark in db.ts. */
+const clearKey = (household: string) => `clear:${household}`;
 
 /**
  * The write generation's meta key (step 3b). Every local write bumps it in the transaction that
@@ -262,8 +264,50 @@ export class EventStore {
     const meta = tx.objectStore('meta');
     await meta.put(page.next, cursorKey(household));
     if (devices && !page.more) await meta.put(devices, devicesKey(household));
+    // A phone from before #85 holds no marker; the first page's is the one its request was
+    // accepted under, so adopting it drops nothing.
+    if (page.clearId !== undefined && (await meta.get(clearKey(household))) === undefined) {
+      await meta.put({ clearId: page.clearId } satisfies ClearMark, clearKey(household));
+    }
     await tx.done;
     if (page.versions.length > 0) this.#emit();
+  }
+
+  /** The household's clear marker as this phone holds it (#85), or null while it holds none. */
+  async clearMark(household: string): Promise<ClearMark | null> {
+    return ((await this.db.get('meta', clearKey(household))) as ClearMark | undefined) ?? null;
+  }
+
+  /**
+   * Takes `clearId` as the household's marker without dropping anything: for a phone placed in
+   * the household for the first time, whose own data was never the household's.
+   */
+  async adoptClear(household: string, clearId: ClearId): Promise<void> {
+    await this.db.put('meta', { clearId } satisfies ClearMark, clearKey(household));
+  }
+
+  /**
+   * The local side of a clear (#85): every stored version goes, pending, refused, local-only
+   * and archived rows included, with the household's cursor and device list, and `clearId`
+   * is recorded as the marker, all in one transaction. So either this phone holds the new
+   * marker and nothing else, or it still holds everything and the stale marker, and the next
+   * sync is refused and tries again. Nothing is uploaded first: entries the phone never synced
+   * are dropped too, as the owner decided. The sign-out flag does not apply: this is not a
+   * write the barrier has to cover.
+   */
+  clearAll(household: string, clearId: ClearId): Promise<void> {
+    return this.track(() => this.#clearAll(household, clearId));
+  }
+
+  async #clearAll(household: string, clearId: ClearId): Promise<void> {
+    const tx = this.db.transaction(['versions', 'meta'], 'readwrite');
+    const meta = tx.objectStore('meta');
+    await tx.objectStore('versions').clear();
+    await meta.delete(cursorKey(household));
+    await meta.delete(devicesKey(household));
+    await meta.put({ clearId } satisfies ClearMark, clearKey(household));
+    await tx.done;
+    this.#emit();
   }
 
   /**

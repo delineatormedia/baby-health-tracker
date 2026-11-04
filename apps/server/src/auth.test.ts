@@ -55,6 +55,7 @@ describe('registration', () => {
       id: home.householdId,
       members: [{ id: signedIn.memberId, displayName: 'Maya' }],
       babies: [{ ...home.baby, householdId: home.householdId }],
+      clearId: null,
     });
     // Entries logged before sign-in keep their babyId and go up as they are.
     const before = wet(home.baby.id, phone.deviceId);

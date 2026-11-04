@@ -25,6 +25,7 @@ import {
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import * as v from 'valibot';
+import { CLEARED, currentClear } from './clear.ts';
 
 /** Who is calling: the household every query is scoped to, and the member and phone. */
 export interface Session {
@@ -68,12 +69,21 @@ type FlowPayload =
   | { purpose: 'join'; request: JoinRequest; userId: string }
   | { purpose: 'login'; request: LoginRequest };
 
-/** Outcome of a ceremony step: a body to answer with, or an HTTP error. */
+/**
+ * Outcome of a ceremony step: a body to answer with, or an HTTP error. `body` is any further
+ * field the error answer carries, such as a cleared household's marker (#85).
+ */
 export type Result<T> =
-  { ok: true; value: T } | { ok: false; status: 400 | 401 | 403 | 404 | 409; error: string };
+  | { ok: true; value: T }
+  | {
+      ok: false;
+      status: 400 | 401 | 403 | 404 | 409;
+      error: string;
+      body?: Record<string, unknown>;
+    };
 
-const fail = (status: 400 | 401 | 403 | 404 | 409, error: string) =>
-  ({ ok: false, status, error }) as const;
+const fail = (status: 400 | 401 | 403 | 404 | 409, error: string, body?: Record<string, unknown>) =>
+  ({ ok: false, status, error, ...(body && { body }) }) as const;
 
 /** What an options step answers: the body, and the flow secret for the browser's cookie. */
 type Started = CeremonyOptions & { browser: string };
@@ -390,13 +400,17 @@ export class Accounts {
 
   /**
    * Adds a baby to the caller's household. The same id again in this household answers the
-   * stored baby (a retry after a lost response); an id held by another household is 409.
+   * stored baby (a retry after a lost response); an id held by another household is 409. So is
+   * a request whose clear marker is not the household's (#85), with the marker as `cleared`:
+   * a phone that missed a clear would otherwise put the cleared baby back.
    */
   addBaby(householdId: string, input: unknown): Result<Baby> {
     const parsed = v.safeParse(AddBaby, input);
     if (!parsed.success) return fail(400, 'Expected { id, name, birthAt, sex }');
-    const { id, name, birthAt, sex } = parsed.output;
+    const { id, name, birthAt, sex, clearId } = parsed.output;
     return this.#transaction(() => {
+      const current = currentClear(this.db, householdId);
+      if ((clearId ?? null) !== current) return fail(409, CLEARED, { cleared: current });
       const held = this.db.prepare('SELECT household_id FROM babies WHERE id = ?').get(id) as
         { household_id: string } | undefined;
       if (held && held.household_id !== householdId) return fail(409, 'Baby exists');
@@ -435,6 +449,7 @@ export class Accounts {
         birthAt: b.birth_at,
         sex: b.sex as HouseholdView['babies'][number]['sex'],
       })),
+      clearId: currentClear(this.db, householdId),
     };
   }
 

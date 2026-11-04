@@ -31,6 +31,19 @@
   </p>
 {/if}
 
+{#if app.clearNotice}
+  <!-- The household's data was cleared (#85) and this phone dropped its copy. Stays until OK. -->
+  <div class="cleared" role="status">
+    <span>
+      The household’s data was cleared {new Date(app.clearNotice.at).toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })}. Logs from before then are gone from this phone and the server.
+    </span>
+    <button onclick={() => app.dismissClearNotice()}>OK</button>
+  </div>
+{/if}
+
 {#if app.saveError}
   <div class="save-fail" role="alert">
     <span>{app.saveError?.text}</span>
@@ -102,6 +115,24 @@
   }
   .save-fail button {
     align-self: stretch;
+    padding: 0 16px;
+    font-weight: 600;
+  }
+  /* The clear notice (#85): the sign-out banner's shape, with the OK on the right. */
+  .cleared {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0;
+    padding: calc(8px + env(safe-area-inset-top)) 16px 8px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+    font-size: 15px;
+  }
+  .cleared button {
+    flex: none;
+    min-height: 44px;
     padding: 0 16px;
     font-weight: 600;
   }

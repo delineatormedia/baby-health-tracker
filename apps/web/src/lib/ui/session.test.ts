@@ -10,7 +10,12 @@ const baby = (name: string, birthAt: string): Baby => ({
   birthAt,
   sex: 'female',
 });
-const view = (...babies: Baby[]): HouseholdView => ({ id: householdId, members: [], babies });
+const view = (...babies: Baby[]): HouseholdView => ({
+  id: householdId,
+  members: [],
+  babies,
+  clearId: null,
+});
 
 describe('placeBaby', () => {
   const ada = baby('Ada', '2026-09-01T08:00:00.000Z');

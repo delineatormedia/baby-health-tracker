@@ -93,12 +93,25 @@ export const MIGRATIONS: string[] = [
   // 4: signed-out phones (#5 step 3b). Set when a phone signs out after a barrier that covers
   // every write it made, so other phones stop waiting for it; cleared when it signs back in.
   `ALTER TABLE devices ADD COLUMN signed_out_at TEXT;`,
+  // 5: the household's clear marker (#85). clear_id is the ULID of the latest clear, null
+  // until the first; every sync request carries the phone's copy and is refused when it
+  // differs. A fresh ULID each time, not a counter, so a restore followed by another clear
+  // cannot reuse a marker a phone already holds. cleared_at is when it ran.
+  `ALTER TABLE households ADD COLUMN clear_id TEXT;
+   ALTER TABLE households ADD COLUMN cleared_at TEXT;`,
 ];
 
-/** Opens the SQLite database, applies pragmas and runs pending migrations. ':memory:' for tests. */
+/**
+ * Opens the SQLite database, applies pragmas and runs pending migrations. ':memory:' for tests.
+ * secure_delete zeroes freed pages, so a cleared household's rows (#85) do not linger in the
+ * file; the clear also truncates the WAL afterwards.
+ */
 export function openDatabase(path: string): DatabaseSync {
   const db = new DatabaseSync(path);
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+  db.exec(
+    `PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;
+     PRAGMA secure_delete = ON;`,
+  );
   migrate(db);
   return db;
 }
