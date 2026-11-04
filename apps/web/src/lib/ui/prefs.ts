@@ -39,6 +39,7 @@ export const KEYS = {
   baby: 'bht.baby',
   setupAt: 'bht.setupAt',
   homeNoteDismissed: 'bht.homeNoteDismissed',
+  welcomed: 'bht.welcomed',
   account: 'bht.account',
   joining: 'bht.joining',
   seeded: 'bht.seeded',
@@ -179,4 +180,11 @@ export const loadSeeded = (kv: KV): boolean => kv.getItem(KEYS.seeded) !== null;
 
 export function markSeeded(kv: KV): void {
   kv.setItem(KEYS.seeded, '1');
+}
+
+/** The welcome screen (#86) has been passed on this phone; it shows once. */
+export const loadWelcomed = (kv: KV): boolean => kv.getItem(KEYS.welcomed) === '1';
+
+export function saveWelcomed(kv: KV): void {
+  kv.setItem(KEYS.welcomed, '1');
 }

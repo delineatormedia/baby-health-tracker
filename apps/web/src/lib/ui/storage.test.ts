@@ -1,6 +1,12 @@
 import { describe, expect, test, vi } from 'vitest';
-import { KEYS, loadHomeNoteDismissed, saveHomeNoteDismissed } from './prefs.ts';
-import { ensurePersisted, isStandalone, showHomeScreenNote } from './storage.ts';
+import {
+  KEYS,
+  loadHomeNoteDismissed,
+  loadWelcomed,
+  saveHomeNoteDismissed,
+  saveWelcomed,
+} from './prefs.ts';
+import { ensurePersisted, isStandalone, showHomeScreenNote, showWelcome } from './storage.ts';
 
 const media = (standalone: boolean) => (q: string) => ({
   matches: standalone && q === '(display-mode: standalone)',
@@ -83,5 +89,28 @@ describe('Add to Home Screen note (#42)', () => {
     saveHomeNoteDismissed(kv);
     expect(m.get(KEYS.homeNoteDismissed)).toBe('1');
     expect(loadHomeNoteDismissed(kv)).toBe(true);
+  });
+});
+
+describe('welcome screen (#86)', () => {
+  test('a phone with no baby that is not signed in, until passed', () => {
+    expect(showWelcome({ hasBaby: false, signedIn: false, welcomed: false })).toBe(true);
+    expect(showWelcome({ hasBaby: false, signedIn: false, welcomed: true })).toBe(false);
+    // Once a baby exists, never: installs from before #86 never see it.
+    expect(showWelcome({ hasBaby: true, signedIn: false, welcomed: false })).toBe(false);
+    // Signed in with no baby (after a clear, #85): Add a baby, since a household exists.
+    expect(showWelcome({ hasBaby: false, signedIn: true, welcomed: false })).toBe(false);
+  });
+
+  test('passing it is stored on this phone', () => {
+    const m = new Map<string, string>();
+    const kv = {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+    };
+    expect(loadWelcomed(kv)).toBe(false);
+    saveWelcomed(kv);
+    expect(m.get(KEYS.welcomed)).toBe('1');
+    expect(loadWelcomed(kv)).toBe(true);
   });
 });

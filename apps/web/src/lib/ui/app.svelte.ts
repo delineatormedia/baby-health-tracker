@@ -32,12 +32,14 @@ import {
   loadHomeNoteDismissed,
   loadPrefs,
   loadSeeded,
+  loadWelcomed,
   mintAuthorId,
   saveAccount,
   saveBaby,
   saveHomeNoteDismissed,
   saveJoining,
   savePrefs,
+  saveWelcomed,
   type Prefs,
   type StoredAccount,
 } from './prefs.ts';
@@ -45,7 +47,13 @@ import { babyPreparer, placeBaby } from './session.ts';
 import { editLink, saveFailure, type EditPath } from './logic.ts';
 import { LateTracker, type LateEntry } from './late.ts';
 import { vouches } from './readings.ts';
-import { ensurePersisted, isStandalone, showHomeScreenNote, type Persistence } from './storage.ts';
+import {
+  ensurePersisted,
+  isStandalone,
+  showHomeScreenNote,
+  showWelcome,
+  type Persistence,
+} from './storage.ts';
 import { time, when } from './time.ts';
 
 export { time };
@@ -97,6 +105,8 @@ class AppState {
   /** Whether the browser has promised to keep this phone's logs; Settings shows it. */
   persistence = $state<Persistence>('unknown');
   homeNoteDismissed = $state(false);
+  /** The welcome screen (#86) was passed on this phone. */
+  welcomed = $state(false);
   /** Dev test data was loaded here (#58): badged, and never synced to a real server. */
   seeded = $state(false);
   /** Wall clock for elapsed-time displays, ticking once a second. */
@@ -185,6 +195,7 @@ class AppState {
         navigator: globalThis.navigator as { standalone?: boolean } | undefined,
       });
       this.homeNoteDismissed = loadHomeNoteDismissed(kv);
+      this.welcomed = loadWelcomed(kv);
       if (this.baby) void this.#persist();
       this.account = loadAccount(kv);
       this.joining = loadJoining(kv);
@@ -667,6 +678,25 @@ class AppState {
       standalone: this.standalone,
       dismissed: this.homeNoteDismissed,
     });
+  }
+
+  /** First launch (#86): no baby, not signed in, not passed yet. */
+  get showWelcome(): boolean {
+    return showWelcome({
+      hasBaby: this.baby !== null,
+      signedIn: this.account !== null,
+      welcomed: this.welcomed,
+    });
+  }
+
+  /** Passes the welcome screen; for this session only if the phone can't store that. */
+  passWelcome(): void {
+    this.welcomed = true;
+    try {
+      saveWelcomed(this.#storage);
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   /** Hides the Add to Home Screen note; for this session only if the phone can't store that. */

@@ -114,8 +114,8 @@ there.
 ### 2. Second parent joins by invite (A + B, 3 min)
 
 1. On A, Settings → **Invite the other parent**.
-2. On B, open the URL, add it to the Home Screen and open it from the icon. On the setup
-   screen tap **Join the other parent ›**. Don't add a baby.
+2. On B, open the URL, add it to the Home Screen and open it from the icon. On the welcome
+   screen tap **Join with a code**. Don't add a baby.
 3. On B, enter the code from A and B's name, then tap **Join with a passkey** and save the
    passkey.
 

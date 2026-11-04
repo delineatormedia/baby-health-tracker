@@ -4,9 +4,12 @@
   import { app } from '../lib/ui/app.svelte.ts';
   import JoinChoice from '../lib/ui/JoinChoice.svelte';
   import Setup from '../lib/ui/Setup.svelte';
+  import Welcome from '../lib/ui/Welcome.svelte';
   import { watchForUpdates } from '../lib/ui/update.ts';
 
   let { children }: { children: Snippet } = $props();
+  /** The door taken on the welcome screen (#86): Join opens Setup on the invite code. */
+  let door = $state<'add' | 'join' | null>(null);
 
   void app.init();
   watchForUpdates({
@@ -51,8 +54,15 @@
     <p>{app.error}</p>
     <p>Private browsing can block local storage. Open the app normally and try again.</p>
   </main>
+{:else if app.ready && app.showWelcome}
+  <Welcome
+    onchoose={(d) => {
+      door = d;
+      app.passWelcome();
+    }}
+  />
 {:else if app.ready && !app.baby}
-  <Setup />
+  <Setup join={door === 'join'} />
 {:else if app.ready && app.baby && app.joining}
   <JoinChoice own={app.baby} to={app.joining} />
 {:else if app.ready}
