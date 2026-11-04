@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { MIN, phone, seed, STOOL, watchErrors, type Seeded } from './helpers.ts';
 
-// #34: every caption glyph inside the dial clears every mark and the inner ring band, at 15 px
-// or more, at 320/390 px, light and night, idle, running and paused, with the ring full of marks.
+// #34: every caption glyph inside the dial clears every mark and the inner ring band, at
+// 12.5 px or more (the dial caption's own floor, #88: Pepper allows the full-words elapsed
+// line to settle under the 15 px caption rule), at 320/390 px, light and night, idle, running
+// and paused, with the ring full of marks.
 
 const CASES: Record<string, { now: string; ev: Seeded[] }> = {
   'idle-wide': {
@@ -147,8 +149,8 @@ for (const width of [320, 390] as const) {
         expect(m.hits, 'caption text over a mark').toEqual([]);
         expect(m.gap, 'caption reaches into the ring band').toBeGreaterThanOrEqual(0);
         expect(
-          m.rows.filter((r) => r.size < 15),
-          'caption rows under 15 px',
+          m.rows.filter((r) => r.size < 12.5),
+          'caption rows under 12.5 px',
         ).toEqual([]);
         expect(m.scroll).toBe(0);
         expect(errors).toEqual([]);

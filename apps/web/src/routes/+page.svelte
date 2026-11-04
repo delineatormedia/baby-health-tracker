@@ -9,7 +9,7 @@
   import Glyph from '../lib/ui/Glyph.svelte';
   import LogKey from '../lib/ui/LogKey.svelte';
   import PumpKey from '../lib/ui/PumpKey.svelte';
-  import { keyLines } from '../lib/ui/keys.ts';
+  import { keyLines, sinceWords } from '../lib/ui/keys.ts';
   import { homeLine } from '../lib/ui/sync.ts';
   import Toast from '../lib/ui/Toast.svelte';
   import HomeScreenNote from '../lib/ui/HomeScreenNote.svelte';
@@ -21,7 +21,6 @@
     dayMarks,
     feedElapsed,
     finishFeedData,
-    hm,
     isPaused,
     minutes,
     runningFeed,
@@ -118,9 +117,10 @@
         >
       {:else if lastFeed}
         <span class="lab">Last feed</span>
-        <span class="v num" data-fit="shrink">{hm(app.now - Date.parse(lastFeed.occurredAt))}</span>
-        <span class="lab">h:mm ago</span>
-        {@render at(lastFeed.occurredAt)}
+        <span class="v num" data-fit="shrink"
+          >{sinceWords(Date.parse(lastFeed.occurredAt), app.now)}</span
+        >
+        {@render at(lastFeed.occurredAt, 'at')}
       {:else}
         <span class="lab">No feeds yet</span>
       {/if}

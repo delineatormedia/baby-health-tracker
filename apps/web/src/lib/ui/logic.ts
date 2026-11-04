@@ -219,12 +219,6 @@ export function clock(ms: number): string {
   return h > 0 ? `${h}:${mmss}` : mmss;
 }
 
-/** Hours and minutes, "2:05", for "time since" readouts. */
-export function hm(ms: number): string {
-  const min = Math.max(0, Math.floor(ms / 60_000));
-  return `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
-}
-
 /** "just now", "54 min", "3 h 05 min". */
 export function ago(ms: number): string {
   const min = Math.floor(ms / 60_000);

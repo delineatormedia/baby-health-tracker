@@ -1,6 +1,6 @@
 import { newId, type BabyEvent } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
-import { keyLines, keyName, since, type KeyLine } from './keys.ts';
+import { keyLines, keyName, since, sinceWords, type KeyLine } from './keys.ts';
 import { time } from './time.ts';
 
 const NOW = Date.parse('2026-10-29T12:00:00.000Z');
@@ -44,6 +44,29 @@ describe('time since', () => {
 
   test('a time in the future (another phone ahead) reads Just now, never negative', () => {
     expect(since(NOW + 90_000, NOW).em).toBe('Just now');
+  });
+});
+
+describe('sinceWords', () => {
+  test('full words, singular forms, then the date', () => {
+    const t = (ms: number) => sinceWords(NOW - ms, NOW);
+    expect(t(0)).toBe('Just now');
+    expect(t(59_999)).toBe('Just now');
+    expect(t(60_000)).toBe('1 minute ago');
+    expect(t(119_999)).toBe('1 minute ago');
+    expect(t(120_000)).toBe('2 minutes ago');
+    expect(t(3_600_000)).toBe('1 hour ago');
+    expect(t(61 * 60_000)).toBe('1 hour 1 minute ago');
+    expect(t(190 * 60_000)).toBe('3 hours 10 minutes ago');
+    expect(t(24 * 3_600_000 - 1)).toBe('23 hours 59 minutes ago');
+    expect(t(24 * 3_600_000)).toBe('1 day ago');
+    expect(t(25 * 3_600_000)).toBe('1 day 1 hour ago');
+    expect(t(26 * 3_600_000)).toBe('1 day 2 hours ago');
+    expect(t(49 * 3_600_000)).toBe('2 days 1 hour ago');
+  });
+
+  test('a time in the future reads Just now, never negative', () => {
+    expect(sinceWords(NOW + 90_000, NOW)).toBe('Just now');
   });
 });
 

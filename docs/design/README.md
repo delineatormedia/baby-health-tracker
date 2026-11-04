@@ -44,7 +44,12 @@ This applies to every screen, not only Home (#20).
   tapped may be smaller. A caption inside a tappable row (the "Clinic ·
   3 610 g" line under "Weight") is a caption.
 - Nothing a parent has to read is smaller than 15 px. Phone OS chrome (the
-  status bar) is not ours.
+  status bar) is not ours. Exception (Pepper, 2026-11-04, #88): the Home
+  dial's shrink-fit caption rows (`data-fit="shrink"`: the elapsed line and
+  the running feed timer) may settle at 12.5 px where the text needs it —
+  "11 hours 59 minutes ago" does not fit the 320 px ring at 15 px, and fit()
+  wraps it rather than ellipsizing the words away. caption.spec.ts guards the
+  dial at that floor; the type audit allows it inside the dial only.
 - All text meets WCAG AA (4.5:1) in both themes, measured after any opacity
   is blended in. There are no exceptions, so text never uses opacity. De-emphasis
   comes from the `dim` token, a lighter weight or a smaller size (see Text
