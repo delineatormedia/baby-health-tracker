@@ -6,7 +6,6 @@ import {
   KEYS,
   loadAccount,
   loadBaby,
-  loadClearedLocal,
   loadClearNotice,
   loadJoining,
   loadPrefs,
@@ -135,7 +134,7 @@ describe('datetime-local', () => {
 });
 
 describe('the localStorage side of a clear (#85)', () => {
-  test('wipeLocal drops the baby, setup time, join and late notes, keeps the rest, and records the marker', () => {
+  test('wipeLocal drops the baby, setup time, join and late notes, keeps the rest, and leaves the notice', () => {
     const household = newId();
     const clearId = newId();
     const store = kv({
@@ -149,7 +148,6 @@ describe('the localStorage side of a clear (#85)', () => {
       'bht.account': '{"householdId":"h"}',
       'bht.homeNoteDismissed': '1',
     });
-    expect(loadClearedLocal(store)).toBeNull();
     expect(loadClearNotice(store)).toBeNull();
 
     wipeLocal(store, household, clearId, 1_750_000_000_000);
@@ -160,22 +158,18 @@ describe('the localStorage side of a clear (#85)', () => {
         'bht.author',
         'bht.account',
         'bht.homeNoteDismissed',
-        KEYS.cleared,
         KEYS.clearNotice,
       ].sort(),
     );
     expect(store.m.has(`bht.late.${household}`)).toBe(false);
-    expect(loadClearedLocal(store)).toBe(clearId);
     expect(loadClearNotice(store)).toEqual({ clearId, at: 1_750_000_000_000 });
 
     // A restore that took the server back before its first clear: the marker is null again.
     wipeLocal(store, household, null, 1_760_000_000_000);
-    expect(loadClearedLocal(store)).toBeNull();
     expect(loadClearNotice(store)).toEqual({ clearId: null, at: 1_760_000_000_000 });
   });
 
   test('damaged values read as none', () => {
-    expect(loadClearedLocal(kv({ [KEYS.cleared]: 'not-a-ulid' }))).toBeNull();
     expect(loadClearNotice(kv({ [KEYS.clearNotice]: '{"clearId":"x","at":1}' }))).toBeNull();
     expect(loadClearNotice(kv({ [KEYS.clearNotice]: '{"clearId":null,"at":"soon"}' }))).toBeNull();
     expect(loadClearNotice(kv({ [KEYS.clearNotice]: 'nope' }))).toBeNull();

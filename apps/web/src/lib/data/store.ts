@@ -1,5 +1,6 @@
 import {
   canonicalJson,
+  idTime,
   newId,
   nextVersion,
   parseEvent,
@@ -11,7 +12,14 @@ import {
   type StoredVersion,
 } from '@bht/schema';
 import type { IDBPTransaction } from 'idb';
-import { rowKey, type BhtDB, type ClearMark, type Database, type VersionRow } from './db.ts';
+import {
+  rowKey,
+  type BhtDB,
+  type ClearMark,
+  type Database,
+  type PendingWipe,
+  type VersionRow,
+} from './db.ts';
 import type { ClearId, PullResponse, PushResult } from './protocol.ts';
 
 export interface Change {
@@ -35,6 +43,32 @@ const cursorKey = (household: string) => (household ? `cursor:${household}` : 'c
 const devicesKey = (household: string) => `devices:${household}`;
 /** The household's clear marker as this phone holds it (#85); see ClearMark in db.ts. */
 const clearKey = (household: string) => `clear:${household}`;
+/** A wipe whose localStorage side is still to run (#85); see PendingWipe in db.ts. */
+const wipeKey = (household: string) => `wipe:${household}`;
+
+/**
+ * The clear marker a request was sent under (#85): what clearMark() returned just before it
+ * went out, so null when the phone held none. A store write that lands a response checks the
+ * marker again in its own transaction; see MarkerMoved.
+ */
+export type SentMark = ClearMark | null;
+
+/**
+ * A response's store write refused because the household's marker changed while the request
+ * was out: another tab cleared the household's data (#85), and what the response carries is
+ * from before the clear. Nothing was written. The sync run goes round again under the marker
+ * the store holds now.
+ */
+export class MarkerMoved extends Error {
+  override name = 'MarkerMoved';
+  constructor() {
+    super('The household’s data was cleared while this request was out');
+  }
+}
+
+/** Whether `held`, the marker in the store now, is the one the request was sent under. */
+const sameMark = (held: ClearMark | undefined, under: SentMark) =>
+  held === undefined ? under === null : under !== null && held.clearId === under.clearId;
 
 /**
  * The write generation's meta key (step 3b). Every local write bumps it in the transaction that
@@ -58,10 +92,12 @@ export class SigningOut extends Error {
   }
 }
 
-/** The pending rows and write generation read in one transaction, for a write barrier. */
+/** The pending rows, write generation and clear marker read in one transaction, for a barrier. */
 export interface Snapshot {
   gen: number;
   pending: BabyEvent[];
+  /** The household's marker as held with these rows: the one the barrier must carry (#85). */
+  under: SentMark;
 }
 
 /**
@@ -180,15 +216,19 @@ export class EventStore {
   }
 
   /**
-   * The write generation and every version waiting to be pushed, read in one transaction. A
-   * write that commits after it has a higher gen, so a barrier for this snapshot never claims it.
+   * The write generation, every version waiting to be pushed and `household`'s clear marker,
+   * read in one transaction. A write that commits after it has a higher gen, so a barrier for
+   * this snapshot never claims it; a clear that commits after it changes the marker, so a
+   * barrier carrying this snapshot's is refused rather than vouching for rows that are gone.
    */
-  async snapshot(): Promise<Snapshot> {
+  async snapshot(household = ''): Promise<Snapshot> {
     const tx = this.db.transaction(['versions', 'meta']);
-    const gen = ((await tx.objectStore('meta').get(GEN_KEY)) as number | undefined) ?? 0;
+    const meta = tx.objectStore('meta');
+    const gen = ((await meta.get(GEN_KEY)) as number | undefined) ?? 0;
+    const under = ((await meta.get(clearKey(household))) as ClearMark | undefined) ?? null;
     const rows = await tx.objectStore('versions').index('byPending').getAll(1);
     await tx.done;
-    return { gen, pending: uploadable(rows) };
+    return { gen, pending: uploadable(rows), under };
   }
 
   /** Whether the server has answered for every version in `events`: none is still pending. */
@@ -213,31 +253,45 @@ export class EventStore {
    * superseded versions are stored under their seq exactly as submitted. A rejected version
    * is never deleted: it stays on this phone marked rejected, is left out of uploads (retrying
    * cannot fix it) and is returned so the caller can surface it. A pending row is retired or
-   * marked only if it still holds the submitted body; anything else stays pending.
+   * marked only if it still holds the submitted body; anything else stays pending. Given the
+   * marker the push was sent `under`, writes nothing and throws MarkerMoved if `household`'s
+   * marker has changed since: the versions were cleared while the push was out (#85).
    */
-  applyPushResults(submitted: BabyEvent[], results: PushResult[]): Promise<PushResult[]> {
-    return this.track(() => this.#applyPushResults(submitted, results));
+  applyPushResults(
+    submitted: BabyEvent[],
+    results: PushResult[],
+    household = '',
+    under?: SentMark,
+  ): Promise<PushResult[]> {
+    return this.track(() => this.#applyPushResults(submitted, results, household, under));
   }
 
-  async #applyPushResults(submitted: BabyEvent[], results: PushResult[]): Promise<PushResult[]> {
+  async #applyPushResults(
+    submitted: BabyEvent[],
+    results: PushResult[],
+    household: string,
+    under: SentMark | undefined,
+  ): Promise<PushResult[]> {
     const sent = new Map(submitted.map((e) => [`${e.id}:${e.version}`, e]));
     const rejected: PushResult[] = [];
-    const tx = this.db.transaction('versions', 'readwrite');
+    const tx = this.db.transaction(['versions', 'meta'], 'readwrite');
+    await this.#checkMark(tx, household, under);
+    const versions = tx.objectStore('versions');
     for (const r of results) {
       const event = sent.get(`${r.id}:${r.version}`);
       if (!event) continue;
       const localKey = rowKey(event, null);
-      const local = await tx.store.get(localKey);
+      const local = await versions.get(localKey);
       const unchanged = local !== undefined && canonicalJson(local.event) === canonicalJson(event);
       if (r.status === 'rejected') {
         if (unchanged) {
-          await tx.store.put({ ...local, pending: 0, rejected: 1, rejectedError: r.error });
+          await versions.put({ ...local, pending: 0, rejected: 1, rejectedError: r.error });
           rejected.push(r);
         }
         continue;
       }
-      if (unchanged) await tx.store.delete(localKey);
-      await tx.store.put({ ...toRow(event, r.seq), pending: 0 });
+      if (unchanged) await versions.delete(localKey);
+      await versions.put({ ...toRow(event, r.seq), pending: 0 });
     }
     await tx.done;
     this.#emit();
@@ -247,18 +301,27 @@ export class EventStore {
   /**
    * Stores pulled versions and advances `household`'s cursor in one transaction. `devices` is
    * the list from the pull's first page: it is adopted here, with the page that reaches
-   * through, so an interrupted pull adopts nothing (step 3b).
+   * through, so an interrupted pull adopts nothing (step 3b). Given the marker the pull was
+   * sent `under`, writes nothing and throws MarkerMoved if the household's marker has changed
+   * since: the page is from before a clear, and storing it would bring the cleared rows back.
    */
-  applyPull(page: PullResponse, household = '', devices?: HouseholdDevice[]): Promise<void> {
-    return this.track(() => this.#applyPull(page, household, devices));
+  applyPull(
+    page: PullResponse,
+    household = '',
+    devices?: HouseholdDevice[],
+    under?: SentMark,
+  ): Promise<void> {
+    return this.track(() => this.#applyPull(page, household, devices, under));
   }
 
   async #applyPull(
     page: PullResponse,
     household: string,
     devices: HouseholdDevice[] | undefined,
+    under: SentMark | undefined,
   ): Promise<void> {
     const tx = this.db.transaction(['versions', 'meta'], 'readwrite');
+    await this.#checkMark(tx, household, under);
     const versions = tx.objectStore('versions');
     for (const { seq, event } of page.versions) await versions.put(toRow(event, seq));
     const meta = tx.objectStore('meta');
@@ -273,9 +336,30 @@ export class EventStore {
     if (page.versions.length > 0) this.#emit();
   }
 
+  /**
+   * Inside a write transaction that lands a response: throws MarkerMoved, before any write, if
+   * `household`'s marker is no longer the one the request went out under (#85). Skipped when
+   * the caller sent no marker to compare, as the store's own tests do.
+   */
+  async #checkMark(tx: WriteTx, household: string, under: SentMark | undefined): Promise<void> {
+    if (under === undefined) return;
+    const held = (await tx.objectStore('meta').get(clearKey(household))) as ClearMark | undefined;
+    if (!sameMark(held, under)) throw new MarkerMoved();
+  }
+
   /** The household's clear marker as this phone holds it (#85), or null while it holds none. */
   async clearMark(household: string): Promise<ClearMark | null> {
     return ((await this.db.get('meta', clearKey(household))) as ClearMark | undefined) ?? null;
+  }
+
+  /** A wipe whose localStorage side is still to run (#85), or null; see PendingWipe. */
+  async pendingWipe(household: string): Promise<PendingWipe | null> {
+    return ((await this.db.get('meta', wipeKey(household))) as PendingWipe | undefined) ?? null;
+  }
+
+  /** Records that the localStorage side of `household`'s last wipe is done (#85). */
+  async wipeDone(household: string): Promise<void> {
+    await this.db.delete('meta', wipeKey(household));
   }
 
   /**
@@ -293,21 +377,25 @@ export class EventStore {
    * marker and nothing else, or it still holds everything and the stale marker, and the next
    * sync is refused and tries again. Nothing is uploaded first: entries the phone never synced
    * are dropped too, as the owner decided. The sign-out flag does not apply: this is not a
-   * write the barrier has to cover.
+   * write the barrier has to cover. The same transaction records the wipe as pending, for the
+   * localStorage side the caller runs next (see wipeDone); the record is returned.
    */
-  clearAll(household: string, clearId: ClearId): Promise<void> {
+  clearAll(household: string, clearId: ClearId): Promise<PendingWipe> {
     return this.track(() => this.#clearAll(household, clearId));
   }
 
-  async #clearAll(household: string, clearId: ClearId): Promise<void> {
+  async #clearAll(household: string, clearId: ClearId): Promise<PendingWipe> {
+    const wipe: PendingWipe = { clearId, at: clearId ? idTime(clearId) : this.now().getTime() };
     const tx = this.db.transaction(['versions', 'meta'], 'readwrite');
     const meta = tx.objectStore('meta');
     await tx.objectStore('versions').clear();
     await meta.delete(cursorKey(household));
     await meta.delete(devicesKey(household));
     await meta.put({ clearId } satisfies ClearMark, clearKey(household));
+    await meta.put(wipe, wipeKey(household));
     await tx.done;
     this.#emit();
+    return wipe;
   }
 
   /**

@@ -285,6 +285,14 @@ covered by `SCHEMA_VERSION` 3.
   counting as null. A phone that gets that answer drops its local copy in one IndexedDB
   transaction with the new marker, then its stored baby, and syncs again. A phone placed
   in the household for the first time adopts the marker without dropping anything.
+  Every store write that lands a response checks, in its own transaction, that the
+  marker is still the one the request went out under; otherwise nothing is written and
+  the run goes round again, so a response from before a clear (held up while another
+  tab cleared, say) cannot bring rows back. The transaction that drops the rows also
+  records the wipe as pending until the stored baby is gone, so a phone that dies in
+  between finishes on its next start, a null marker (restored server) included. A phone
+  left with no baby reads `GET /api/household` after each sync that settles and takes
+  the household's next, or restored, baby without a new sign-in.
 
 - A flow (challenge) is single-use and lives 5 minutes. An invite is single-use
   and lives 24 hours; it is consumed in the same transaction that creates the

@@ -149,7 +149,6 @@ describe('a 409 {cleared} from the server', () => {
     expect(kv.has('bht.baby')).toBe(false);
     expect(kv.has('bht.setupAt')).toBe(false);
     expect(app.late).toEqual([]);
-    expect(kv.get('bht.cleared')).toBe(clearId);
     expect(app.account?.householdId).toBe(own.householdId);
     expect(kv.has('bht.author')).toBe(true);
     // The notice carries the clear's time, from the marker itself.
@@ -214,7 +213,11 @@ describe('Settings → Clear all data', () => {
     await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
     expect(await app.store.events(own.id)).toHaveLength(1);
 
-    await expect(app.clearData()).rejects.toThrow(TypeError);
+    // No answer at all: the phone cannot know whether the clear ran, and says so.
+    await expect(app.clearData()).rejects.toMatchObject({
+      name: 'ClearFailed',
+      outcome: 'unknown',
+    });
     expect(app.baby).toEqual(own);
     expect(await app.store.events(own.id)).toHaveLength(1);
     expect(kv.has('bht.baby')).toBe(true);
@@ -252,6 +255,63 @@ describe('Settings → Clear all data', () => {
     expect(app.baby).toBeNull();
     expect(await app.store.clearMark(own.householdId)).toEqual({ clearId });
   });
+
+  test('a refusal from the server deleted nothing, and the note says exactly that', async () => {
+    const { own } = await signedInPhone();
+    serve(async (url) => {
+      if (url === '/api/household/clear') return json({ error: 'Not allowed' }, 403);
+      if (url === '/api/babies') return json(own);
+      if (url.startsWith('/api/sync?')) return json(emptyPull(null, 1));
+      return json({ watermark: Date.now(), serverNow: Date.now() });
+    });
+    const app = await loadApp();
+    const { clearFailure } = await import('./app.svelte.ts');
+    const failure: unknown = await app.clearData().catch((e: unknown) => e);
+    expect(failure).toMatchObject({ name: 'ClearFailed', outcome: 'nothing' });
+    expect(clearFailure(failure)).toBe('Nothing was deleted: Not allowed');
+    expect(app.baby).toEqual(own);
+  });
+
+  test('a clear that ran but whose answer was lost says so; the sync it starts drops the copy', async () => {
+    const { own, entry } = await signedInPhone();
+    const clearId = newId();
+    let cleared = false;
+    serve(async (url, init) => {
+      if (url === '/api/household/clear') {
+        // The server committed the clear; its answer never arrives.
+        cleared = true;
+        throw new TypeError('Failed to fetch');
+      }
+      const sent = url.startsWith('/api/sync?') ? markerIn(url) : (bodyOf(init).clearId ?? null);
+      if (cleared && url.startsWith('/api/sync') && sent !== clearId) return refusal(clearId);
+      if (url === '/api/household')
+        return json({ id: own.householdId, members: [], babies: [], clearId });
+      if (url === '/api/babies') return json(own);
+      if (url === '/api/sync') {
+        return json({
+          results: [{ id: entry.id, version: 1, seq: 1, status: 'accepted' }],
+          serverNow: Date.now(),
+        });
+      }
+      if (url.startsWith('/api/sync?')) return json(emptyPull(cleared ? clearId : null, 1));
+      return json({ watermark: Date.now(), serverNow: Date.now() });
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+    const { clearFailure } = await import('./app.svelte.ts');
+
+    const failure: unknown = await app.clearData().catch((e: unknown) => e);
+    expect(failure).toMatchObject({ name: 'ClearFailed', outcome: 'unknown' });
+    expect(clearFailure(failure)).toBe(
+      'The clear may or may not have run: No connection to the server. Try again. This phone checks with the server on its next sync, and drops its copy if the data was deleted.',
+    );
+    // The sync it started is refused with the household's marker, and this phone drops its copy.
+    await vi.waitFor(() => expect(app.baby).toBeNull());
+    expect(await app.store.db.getAll('versions')).toEqual([]);
+    expect(await app.store.clearMark(own.householdId)).toEqual({ clearId });
+    expect(app.clearNotice?.clearId).toBe(clearId);
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+  });
 });
 
 describe('at startup', () => {
@@ -261,27 +321,59 @@ describe('at startup', () => {
     kv.set('bht.baby', JSON.stringify(own));
     kv.set('bht.setupAt', '1700000000000');
     kv.set('bht.account', JSON.stringify({ householdId: own.householdId, memberId: newId() }));
-    // The IndexedDB side committed: no rows, the marker recorded. The localStorage side did not.
-    await (await openDatabase()).put('meta', { clearId }, `clear:${own.householdId}`);
+    // The IndexedDB side committed: no rows, the marker and the pending wipe recorded. The
+    // localStorage side did not.
+    const store = new EventStore(await openDatabase(), newId());
+    await store.clearAll(own.householdId, clearId);
     serve(async (url) => (url.startsWith('/api/sync?') ? json(emptyPull(clearId)) : json({})));
     const app = await loadApp();
     expect(app.baby).toBeNull();
     expect(app.setupAt).toBeNull();
     expect(kv.has('bht.baby')).toBe(false);
-    expect(kv.get('bht.cleared')).toBe(clearId);
     expect(app.clearNotice?.clearId).toBe(clearId);
+    expect(await app.store.pendingWipe(own.householdId)).toBeNull();
   });
 
-  test('a phone whose localStorage side is done is left alone', async () => {
-    const own = baby();
+  test('the same for a server restored to before its first clear: the marker is null, and the wipe still runs', async () => {
+    const { own } = await signedInPhone();
+    const store = new EventStore(await openDatabase(), newId());
+    await store.adoptClear(own.householdId, newId());
+    // The IndexedDB side of the wipe to "no clear" committed; the phone died before the rest.
+    await store.clearAll(own.householdId, null);
+    serve(async (url) => (url.startsWith('/api/sync?') ? json(emptyPull(null)) : json({})));
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+    expect(app.baby).toBeNull();
+    expect(app.setupAt).toBeNull();
+    expect(kv.has('bht.baby')).toBe(false);
+    expect(kv.has('bht.setupAt')).toBe(false);
+    expect(app.clearNotice?.clearId).toBeNull();
+    expect(await app.store.pendingWipe(own.householdId)).toBeNull();
+  });
+
+  test('a phone whose wipe finished is left alone, with the baby added since', async () => {
+    const next = baby();
     const clearId = newId();
-    kv.set('bht.baby', JSON.stringify(own));
-    kv.set('bht.account', JSON.stringify({ householdId: own.householdId, memberId: newId() }));
-    kv.set('bht.cleared', clearId);
-    await (await openDatabase()).put('meta', { clearId }, `clear:${own.householdId}`);
+    kv.set('bht.account', JSON.stringify({ householdId: next.householdId, memberId: newId() }));
+    const store = new EventStore(await openDatabase(), newId());
+    await store.clearAll(next.householdId, clearId);
+    await store.wipeDone(next.householdId);
+    kv.set('bht.baby', JSON.stringify(next));
     serve(async (url) => (url.startsWith('/api/sync?') ? json(emptyPull(clearId)) : json({})));
     const app = await loadApp();
+    expect(app.baby).toEqual(next);
+  });
+
+  test('a marker adopted at first placement (null included) is not a wipe', async () => {
+    const own = baby();
+    kv.set('bht.baby', JSON.stringify(own));
+    kv.set('bht.account', JSON.stringify({ householdId: own.householdId, memberId: newId() }));
+    const store = new EventStore(await openDatabase(), newId());
+    await store.adoptClear(own.householdId, null);
+    serve(async (url) => (url.startsWith('/api/sync?') ? json(emptyPull(null)) : json({})));
+    const app = await loadApp();
     expect(app.baby).toEqual(own);
+    expect(app.clearNotice).toBeNull();
   });
 });
 
@@ -321,7 +413,6 @@ describe('placement after a clear', () => {
     expect(await app.store.events(own.id)).toEqual([mine.event]);
     expect(app.setupAt).toBe(1700000000000);
     expect(await app.store.clearMark(hh)).toEqual({ clearId });
-    expect(kv.get('bht.cleared')).toBe(clearId);
     expect(app.clearNotice).toBeNull();
     expect(pushes()).toHaveLength(0);
 
@@ -410,11 +501,17 @@ describe('placement after a clear', () => {
     const store = new EventStore(await openDatabase(), newId());
     await store.adoptClear(hh, newId());
     const after = await store.log(own.id, 'diaper', { kind: 'wet' });
+    // The restored log: the baby and an entry from before the clear.
+    const restored = { ...after.event, id: newId(), version: 1 };
     serve(async (url, init) => {
       const sent = url.startsWith('/api/sync?') ? markerIn(url) : (bodyOf(init).clearId ?? null);
       if (url.startsWith('/api/sync') && sent !== null) return refusal(null);
+      if (url === '/api/household')
+        return json({ id: hh, members: [], babies: [own], clearId: null });
       if (url === '/api/babies') return json(own);
-      if (url.startsWith('/api/sync?')) return json(emptyPull(null));
+      if (url.startsWith('/api/sync?')) {
+        return json({ ...emptyPull(null, 1), versions: [{ seq: 1, event: restored }] });
+      }
       return json({ watermark: Date.now(), serverNow: Date.now() });
     });
     const app = await loadApp();
@@ -422,9 +519,83 @@ describe('placement after a clear', () => {
     // The push carried the newer marker and was refused: the entry never reached the restored log.
     expect(pushes()).toHaveLength(1);
     expect((pushes()[0]!.body as { events: { id: string }[] }).events[0]!.id).toBe(after.event.id);
-    expect(await app.store.db.getAll('versions')).toEqual([]);
     expect(await app.store.clearMark(hh)).toEqual({ clearId: null });
-    expect(app.baby).toBeNull();
     expect(app.clearNotice?.clearId).toBeNull();
+    // Then the phone takes the restored baby back and shows the restored log, no sign-in needed.
+    await vi.waitFor(() => expect(app.baby).toEqual(own));
+    await vi.waitFor(() => expect(app.events).toEqual([restored]));
+    expect(await app.store.db.getAll('versions')).toHaveLength(1);
+  });
+});
+
+describe('the next baby after a clear', () => {
+  test('the other phone takes the next baby when its sync drops the copy and finds it in the household', async () => {
+    const { own, entry } = await signedInPhone();
+    const clearId = newId();
+    const next = baby(own.householdId, 'Next baby');
+    const nextEvent = { ...entry, id: newId(), babyId: next.id };
+    serve(async (url, init) => {
+      if (url === '/api/household') {
+        return json({ id: own.householdId, members: [], babies: [next], clearId });
+      }
+      const sent = url.startsWith('/api/sync?') ? markerIn(url) : (bodyOf(init).clearId ?? null);
+      if ((url.startsWith('/api/sync') || url === '/api/babies') && sent !== clearId) {
+        return refusal(clearId);
+      }
+      if (url.startsWith('/api/sync?')) {
+        return json({ ...emptyPull(clearId, 2), versions: [{ seq: 2, event: nextEvent }] });
+      }
+      return json({ watermark: Date.now(), serverNow: Date.now() });
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.baby).toEqual(next));
+    expect(await app.store.events(next.id)).toEqual([nextEvent]);
+    await vi.waitFor(() => expect(app.events).toEqual([nextEvent]));
+    expect(JSON.parse(kv.get('bht.baby')!)).toEqual(next);
+    expect(app.setupAt).not.toBeNull();
+    expect(app.clearNotice?.clearId).toBe(clearId);
+    expect(await app.store.events(own.id)).toEqual([]);
+  });
+
+  test('a baby added after this phone cleared is taken on its next sync, entries or not (acceptance 11.3)', async () => {
+    const hh = newId();
+    const clearId = newId();
+    kv.set('bht.account', JSON.stringify({ householdId: hh, memberId: newId() }));
+    const store = new EventStore(await openDatabase(), newId());
+    await store.adoptClear(hh, clearId);
+    let babies: unknown[] = [];
+    let households = 0;
+    serve(async (url) => {
+      if (url === '/api/household') {
+        households += 1;
+        return json({ id: hh, members: [], babies, clearId });
+      }
+      if (url.startsWith('/api/sync?')) return json(emptyPull(clearId));
+      return json({ watermark: Date.now(), serverNow: Date.now() });
+    });
+    // The sync client's "online" trigger stands in for coming back to the app.
+    const triggers = new Map<string, () => void>();
+    vi.stubGlobal('window', {
+      addEventListener: (type: string, fn: () => void) => triggers.set(type, fn),
+      removeEventListener() {},
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+    await vi.waitFor(() => expect(households).toBe(1));
+    await settle();
+    expect(app.baby).toBeNull();
+
+    const next = baby(hh, 'Next baby');
+    babies = [next];
+    triggers.get('online')!();
+    await vi.waitFor(() => expect(app.baby).toEqual(next));
+    expect(JSON.parse(kv.get('bht.baby')!)).toEqual(next);
+    expect(app.events).toEqual([]);
+    // Once it has a baby, the phone stops asking the household on every sync.
+    const asked = households;
+    triggers.get('online')!();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+    await settle();
+    expect(households).toBe(asked);
   });
 });

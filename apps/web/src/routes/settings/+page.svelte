@@ -3,7 +3,7 @@
   import type { VolumeDisplay } from '@bht/schema';
   import type { Invite } from '@bht/schema';
   import { signInFailure } from '../../lib/data/account.ts';
-  import { app } from '../../lib/ui/app.svelte.ts';
+  import { app, clearFailure } from '../../lib/ui/app.svelte.ts';
   import SignIn from '../../lib/ui/SignIn.svelte';
   import SyncStatus from '../../lib/ui/SyncStatus.svelte';
   import type { Theme, WeightUnit } from '../../lib/ui/prefs.ts';
@@ -55,7 +55,7 @@
       await app.clearData();
       clearing = false;
     } catch (e) {
-      syncError = `Nothing was deleted: ${signInFailure(e)}`;
+      syncError = clearFailure(e);
     } finally {
       busy = false;
     }

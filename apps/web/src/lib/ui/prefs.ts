@@ -43,7 +43,6 @@ export const KEYS = {
   account: 'bht.account',
   joining: 'bht.joining',
   seeded: 'bht.seeded',
-  cleared: 'bht.cleared',
   clearNotice: 'bht.clearNotice',
 } as const;
 
@@ -192,22 +191,6 @@ export function saveWelcomed(kv: KV): void {
 }
 
 /**
- * The clear marker (#85) whose localStorage side has been done on this phone: the baby, setup
- * time and late-arrival notes are gone (or were never the household's). The IndexedDB side
- * commits first, in one transaction; if the phone dies before this is written, init() finds
- * the two apart and finishes the localStorage side. Null for "no clear seen".
- */
-export function loadClearedLocal(kv: KV): Id | null {
-  const v = kv.getItem(KEYS.cleared);
-  return v && ULID.test(v) ? v : null;
-}
-
-export function markClearedLocal(kv: KVRemove, clearId: Id | null): void {
-  if (clearId) kv.setItem(KEYS.cleared, clearId);
-  else kv.removeItem(KEYS.cleared);
-}
-
-/**
  * "Data was cleared" notice (#85), shown until dismissed: the marker adopted (null when the
  * server was restored to a state before its first clear) and when the clear ran, in ms.
  */
@@ -232,13 +215,14 @@ export function saveClearNotice(kv: KVRemove, notice: ClearNotice | null): void 
 /**
  * The localStorage side of a clear (#85): this phone's baby, its setup time (so the next baby
  * gets a fresh "log starts here" for Readings), the join in progress and `household`'s
- * late-arrival notes. Prefs, the author id and the account stay: nobody has to rejoin. Records
- * the marker as done and leaves the notice.
+ * late-arrival notes. Prefs, the author id and the account stay: nobody has to rejoin. Leaves
+ * the notice. The IndexedDB side commits first and records the wipe as pending (see
+ * EventStore.clearAll); the caller marks it done once this has run, and init() runs it again
+ * if the phone died in between.
  */
 export function wipeLocal(kv: KVRemove, household: string, clearId: Id | null, at: number): void {
   for (const key of [KEYS.baby, KEYS.setupAt, KEYS.joining, `bht.late.${household}`]) {
     kv.removeItem(key);
   }
   saveClearNotice(kv, { clearId, at });
-  markClearedLocal(kv, clearId);
 }

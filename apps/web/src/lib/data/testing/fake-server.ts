@@ -153,13 +153,19 @@ export class FakeTransport implements SyncTransport {
       this.dropNextPushResponse = false;
       throw new TypeError('network connection lost');
     }
+    await this.afterPush?.();
     return structuredClone(res);
   }
+
+  /** Runs after the server took a push, before its answer arrives, as when another tab acts. */
+  afterPush: (() => void | Promise<void>) | null = null;
 
   /** Pull requests as sent, so tests can check the through a pull carries. */
   readonly pulls: { after: number; limit: number; through?: number }[] = [];
   /** Runs after each pull is answered, as when another phone pushes between pages. */
   afterPull: (() => void | Promise<void>) | null = null;
+  /** Runs as a pull reaches the server, before its marker check: the request is out already. */
+  beforePull: (() => void | Promise<void>) | null = null;
 
   async pull(
     after: number,
@@ -169,6 +175,7 @@ export class FakeTransport implements SyncTransport {
   ): Promise<PullResponse> {
     this.#check();
     if (this.failPulls) throw new TypeError('network connection lost');
+    await this.beforePull?.();
     this.#checkClear(clearId);
     this.pulls.push({ after, limit, through });
     const page = structuredClone(this.server.pull(after, limit, through));

@@ -1,6 +1,5 @@
 import {
   formatVolume,
-  idTime,
   type Baby,
   type BabyEvent,
   type ClearId,
@@ -10,7 +9,13 @@ import {
   type HouseholdView,
   type SignedIn,
 } from '@bht/schema';
-import { Account, AccountError, browserPasskeys, httpAccount } from '../data/account.ts';
+import {
+  Account,
+  AccountError,
+  browserPasskeys,
+  httpAccount,
+  signInFailure,
+} from '../data/account.ts';
 import { openDatabase } from '../data/db.ts';
 import { HttpError, httpTransport, isCleared } from '../data/protocol.ts';
 import { EventStore, type Change } from '../data/store.ts';
@@ -29,11 +34,9 @@ import {
   DEFAULT_PREFS,
   loadAccount,
   loadBaby,
-  loadClearedLocal,
   loadClearNotice,
   loadJoining,
   loadSetupAt,
-  markClearedLocal,
   markSetup,
   loadHomeNoteDismissed,
   loadPrefs,
@@ -66,6 +69,38 @@ import {
 import { time, when } from './time.ts';
 
 export { time };
+
+/**
+ * A clear from Settings that did not finish (#85), by what is known about the data:
+ * - `nothing`: the server refused the request, so it deleted nothing.
+ * - `unknown`: no answer, or a server fault. The clear may have run; the next sync finds out,
+ *   and a 409 then drops this phone's copy.
+ * - `local`: the server deleted the data, but this phone could not drop its copy. The next
+ *   sync, or the next start, finishes it.
+ */
+export class ClearFailed extends Error {
+  override name = 'ClearFailed';
+  constructor(
+    readonly outcome: 'nothing' | 'unknown' | 'local',
+    readonly reason: string,
+    options?: ErrorOptions,
+  ) {
+    super(reason, options);
+  }
+}
+
+/** What Settings says under a clear that did not finish: only claims the phone can stand by. */
+export function clearFailure(e: unknown): string {
+  if (!(e instanceof ClearFailed)) return `Nothing was deleted: ${signInFailure(e)}`;
+  switch (e.outcome) {
+    case 'nothing':
+      return `Nothing was deleted: ${e.reason}`;
+    case 'unknown':
+      return `The clear may or may not have run: ${e.reason} This phone checks with the server on its next sync, and drops its copy if the data was deleted.`;
+    case 'local':
+      return `The server deleted the data, but this phone could not drop its copy: ${e.reason} It finishes the next time the app syncs or opens.`;
+  }
+}
 
 export interface Toast {
   text: string;
@@ -162,6 +197,8 @@ class AppState {
   #toastTimer: ReturnType<typeof setTimeout> | undefined;
   #loading: Promise<void> | null = null;
   #reloadAgain = false;
+  /** The household read in flight for #adoptNext, so overlapping syncs share one. */
+  #adopting: Promise<void> | null = null;
   #account: Account | null = null;
   #sync: SyncClient | null = null;
   #stopSync: (() => Promise<void>) | null = null;
@@ -540,25 +577,40 @@ class AppState {
    * deletes the babies and every stored version, this phone drops its copy, and the other
    * phone drops its own the next time it syncs. The household and both sign-ins stay, so the
    * app is back at "Add a baby", still signed in. Nothing local is touched until the server has
-   * answered: a request that fails deletes nothing anywhere, and the caller says so. If the
-   * server answers that the household was cleared already (the other phone got there first, or
-   * this phone was behind), this phone drops its copy and adopts that marker instead.
+   * answered. If the server answers that the household was cleared already (the other phone
+   * got there first, or this phone was behind), this phone drops its copy and adopts that
+   * marker instead. Throws ClearFailed otherwise, saying what is known: a refusal deleted
+   * nothing; no answer or a server fault may have run the clear, so a sync is started to find
+   * out (its 409 drops the copy); a copy this phone could not drop is finished by the next
+   * sync's 409 or by init().
    */
   async clearData(): Promise<void> {
     const account = this.account;
-    if (!account || this.syncStatus === 'signed_out') throw new Error('Sign in first');
+    if (!account || this.syncStatus === 'signed_out') {
+      throw new ClearFailed('nothing', 'Sign in first.');
+    }
     const household = account.householdId;
     const held = (await this.store.clearMark(household))?.clearId ?? null;
     let clearId: ClearId;
     try {
       clearId = (await this.#api.clear(held)).clearId;
     } catch (e) {
-      if (!isCleared(e)) throw e;
-      clearId = e.cleared;
+      if (isCleared(e)) clearId = e.cleared;
+      else if (e instanceof HttpError && e.status >= 400 && e.status < 500) {
+        throw new ClearFailed('nothing', signInFailure(e), { cause: e });
+      } else {
+        void this.#sync?.sync();
+        throw new ClearFailed('unknown', signInFailure(e), { cause: e });
+      }
     }
     // A sync run in flight carries the old marker and is refused; none of it lands.
     await this.#dropSync();
-    await this.#wipe(household, clearId);
+    try {
+      await this.#wipe(household, clearId);
+    } catch (e) {
+      this.#startSync();
+      throw new ClearFailed('local', saveFailure(e), { cause: e });
+    }
     this.#startSync();
   }
 
@@ -592,20 +644,50 @@ class AppState {
       return;
     }
     await this.store.adoptClear(household, view.clearId);
-    markClearedLocal(this.#storage, view.clearId);
   }
 
   /**
    * The local side of a clear (#85): every stored version, the household's cursor and device
-   * list and the marker in one IndexedDB transaction, then the baby, its setup time and this
-   * household's late notes in localStorage, then the screens. init() finishes the second step
-   * if the phone dies between the two. Other tabs are told so they re-read their state.
+   * list and the marker in one IndexedDB transaction, which also records the wipe as pending;
+   * then the baby, its setup time and this household's late notes in localStorage; then the
+   * pending record goes, and the screens follow. init() finishes the second step if the phone
+   * dies between the two. Other tabs are told so they re-read their state.
    */
   async #wipe(household: string, clearId: ClearId): Promise<void> {
-    await this.store.clearAll(household, clearId);
-    wipeLocal(this.#storage, household, clearId, clearId ? idTime(clearId) : Date.now());
+    const wipe = await this.store.clearAll(household, clearId);
+    wipeLocal(this.#storage, household, wipe.clearId, wipe.at);
+    await this.store.wipeDone(household);
     this.#afterWipe();
     this.#broadcast('cleared');
+  }
+
+  /**
+   * With no baby after a clear (#85), takes the household's next baby, or its restored one,
+   * when a sync finds it there, so the other phone's "Add a baby" turns into that baby without
+   * a new sign-in. Runs after each sync that settles while this phone has no baby; the
+   * household is read fresh, since pulls carry entries, not profiles. A marker that differs
+   * from the one held is left to the next sync, which is refused and drops the copy.
+   */
+  async #adoptNext(): Promise<void> {
+    if (this.#adopting || this.baby || this.joining || !this.account) return;
+    const current = this.#fence();
+    const household = this.account.householdId;
+    this.#adopting = (async () => {
+      let view: HouseholdView;
+      try {
+        view = await this.#api.household();
+      } catch {
+        return;
+      }
+      if (!current() || this.baby || this.joining || !Array.isArray(view?.babies)) return;
+      const held = await this.store.clearMark(household);
+      if (!current() || this.baby || this.joining) return;
+      if (held && held.clearId !== view.clearId) return;
+      this.#knownBabies = new Set(view.babies.map((b) => b.id));
+      const placement = placeBaby(null, view);
+      if (placement.kind === 'adopt') this.#adopt(placement.baby);
+    })().finally(() => (this.#adopting = null));
+    return this.#adopting;
   }
 
   /** Re-reads what a wipe (here or in another tab) left in localStorage. */
@@ -624,14 +706,18 @@ class AppState {
     void this.#reload();
   }
 
-  /** At startup: the localStorage side of a clear whose IndexedDB side committed (see #wipe). */
+  /**
+   * At startup: the localStorage side of a wipe whose IndexedDB side committed (see #wipe),
+   * null marker included: a server restored to before its first clear is a wipe too, and a
+   * marker adopted at first placement leaves no pending record, so it is told apart.
+   */
   async #repairClear(): Promise<void> {
     const household = this.account?.householdId;
     if (!household) return;
-    const held = await this.store.clearMark(household);
-    if (!held || held.clearId === null) return;
-    if (loadClearedLocal(this.#storage) === held.clearId) return;
-    wipeLocal(this.#storage, household, held.clearId, idTime(held.clearId));
+    const wipe = await this.store.pendingWipe(household);
+    if (!wipe) return;
+    wipeLocal(this.#storage, household, wipe.clearId, wipe.at);
+    await this.store.wipeDone(household);
   }
 
   /** Captures the account epoch; the returned check is false once a transition has begun. */
@@ -780,6 +866,8 @@ class AppState {
     sync.onStatus((s) => {
       this.syncStatus = s;
       this.syncError = sync.error;
+      // Settled with no baby (after a clear, say): the household may have one now (#85).
+      if (s === 'idle' && !this.baby && this.#sync === sync) void this.#adoptNext();
     });
     this.#sync = sync;
     this.#stopSync = sync.start();

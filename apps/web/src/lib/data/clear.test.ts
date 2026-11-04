@@ -174,6 +174,103 @@ describe('SyncClient on 409 {cleared}', () => {
   });
 });
 
+describe('a response from before a clear in another tab', () => {
+  // Every tab shares one IndexedDB. The other tab here is the test itself, acting on the same
+  // store while this tab's request is out.
+  async function held(transport: FakeTransport, hook: 'afterPull' | 'afterPush') {
+    let release!: () => void;
+    let reached!: () => void;
+    const arrived = new Promise<void>((r) => (reached = r));
+    const gate = new Promise<void>((r) => (release = r));
+    transport[hook] = async () => {
+      reached();
+      await gate;
+    };
+    return { arrived, release };
+  }
+
+  test('a delayed pull cannot refill the cleared IndexedDB; the run settles under the new marker', async () => {
+    const server = new FakeServer();
+    const source = await makeStore();
+    const old = (await source.log(babyId, 'diaper', { kind: 'wet' })).event;
+    server.push([old]);
+    const store = await makeStore();
+    await store.adoptClear(household, null);
+    const { transport, sync } = fakePhone(server, store);
+    const { arrived, release } = await held(transport, 'afterPull');
+    const running = sync.sync();
+    await arrived;
+    // The other tab commits the server clear and wipes the shared store.
+    const clearId = server.clear();
+    await store.clearAll(household, clearId);
+    expect(await rows(store)).toEqual([]);
+    release();
+    await running;
+    expect(sync.status).toBe('idle');
+    expect(server.log).toEqual([]);
+    expect(await store.clearMark(household)).toEqual({ clearId });
+    expect(await rows(store)).toEqual([]);
+    // The run went round again under the marker the store holds now.
+    expect(transport.markers.at(-1)).toBe(clearId);
+    expect(transport.barriersSent.at(-1)?.clearId).toBe(clearId);
+  });
+
+  test('a delayed push answer cannot store the pushed version as synced', async () => {
+    const server = new FakeServer();
+    const store = await makeStore();
+    await store.adoptClear(household, null);
+    const { transport, sync } = fakePhone(server, store);
+    await store.log(babyId, 'diaper', { kind: 'wet' });
+    const { arrived, release } = await held(transport, 'afterPush');
+    const running = sync.sync();
+    await arrived;
+    // The server took the push; before its answer lands, the other tab clears everything.
+    expect(server.log).toHaveLength(1);
+    const clearId = server.clear();
+    await store.clearAll(household, clearId);
+    release();
+    await running;
+    expect(sync.status).toBe('idle');
+    expect(await rows(store)).toEqual([]);
+    expect(server.log).toEqual([]);
+    expect(await store.clearMark(household)).toEqual({ clearId });
+  });
+
+  test('a 409 for the marker the store already holds drops nothing again: the other tab did', async () => {
+    const server = new FakeServer();
+    const store = await makeStore();
+    await store.adoptClear(household, null);
+    const transport = new FakeTransport(server);
+    let wipes = 0;
+    const sync = new SyncClient(store, transport, {
+      baseDelayMs: 3_600_000,
+      household,
+      onCleared: async (id) => {
+        wipes += 1;
+        await store.clearAll(household, id);
+      },
+    });
+    clients.push(sync);
+    await store.log(babyId, 'diaper', { kind: 'wet' });
+    await sync.sync();
+    expect(server.log).toHaveLength(1);
+    // This tab's pull is out under the old marker when the other tab clears the server and
+    // wipes the shared store; the server refuses the pull with the marker the store now holds.
+    let clearId: string | null = null;
+    transport.beforePull = async () => {
+      if (clearId) return;
+      clearId = server.clear();
+      await store.clearAll(household, clearId);
+    };
+    await sync.sync();
+    expect(sync.status).toBe('idle');
+    expect(wipes).toBe(0);
+    expect(await rows(store)).toEqual([]);
+    expect(await store.clearMark(household)).toEqual({ clearId });
+    expect(transport.markers.at(-1)).toBe(clearId);
+  });
+});
+
 describe('two phones against the real server', () => {
   function realServer() {
     const db = openServerDb(':memory:');

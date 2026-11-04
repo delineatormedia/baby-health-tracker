@@ -413,9 +413,12 @@ and at least one entry each, and Settings on both reads "Synced with your househ
    connection to the server." Turn airplane mode off, wait for "Synced with your
    household.", tap **Clear all data**, then turn airplane mode on and tap **Delete
    everything**.
-   *Expected:* B keeps its baby and shows "Nothing was deleted: No connection to the
-   server. Try again." Turn airplane mode off: B still has the baby, and so does A after
-   it syncs.
+   *Expected:* B keeps its baby and shows "The clear may or may not have run: No
+   connection to the server. Try again. This phone checks with the server on its next
+   sync, and drops its copy if the data was deleted." The phone cannot tell a request
+   that never left from one whose answer was lost, so it does not claim nothing was
+   deleted. Turn airplane mode off and wait for "Synced with your household.": B still
+   has the baby, and so does A after it syncs.
 6. **Dismiss the banner.** On each phone, tap **OK** on the cleared banner.
    *Expected:* it goes and stays gone after a reload.
 

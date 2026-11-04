@@ -11,6 +11,18 @@ export interface ClearMark {
   clearId: ClearId;
 }
 
+/**
+ * A wipe whose IndexedDB side committed and whose localStorage side has not (#85), under meta
+ * key wipe:<household>. Written in the transaction that drops the rows, deleted once the
+ * stored baby, setup time and notes are gone too. Null markers (a server restored to before
+ * its first clear) are wipes like any other; a marker adopted at first placement writes none.
+ */
+export interface PendingWipe {
+  clearId: ClearId;
+  /** When the clear ran, epoch ms: the marker's time, or now for a null marker. */
+  at: number;
+}
+
 /** One stored version. seq is null until the server accepts it. */
 export interface VersionRow {
   key: string;
@@ -43,10 +55,10 @@ export interface BhtDB extends DBSchema {
   };
   /**
    * Pull cursors (cursor:<household>), the write generation (gen), each household's adopted
-   * device list (devices:<household>), its clear marker (clear:<household>) and the sign-out
-   * flag (signingOut, 1 while set).
+   * device list (devices:<household>), its clear marker (clear:<household>), a wipe still to
+   * finish (wipe:<household>) and the sign-out flag (signingOut, 1 while set).
    */
-  meta: { key: string; value: number | HouseholdDevice[] | ClearMark };
+  meta: { key: string; value: number | HouseholdDevice[] | ClearMark | PendingWipe };
 }
 
 export type Database = IDBPDatabase<BhtDB>;
