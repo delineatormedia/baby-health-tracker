@@ -1,4 +1,7 @@
-# Baby Health Tracker (working name)
+# SMT/Baby
+
+SMT stands for Sovereign Medical Technology; the full name appears in fine
+print only (owner decision, 2026-11-04).
 
 A self-hosted, local-first app for parents to log a baby's feedings, diapers,
 pumping and weight, and to get evidence-based health signals from that log.
