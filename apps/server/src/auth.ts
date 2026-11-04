@@ -111,7 +111,7 @@ export class Accounts {
     if (device) return device;
     const userId = randomBytes(16);
     const options = await generateRegistrationOptions({
-      rpName: this.config.rpName ?? 'Baby Health Tracker',
+      rpName: this.config.rpName ?? 'SMT/Baby',
       rpID: this.config.rpId,
       userName: request.displayName,
       userID: userId,
@@ -135,7 +135,7 @@ export class Accounts {
     const device = this.#deviceRefusal(request.deviceId, invite.household_id);
     if (device) return device;
     const options = await generateRegistrationOptions({
-      rpName: this.config.rpName ?? 'Baby Health Tracker',
+      rpName: this.config.rpName ?? 'SMT/Baby',
       rpID: this.config.rpId,
       userName: request.displayName,
       userID: randomBytes(16),

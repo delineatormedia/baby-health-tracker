@@ -1,6 +1,6 @@
 {
-  "name": "Baby Health Tracker",
-  "short_name": "Baby",
+  "name": "SMT/Baby",
+  "short_name": "SMT/Baby",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
