@@ -17,6 +17,9 @@ for (const width of [320, 390] as const) {
       await open(page, '/');
       await expect(page.getByRole('heading', { name: 'SMT/Baby' })).toBeVisible();
       await expect(page.getByText('Sovereign Medical Technology')).toBeVisible();
+      // The screen fades in over 160 ms (.fade, app.css). The audit reads opacity as part of
+      // contrast, so a sample mid-fade reports every line faint: wait for the entry to finish.
+      await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)));
       // The type rules (text.spec.ts) on this screen too; the 11 px eyebrow is its one exception.
       const found = { ...(await page.evaluate(audit)), scroll: (await overflow(page)).scroll };
       expect(found).toEqual({ small: [], faint: [], controls: [], scroll: 0 });
