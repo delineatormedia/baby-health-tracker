@@ -61,8 +61,6 @@
   <header class="top">
     <span class="title-row">
       <a class="back" href={resolve('/')}>‹ History</a>
-      <!-- Sync (#5) has not landed, so this is one phone's log, not both parents'. -->
-      <span class="lab who">This phone only</span>
     </span>
     <a class="act" href={resolve('/reports')}>Reports ›</a>
   </header>
@@ -121,10 +119,6 @@
     font: 500 20px var(--sans);
     color: var(--ink);
     text-decoration: none;
-  }
-  .who {
-    font-size: 15px;
-    color: var(--text-dim);
   }
   .toast {
     margin: 12px 16px 0;
