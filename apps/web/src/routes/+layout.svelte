@@ -41,7 +41,7 @@
       The household’s data was cleared {new Date(app.clearNotice.at).toLocaleString(undefined, {
         dateStyle: 'medium',
         timeStyle: 'short',
-      })}. Logs from before then are gone from this phone and the server.
+      })}. Every baby and log from before then is gone from this phone and the server.
     </span>
     <button onclick={() => app.dismissClearNotice()}>OK</button>
   </div>

@@ -243,13 +243,13 @@
       <!-- Clearing the household's data (#85). The confirm is the same inline step as Remove. -->
       <div class="sec lab">Data</div>
       {#if clearing}
+        <!-- One baby per household in v1 (session.ts), so the name keeps the confirm concrete. -->
         <p class="note">
           This deletes {app.baby
             ? `${app.baby.name}’s profile and every log`
-            : 'every baby and log'}
-          from the household: on this phone, on the other phone the next time it syncs, and on the server.
-          The household and both sign-ins stay. The app can’t undo this. The server’s backups keep a copy
-          for up to a week.
+            : 'every baby and every log'}, for good. It goes from this phone and the server now, and
+          from the other phone the next time it syncs. You both stay signed in and come back to Add
+          a baby. The app can’t undo this. Only the server’s backups keep a copy, for up to a week.
         </p>
         <div class="acts">
           <button class="go2 danger" disabled={busy || !canClear} onclick={clear}>
@@ -266,7 +266,9 @@
         <p class="note">
           {canClear
             ? 'Deletes every baby and log from this household, for both parents.'
-            : 'Clearing needs a connection to the server.'}
+            : app.syncStatus === 'offline' || app.syncStatus === 'signed_out'
+              ? 'Clearing needs a connection to the server.'
+              : 'Finish the sync change above first.'}
         </p>
       {/if}
     {/if}

@@ -379,13 +379,14 @@ and at least one entry each, and Settings on both reads "Synced with your househ
 
 1. **Both online.** On A, Settings → **Clear all data**.
    *Expected:* the button does nothing yet. A note appears: "This deletes <baby>'s profile
-   and every log from the household: on this phone, on the other phone the next time it
-   syncs, and on the server. The household and both sign-ins stay. The app can't undo
-   this. The server's backups keep a copy for up to a week." with **Delete everything**
-   and **Keep**. Tap **Keep**: nothing changes. Tap **Clear all data**, then **Delete
-   everything**.
+   and every log, for good. It goes from this phone and the server now, and from the other
+   phone the next time it syncs. You both stay signed in and come back to Add a baby. The
+   app can't undo this. Only the server's backups keep a copy, for up to a week." with
+   **Delete everything** and **Keep**. Tap **Keep**: nothing changes. Tap **Clear all
+   data**, then **Delete everything**.
    *Expected:* A shows "Add a baby" with a banner "The household's data was cleared
-   <date and time>. Logs from before then are gone from this phone and the server." and
+   <date and time>. Every baby and log from before then is gone from this phone and the
+   server." and
    an **OK**. A is still signed in: Settings reads "Synced with your household." and
    offers **Clear all data** and **Sign out**, not **Share with the other parent**.
    Then on B, switch away from the app and back.
