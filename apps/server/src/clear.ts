@@ -1,5 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite';
 
+/** The 409 a baby deleted by a clear gets when a phone tries to add it again. */
+export { BABY_CLEARED } from '@bht/schema';
+
 // Clearing a household's data (#85): the server deletes the babies and every stored version,
 // and signs every phone out. A phone that has not heard yet finds out on its next request: the
 // session is gone, so it gets 401, drops its own copy and goes back to the welcome screen.
@@ -17,10 +20,13 @@ export interface ClearOutcome {
  * sessions and resets its phones' watermarks, in one transaction. The household, its members,
  * passkeys, phones and invites stay, so everyone signs back in and starts over.
  *
- * Revoking the sessions is what keeps the old data from coming back: a phone that was offline
- * through the clear still holds its copy, but every request it makes from now on is refused
- * until it signs in again, and the app drops the copy on that refusal. A watermark from before
- * the clear would vouch for windows of a log that no longer exists, so those go too.
+ * Two things keep the old data from coming back. Revoking the sessions: a phone that was
+ * offline through the clear still holds its copy, but every request it makes from now on is
+ * refused until it signs in again, and the app drops the copy on that refusal. And the ids of
+ * the deleted babies are kept (cleared_babies): a phone that signed out before the clear and
+ * signs in after cannot add its old baby back, so its old entries have nowhere to land. A
+ * watermark from before the clear would vouch for windows of a log that no longer exists, so
+ * those go too.
  *
  * Everything commits together or not at all, so a crash partway leaves the household as it
  * was and the parent retries. After the commit the WAL is checkpointed and truncated, so with
@@ -43,6 +49,10 @@ export function clearHousehold(
     const versions = db
       .prepare('DELETE FROM event_versions WHERE household_id = ?')
       .run(householdId).changes;
+    db.prepare(
+      `INSERT OR IGNORE INTO cleared_babies (id, household_id, cleared_at)
+       SELECT id, household_id, ? FROM babies WHERE household_id = ?`,
+    ).run(clearedAt, householdId);
     const babies = db.prepare('DELETE FROM babies WHERE household_id = ?').run(householdId).changes;
     db.prepare(
       `UPDATE devices SET watermark = NULL, gen = NULL WHERE member_id IN (${members})`,

@@ -93,6 +93,13 @@ export const MIGRATIONS: string[] = [
   // 4: signed-out phones (#5 step 3b). Set when a phone signs out after a barrier that covers
   // every write it made, so other phones stop waiting for it; cleared when it signs back in.
   `ALTER TABLE devices ADD COLUMN signed_out_at TEXT;`,
+  // 5: babies deleted by a clear (#85), by id only. A cleared baby can never be added again, so
+  // a phone that still holds its log cannot put it back by re-adding the baby and uploading.
+  `CREATE TABLE cleared_babies (
+     id TEXT PRIMARY KEY,
+     household_id TEXT NOT NULL REFERENCES households (id),
+     cleared_at TEXT NOT NULL
+   ) STRICT;`,
 ];
 
 /**

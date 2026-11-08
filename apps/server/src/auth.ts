@@ -1,5 +1,6 @@
 import {
   AddBaby,
+  BABY_CLEARED,
   CeremonyResponse,
   DEVICE_ELSEWHERE,
   DEVICE_REMOVED,
@@ -106,6 +107,7 @@ export class Accounts {
     if (this.#registrationClosed()) return fail(403, REGISTRATION_CLOSED);
     if (this.#exists('households', request.householdId)) return fail(409, 'Household exists');
     if (this.#exists('babies', request.baby.id)) return fail(409, 'Baby exists');
+    if (this.#exists('cleared_babies', request.baby.id)) return fail(409, BABY_CLEARED);
     // Refused before the phone makes a passkey this server would never keep.
     const device = this.#deviceRefusal(request.deviceId, request.householdId);
     if (device) return device;
@@ -195,6 +197,7 @@ export class Accounts {
         if (this.#registrationClosed()) return fail(403, REGISTRATION_CLOSED);
         if (this.#exists('households', request.householdId)) return fail(409, 'Household exists');
         if (this.#exists('babies', request.baby.id)) return fail(409, 'Baby exists');
+        if (this.#exists('cleared_babies', request.baby.id)) return fail(409, BABY_CLEARED);
         householdId = request.householdId;
         this.db
           .prepare('INSERT INTO households (id, created_at) VALUES (?, ?)')
@@ -390,7 +393,9 @@ export class Accounts {
 
   /**
    * Adds a baby to the caller's household. The same id again in this household answers the
-   * stored baby (a retry after a lost response); an id held by another household is 409.
+   * stored baby (a retry after a lost response); an id held by another household is 409. So is
+   * a baby deleted by a clear (#85, BABY_CLEARED): the phone asking still holds the cleared log,
+   * and this is where it would come back from.
    */
   addBaby(householdId: string, input: unknown): Result<Baby> {
     const parsed = v.safeParse(AddBaby, input);
@@ -400,6 +405,7 @@ export class Accounts {
       const held = this.db.prepare('SELECT household_id FROM babies WHERE id = ?').get(id) as
         { household_id: string } | undefined;
       if (held && held.household_id !== householdId) return fail(409, 'Baby exists');
+      if (!held && this.#exists('cleared_babies', id)) return fail(409, BABY_CLEARED);
       if (!held) {
         this.db
           .prepare(
@@ -555,7 +561,7 @@ export class Accounts {
     return this.db.prepare('SELECT 1 FROM households LIMIT 1').get() !== undefined;
   }
 
-  #exists(table: 'households' | 'babies' | 'credentials', id: string): boolean {
+  #exists(table: 'households' | 'babies' | 'credentials' | 'cleared_babies', id: string): boolean {
     return this.db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id) !== undefined;
   }
 

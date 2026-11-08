@@ -1,4 +1,4 @@
-import { newId, type BabyEvent, type ClearResponse, type Invite } from '@bht/schema';
+import { BABY_CLEARED, newId, type BabyEvent, type ClearResponse, type Invite } from '@bht/schema';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -219,6 +219,48 @@ describe('every phone is signed out', () => {
   });
 });
 
+describe('a cleared baby never comes back', () => {
+  test('a phone that signed out before the clear cannot add its old baby again, so its old log has nowhere to land', async () => {
+    const { db, app } = server();
+    const { phone, home } = await filled(app);
+    // The other parent's phone keeps its log and signs out before the clear.
+    const other = await joined(app, phone, home.baby.id);
+    await other.phone.json('/api/auth/logout', {});
+    await clearOk(phone);
+
+    const back = new Phone(app, ORIGIN, other.phone.passkeys, other.phone.deviceId);
+    const { verify } = await back.ceremony('login', { deviceId: back.deviceId });
+    expect((await verify()).status).toBe(200);
+    // Its first sync would add the baby the household no longer has: refused, by name.
+    const add = await back.request('/api/babies', home.baby);
+    expect(add.status).toBe(409);
+    expect(await add.json()).toEqual({ error: BABY_CLEARED });
+    const { results } = await back.push([wet(home.baby.id, back.deviceId)]);
+    expect(results[0]).toMatchObject({ status: 'rejected' });
+    expect(count(db, 'babies', home.householdId)).toBe(0);
+    expect(count(db, 'event_versions', home.householdId)).toBe(0);
+    // A new baby is fine.
+    const next = { id: newId(), name: 'Next', birthAt: '2026-11-01T10:00:00.000Z', sex: 'female' };
+    await back.json('/api/babies', next);
+    expect(count(db, 'babies', home.householdId)).toBe(1);
+  });
+
+  test('nor can a new household start from it', async () => {
+    const { app } = server();
+    const { phone, home } = await filled(app);
+    await clearOk(phone);
+    const fresh = new Phone(app, ORIGIN);
+    const res = await fresh.request('/api/auth/register/options', {
+      householdId: newId(),
+      displayName: 'Maya',
+      deviceId: fresh.deviceId,
+      baby: home.baby,
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: BABY_CLEARED });
+  });
+});
+
 describe('on disk', () => {
   test('the deleted rows are not left in the database or its write-ahead log', async () => {
     dir = mkdtempSync(join(tmpdir(), 'bht-clear-'));
@@ -249,8 +291,9 @@ describe('on disk', () => {
     const after = bytes();
     expect(after.some((b) => b.includes(name))).toBe(false);
     expect(after.some((b) => b.includes(note))).toBe(false);
-    expect(after.some((b) => b.includes(baby.id))).toBe(false);
-    // The household and the member survive the clear.
+    // The household and the member survive the clear, and so does the baby's id, in
+    // cleared_babies: an id is not data, and it is what keeps the baby from coming back.
+    expect(after.some((b) => b.includes(baby.id))).toBe(true);
     expect(after.some((b) => b.includes(home.householdId))).toBe(true);
     db.close();
   });
