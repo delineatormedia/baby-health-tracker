@@ -23,6 +23,19 @@ export interface PendingWipe {
   at: number;
 }
 
+/**
+ * The clear generation a baby this phone holds belongs to (#85, #95), under meta key
+ * baby:<babyId>: the household's marker when the phone took the baby (placed it at sign-in,
+ * adopted it after a clear, or added it). Every local write for the baby checks it against the
+ * household's current marker in the write's own transaction, and is refused once they differ:
+ * the baby went with a clear, whether or not this tab has heard. Written over, never deleted,
+ * so a baby taken again (after a sign-in elsewhere, say) carries its new generation.
+ */
+export interface BabyMark {
+  household: string;
+  clearId: ClearId;
+}
+
 /** One stored version. seq is null until the server accepts it. */
 export interface VersionRow {
   key: string;
@@ -56,9 +69,13 @@ export interface BhtDB extends DBSchema {
   /**
    * Pull cursors (cursor:<household>), the write generation (gen), each household's adopted
    * device list (devices:<household>), its clear marker (clear:<household>), a wipe still to
-   * finish (wipe:<household>) and the sign-out flag (signingOut, 1 while set).
+   * finish (wipe:<household>), the generation each baby was taken under (baby:<babyId>) and
+   * the sign-out flag (signingOut, 1 while set).
    */
-  meta: { key: string; value: number | HouseholdDevice[] | ClearMark | PendingWipe };
+  meta: {
+    key: string;
+    value: number | HouseholdDevice[] | ClearMark | PendingWipe | BabyMark;
+  };
 }
 
 export type Database = IDBPDatabase<BhtDB>;

@@ -218,11 +218,19 @@ export function saveClearNotice(kv: KVRemove, notice: ClearNotice | null): void 
  * late-arrival notes. Prefs, the author id and the account stay: nobody has to rejoin. Leaves
  * the notice. The IndexedDB side commits first and records the wipe as pending (see
  * EventStore.clearAll); the caller marks it done once this has run, and init() runs it again
- * if the phone died in between.
+ * if the phone died in between. `scope` 'household' is for a wipe finished after the phone
+ * has signed in to another household (#95): the stored baby is that household's now, so only
+ * the cleared household's late notes go, and no notice is left.
  */
-export function wipeLocal(kv: KVRemove, household: string, clearId: Id | null, at: number): void {
-  for (const key of [KEYS.baby, KEYS.setupAt, KEYS.joining, `bht.late.${household}`]) {
-    kv.removeItem(key);
-  }
+export function wipeLocal(
+  kv: KVRemove,
+  household: string,
+  clearId: Id | null,
+  at: number,
+  scope: 'phone' | 'household' = 'phone',
+): void {
+  kv.removeItem(`bht.late.${household}`);
+  if (scope === 'household') return;
+  for (const key of [KEYS.baby, KEYS.setupAt, KEYS.joining]) kv.removeItem(key);
   saveClearNotice(kv, { clearId, at });
 }

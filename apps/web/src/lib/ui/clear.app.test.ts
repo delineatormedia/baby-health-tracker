@@ -762,40 +762,44 @@ describe('the next baby after a clear', () => {
   });
 });
 
+/** The real server with `own`'s household, this phone registered as one of its devices. */
+function realServer(own: ReturnType<typeof baby>) {
+  const db = openServerDb(':memory:');
+  const deviceId = newId();
+  kv.set('bht.author', deviceId);
+  ensureHousehold(db, own.householdId, [own.id]);
+  ensureDevice(db, own.householdId, deviceId);
+  const headers = { origin: 'http://localhost', 'content-type': 'application/json' };
+  const server = createApp(db, {
+    // Sign-in configured, as in production: the baby add and logout are 503 without it.
+    auth: { rpId: 'localhost', origin: 'http://localhost', rpName: 'Test' },
+    log: () => {},
+    session: () => ({ householdId: own.householdId, memberId: `m-${deviceId}`, deviceId }),
+  });
+  serve(async (url, init) =>
+    server.request(url, { ...init, headers: { ...init?.headers, ...headers } }),
+  );
+  const holds = (eventId: string) =>
+    db.prepare('SELECT 1 FROM event_versions WHERE event_id = ?').get(eventId) !== undefined;
+  /** The other phone clears the household on the server; resolves to the new marker. */
+  const clearOnServer = async (): Promise<string> => {
+    const response = await server.request('/api/household/clear', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ clearId: null }),
+    });
+    expect(response.status).toBe(200);
+    return ((await response.json()) as { clearId: string }).clearId;
+  };
+  return { db, holds, clearOnServer };
+}
+
 describe('logging while a wipe is pending (#97)', () => {
   // Adversarial's two characterisation probes against the real server, in process: a clear
   // whose localStorage side failed leaves the erased baby on screen until a sync finishes it.
   // An entry logged in that window used to be accepted locally, refused by the server as an
   // unknown baby once repair had removed the profile, and then block ordinary sign-out for
   // good. Now the store refuses it up front, with copy saying why, and repair deletes nothing.
-
-  /** The real server with `own`'s household, this phone registered as one of its devices. */
-  function realServer(own: ReturnType<typeof baby>) {
-    const db = openServerDb(':memory:');
-    const deviceId = newId();
-    kv.set('bht.author', deviceId);
-    ensureHousehold(db, own.householdId, [own.id]);
-    ensureDevice(db, own.householdId, deviceId);
-    const server = createApp(db, {
-      // Sign-in configured, as in production: the baby add and logout are 503 without it.
-      auth: { rpId: 'localhost', origin: 'http://localhost', rpName: 'Test' },
-      log: () => {},
-      session: () => ({ householdId: own.householdId, memberId: `m-${deviceId}`, deviceId }),
-    });
-    serve(async (url, init) =>
-      server.request(url, {
-        ...init,
-        headers: {
-          ...init?.headers,
-          origin: 'http://localhost',
-          'content-type': 'application/json',
-        },
-      }),
-    );
-    const holds = (eventId: string) =>
-      db.prepare('SELECT 1 FROM event_versions WHERE event_id = ?').get(eventId) !== undefined;
-    return { db, holds };
-  }
 
   test.each(['delayed repair', 'failed repair'])(
     'during a %s, the entry is refused with copy that says why; repair then finishes and ordinary sign-out completes',
@@ -808,20 +812,20 @@ describe('logging while a wipe is pending (#97)', () => {
       // 'delayed repair': the repairing sync's read of the pending record is held open, so the
       // parent's tap lands while it is in flight. 'failed repair': localStorage fails for the
       // clear and again for the first repair, which backs off; the tap lands before the retry.
-      const pendingWipe = app.store.pendingWipe.bind(app.store);
+      const pendingWipes = app.store.pendingWipes.bind(app.store);
       let release = () => {};
       let reached = () => {};
       const gate = new Promise<void>((r) => (release = r));
       const arrived = new Promise<void>((r) => (reached = r));
       let hold = scenario === 'delayed repair';
-      app.store.pendingWipe = async (household) => {
-        const wipe = await pendingWipe(household);
-        if (wipe && hold) {
+      app.store.pendingWipes = async () => {
+        const wipes = await pendingWipes();
+        if (wipes.length > 0 && hold) {
           hold = false;
           reached();
           await gate;
         }
-        return wipe;
+        return wipes;
       };
       const remove = localStorage.removeItem.bind(localStorage);
       let failures = scenario === 'failed repair' ? 2 : 1;
@@ -865,6 +869,11 @@ describe('logging while a wipe is pending (#97)', () => {
       const next = baby(own.householdId, 'Replacement');
       app.setBaby(next);
       const entry = await app.log('diaper', { kind: 'wet' }, 'Wet logged');
+      // Added signed in, it is held under the clear's marker before the first write (#95).
+      expect(await app.store.babyMark(next.id)).toEqual({
+        household: own.householdId,
+        clearId: (await app.store.clearMark(own.householdId))?.clearId,
+      });
       await vi.waitFor(() => expect(holds(entry.event.id)).toBe(true));
       await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
       expect(await app.store.rejectedCount()).toBe(0);
@@ -882,4 +891,235 @@ describe('logging while a wipe is pending (#97)', () => {
       db.close();
     },
   );
+});
+
+describe('recovery boundaries after a clear (#95)', () => {
+  // Adversarial's round-four probes against the real server, in process, and the rule under
+  // them: every pending wipe is finished whatever account the phone is under, and every local
+  // write checks its baby's mark against the household's marker in its own transaction.
+
+  /**
+   * Another tab finishes both sides of a clear to `clearId` and retires the record. There is
+   * no BroadcastChannel in this harness, so this tab hears nothing: a tab whose message was lost.
+   */
+  async function tabWipes(household: string, clearId: string) {
+    const other = new EventStore(await openDatabase(), newId());
+    const wipe = await other.clearAll(household, clearId);
+    const { wipeLocal } = await import('./prefs.ts');
+    wipeLocal(localStorage, household, clearId, wipe.at);
+    await other.wipeDone(household);
+  }
+
+  const plainServer = (hh: string, babies: () => unknown[], marker: () => string | null) =>
+    serve(async (url) => {
+      if (url === '/api/household') {
+        return json({ id: hh, members: [], babies: babies(), clearId: marker() });
+      }
+      if (url.startsWith('/api/sync?')) return json(emptyPull(marker()));
+      return json({ watermark: Date.now(), serverNow: Date.now() });
+    });
+
+  test.each(['by the sign-out itself', 'at the next start'])(
+    'signing out anyway during a failed cleanup cannot strand the write guard: the wipe is finished %s, account or none',
+    async (when) => {
+      const { own } = await signedInPhone();
+      const { db } = realServer(own);
+      const app = await loadApp();
+      await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+      const remove = localStorage.removeItem.bind(localStorage);
+      let broken = true;
+      vi.spyOn(localStorage, 'removeItem').mockImplementation((key) => {
+        if (key === 'bht.baby' && broken) throw new Error('storage failure');
+        remove(key);
+      });
+      await expect(app.clearData()).rejects.toMatchObject({
+        name: 'ClearFailed',
+        outcome: 'local',
+      });
+      await vi.waitFor(() => expect(app.syncError).toContain('could not finish dropping'));
+      expect(app.wipePending).toBe(true);
+
+      if (when === 'by the sign-out itself') broken = false;
+      await app.signOut({ anyway: true });
+      expect(app.account).toBeNull();
+      if (when === 'by the sign-out itself') {
+        // Storage works again by then. No sync runs signed out, so the sign-out finishes it.
+        expect(await app.store.pendingWipes()).toEqual([]);
+        expect(app.wipePending).toBe(false);
+        expect(app.baby).toBeNull();
+      } else {
+        expect(await app.store.pendingWipes()).toHaveLength(1);
+        expect(app.wipePending).toBe(true);
+        broken = false;
+      }
+
+      // Startup finishes the record with no account at all: the guard never outlives its repair.
+      await app.dispose();
+      vi.resetModules();
+      const rebooted = await loadApp();
+      expect(rebooted.account).toBeNull();
+      expect(await rebooted.store.pendingWipes()).toEqual([]);
+      expect(rebooted.wipePending).toBe(false);
+      expect(rebooted.baby).toBeNull();
+      expect(rebooted.clearNotice).not.toBeNull();
+      // A baby set up offline logs as usual.
+      rebooted.setBaby(baby(newId(), 'Offline replacement'));
+      await expect(rebooted.log('diaper', { kind: 'wet' }, 'Wet logged')).resolves.toBeDefined();
+      db.close();
+    },
+  );
+
+  test('a stale tab cannot log an orphan after another tab finished the clear: the store refuses it, broadcast or none', async () => {
+    const { own } = await signedInPhone();
+    const { db, clearOnServer } = realServer(own);
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+    // This phone is from before #95 (signedInPhone stores no mark): startup marked its baby
+    // under the marker it holds, so the fence covers an upgraded phone too.
+    expect(await app.store.babyMark(own.id)).toEqual({
+      household: own.householdId,
+      clearId: null,
+    });
+
+    const clearId = await clearOnServer();
+    await tabWipes(own.householdId, clearId);
+
+    // This tab still shows the erased baby. Its write is refused before anything is saved; the
+    // banner says why; the screens re-read, and the baby is gone with the notice up.
+    expect(app.baby).toEqual(own);
+    const refused = await app.log('diaper', { kind: 'wet' }, 'Wet logged').catch((e) => e);
+    expect(refused).toMatchObject({ name: 'BabyCleared' });
+    expect(await app.store.db.getAll('versions')).toEqual([]);
+    app.fail(refused);
+    expect(app.saveError?.text).toMatch(
+      /^Not saved: the household’s data was cleared, and this baby went with it/,
+    );
+    await vi.waitFor(() => expect(app.baby).toBeNull());
+    expect(app.clearNotice).toMatchObject({ clearId });
+    expect(await app.store.rejectedCount()).toBe(0);
+
+    // After a reload, ordinary sign-out (barrier and all) completes: nothing refused is left.
+    await app.dispose();
+    vi.resetModules();
+    const refreshed = await loadApp();
+    await vi.waitFor(() => expect(refreshed.syncStatus).toBe('idle'));
+    expect(refreshed.baby).toBeNull();
+    await refreshed.signOut();
+    expect(refreshed.signOutBlocked).toBeNull();
+    expect(refreshed.account).toBeNull();
+    db.close();
+  });
+
+  test('a baby adopted from a household view read before a clear is not kept: the marker moved under it', async () => {
+    const hh = newId();
+    const m0 = newId();
+    let marker = m0;
+    const theirs = baby(hh, 'Theirs');
+    kv.set('bht.account', JSON.stringify({ householdId: hh, memberId: newId() }));
+    const store = new EventStore(await openDatabase(), newId());
+    await store.adoptClear(hh, m0);
+    plainServer(
+      hh,
+      () => (marker === m0 ? [theirs] : []),
+      () => marker,
+    );
+    const app = await loadApp();
+    // With no baby, the settled sync reads the household. The clear lands in another tab
+    // between that adoption's marker check and its take, so the view it read is from before.
+    const clearMark = app.store.clearMark.bind(app.store);
+    let armed = true;
+    app.store.clearMark = async (household) => {
+      const held = await clearMark(household);
+      if (armed && requests.some((r) => r.url === '/api/household')) {
+        armed = false;
+        marker = newId();
+        await tabWipes(hh, marker);
+      }
+      return held;
+    };
+    await vi.waitFor(() => expect(armed).toBe(false));
+    await vi.waitFor(() => expect(app.clearNotice).toMatchObject({ clearId: marker }));
+    await settle();
+    expect(app.baby).toBeNull();
+    expect(kv.has('bht.baby')).toBe(false);
+    expect(await app.store.babyMark(theirs.id)).toBeNull();
+  });
+
+  test('a clear in another tab while JoinChoice is up refuses the move: nothing moves, and the choice goes with the cleared baby', async () => {
+    const own = baby(newId(), 'Mine');
+    kv.set('bht.baby', JSON.stringify(own));
+    const store = new EventStore(await openDatabase(), newId());
+    await store.log(own.id, 'diaper', { kind: 'wet' });
+    const hh = newId();
+    const theirs = baby(hh, 'Theirs');
+    const m0 = newId();
+    let marker = m0;
+    plainServer(
+      hh,
+      () => (marker === m0 ? [theirs] : []),
+      () => marker,
+    );
+    const app = await loadApp();
+    await app.signIn(async () => ({ householdId: hh, memberId: newId() }) as SignedIn);
+    expect(app.joining).toEqual(theirs);
+    // The household baby is held under the view's marker from the moment the choice is offered.
+    expect(await app.store.babyMark(theirs.id)).toEqual({ household: hh, clearId: m0 });
+
+    marker = newId();
+    await tabWipes(hh, marker);
+    await expect(app.settleJoin(true)).rejects.toMatchObject({ name: 'BabyCleared' });
+    expect(await app.store.db.getAll('versions')).toEqual([]);
+    expect(app.joining).toBeNull();
+    expect(app.baby).toBeNull();
+    expect(await app.store.rejectedCount()).toBe(0);
+  });
+
+  test('at startup, a stored baby marked under an earlier marker than the household’s is dropped like a wiped one', async () => {
+    const own = baby();
+    const m0 = newId();
+    const m1 = newId();
+    kv.set('bht.baby', JSON.stringify(own));
+    kv.set('bht.setupAt', '1700000000000');
+    kv.set('bht.account', JSON.stringify({ householdId: own.householdId, memberId: newId() }));
+    const store = new EventStore(await openDatabase(), newId());
+    await store.adoptClear(own.householdId, m0);
+    await store.takeBaby(own.id, own.householdId, { clearId: m0 });
+    // The marker moved without this phone's localStorage side running: a copy stored during
+    // the clear, say. The mark tells the two apart.
+    await store.adoptClear(own.householdId, m1);
+    plainServer(
+      own.householdId,
+      () => [],
+      () => m1,
+    );
+    const app = await loadApp();
+    expect(app.baby).toBeNull();
+    expect(app.setupAt).toBeNull();
+    expect(kv.has('bht.baby')).toBe(false);
+    expect(app.clearNotice).toEqual({ clearId: m1, at: idTime(m1) });
+  });
+
+  test('a wipe pending for a household this phone has left is finished at startup, leaving the new household’s baby alone', async () => {
+    const left = newId();
+    const { own } = await signedInPhone();
+    const store = new EventStore(await openDatabase(), newId());
+    await store.takeBaby(own.id, own.householdId, { clearId: null });
+    kv.set(`bht.late.${left}`, '[]');
+    const wipe = await store.clearAll(left, newId());
+    expect(await store.pendingWipes()).toEqual([{ household: left, wipe }]);
+    plainServer(
+      own.householdId,
+      () => [own],
+      () => null,
+    );
+    const app = await loadApp();
+    expect(await app.store.pendingWipes()).toEqual([]);
+    expect(app.wipePending).toBe(false);
+    expect(app.baby).toEqual(own);
+    expect(app.setupAt).not.toBeNull();
+    expect(kv.has(`bht.late.${left}`)).toBe(false);
+    expect(kv.has(`bht.late.${own.householdId}`)).toBe(true);
+    expect(app.clearNotice).toBeNull();
+    await expect(app.log('diaper', { kind: 'wet' }, 'Wet logged')).resolves.toBeDefined();
+  });
 });

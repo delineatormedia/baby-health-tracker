@@ -48,6 +48,9 @@ export function saveFailure(e: unknown): string {
   // finished dropping; an entry for it could never reach the server.
   if (name === 'WipePending')
     return 'Not saved: the household’s data was cleared, and this phone is still dropping its copy. It finishes on the next sync; then add a baby to log again.';
+  // store.ts BabyCleared (#95): the baby on screen went with a clear this tab had not heard of.
+  if (name === 'BabyCleared')
+    return 'Not saved: the household’s data was cleared, and this baby went with it. Add a baby to log again.';
   return 'Not saved: this phone could not write to its storage.';
 }
 

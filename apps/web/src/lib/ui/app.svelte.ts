@@ -1,5 +1,6 @@
 import {
   formatVolume,
+  idTime,
   type Baby,
   type BabyEvent,
   type ClearId,
@@ -88,6 +89,9 @@ export class ClearFailed extends Error {
     super(reason, options);
   }
 }
+
+/** When a clear under `clearId` ran, for the notice: the marker's time, or now for a null one. */
+const wipeAt = (clearId: ClearId): number => (clearId ? idTime(clearId) : Date.now());
 
 /** What Settings says under a clear that did not finish: only claims the phone can stand by. */
 export function clearFailure(e: unknown): string {
@@ -205,6 +209,8 @@ class AppState {
   #reloadAgain = false;
   /** The household read in flight for #adoptNext, so overlapping syncs share one. */
   #adopting: Promise<void> | null = null;
+  /** A baby added on this phone being marked under the household (#95); log() waits for it. */
+  #taking: Promise<unknown> | null = null;
   #account: Account | null = null;
   #sync: SyncClient | null = null;
   #stopSync: (() => Promise<void>) | null = null;
@@ -244,11 +250,9 @@ class AppState {
       this.#store = new EventStore(await openDatabase(), authorId(kv));
       this.account = loadAccount(kv);
       // A clear whose IndexedDB side committed but whose localStorage side did not (#85): the
-      // phone died in between. Finish it before the baby is read.
+      // phone died in between. Finish it, whichever household's it is, before the baby is read.
       await this.#repairClear();
-      this.clearNotice = loadClearNotice(kv);
-      this.baby = loadBaby(kv);
-      this.setupAt = loadSetupAt(kv);
+      await this.#readBaby();
       this.standalone = isStandalone({
         matchMedia: globalThis.matchMedia?.bind(globalThis),
         // iOS Safari only; not in the DOM typings.
@@ -371,11 +375,18 @@ class AppState {
     if (!current()) return;
     this.#knownBabies = new Set(household.babies.map((b) => b.id));
     if (choose) {
-      saveJoining(this.#storage, placement.baby);
-      this.joining = placement.baby;
-    } else if (placement.kind !== 'keep' && placement.kind !== 'none') {
-      this.#adopt(placement.baby);
+      // The household baby the choice is about is held under this view's marker from here
+      // (#95), so a clear in another tab before the choice is made refuses the move.
+      if (await this.#mark(placement.baby, household.clearId)) {
+        saveJoining(this.#storage, placement.baby);
+        this.joining = placement.baby;
+      }
+    } else if (placement.kind === 'keep') {
+      await this.#take(this.baby!, household.clearId);
+    } else if (placement.kind !== 'none') {
+      await this.#take(placement.baby, household.clearId);
     }
+    if (!current()) return;
     this.#setAccount({ householdId: account.householdId, memberId: account.memberId });
     if (!this.joining) this.#startSync();
   }
@@ -390,10 +401,18 @@ class AppState {
     const to = this.joining;
     if (!from || !to) return;
     const current = this.#fence();
-    if (move) await this.store.moveBaby(from.id, to.id);
-    else await this.store.archiveBaby(from.id);
+    try {
+      if (move) await this.store.moveBaby(from.id, to.id);
+      else await this.store.archiveBaby(from.id);
+    } catch (e) {
+      // The household was cleared since the choice was offered (#95): the baby to join is gone,
+      // and so is the choice. The screens re-read; the caller hears nothing changed.
+      if (e instanceof Error && e.name === 'BabyCleared' && current()) await this.#afterWipe();
+      throw e;
+    }
     if (!current()) return;
-    this.#adopt(to);
+    // Held under the marker since place(); the move was fenced by that mark.
+    this.#show(to);
     saveJoining(this.#storage, null);
     this.joining = null;
     this.#startSync();
@@ -443,6 +462,12 @@ class AppState {
       this.syncError = null;
       await this.#endSignOut();
       this.#broadcast('signed-out');
+      // A wipe this phone could not finish is tried once more (#95): signed out, no sync will,
+      // and the record would refuse every write until the app next starts.
+      if (await this.#repairClear().catch(() => false)) {
+        await this.#afterWipe();
+        this.#broadcast('cleared');
+      }
     });
   }
 
@@ -532,8 +557,9 @@ class AppState {
     this.#channel.onmessage = (e: MessageEvent<AccountMessage>) => {
       this.signingOutElsewhere = e.data === 'signing-out';
       if (e.data === 'cleared') {
-        // The other tab dropped the data and the stored baby; this tab's view follows.
-        this.#afterWipe();
+        // The other tab dropped the data and the stored baby; this tab's view follows. Not the
+        // fence, though: a write here is refused by the store whether or not this arrives (#95).
+        void this.#afterWipe();
         return;
       }
       if (e.data !== 'signed-out') return;
@@ -663,7 +689,7 @@ class AppState {
   async #wipe(household: string, clearId: ClearId): Promise<void> {
     const wipe = await this.store.clearAll(household, clearId);
     await this.#finishWipe(household, wipe);
-    this.#afterWipe();
+    await this.#afterWipe();
     this.#broadcast('cleared');
   }
 
@@ -672,11 +698,13 @@ class AppState {
    * Only localStorage and that record are touched: the store's rows are never deleted here,
    * and while the record stands the store refuses every local write (#97), so there is no
    * accepted entry for this step to lose. If localStorage fails, `wipePending` says so until
-   * a later attempt gets through.
+   * a later attempt gets through. Finished after the phone has signed in to another household
+   * (#95), it leaves the stored baby, which is that household's now.
    */
   async #finishWipe(household: string, wipe: PendingWipe): Promise<void> {
+    const elsewhere = this.account !== null && this.account.householdId !== household;
     try {
-      wipeLocal(this.#storage, household, wipe.clearId, wipe.at);
+      wipeLocal(this.#storage, household, wipe.clearId, wipe.at, elsewhere ? 'household' : 'phone');
     } catch (e) {
       this.wipePending = true;
       throw e;
@@ -709,19 +737,16 @@ class AppState {
       if (held && held.clearId !== view.clearId) return;
       this.#knownBabies = new Set(view.babies.map((b) => b.id));
       const placement = placeBaby(null, view);
-      if (placement.kind === 'adopt') this.#adopt(placement.baby);
+      if (placement.kind === 'adopt') await this.#take(placement.baby, view.clearId);
     })().finally(() => (this.#adopting = null));
     return this.#adopting;
   }
 
   /** Re-reads what a wipe (here or in another tab) left in localStorage. */
-  #afterWipe(): void {
-    const kv = this.#storage;
+  async #afterWipe(): Promise<void> {
     this.wipePending = false;
-    this.baby = loadBaby(kv);
-    this.setupAt = loadSetupAt(kv);
-    this.joining = loadJoining(kv);
-    this.clearNotice = loadClearNotice(kv);
+    await this.#readBaby();
+    this.joining = loadJoining(this.#storage);
     this.#knownBabies = new Set();
     this.devices = null;
     this.clockSample = null;
@@ -732,19 +757,79 @@ class AppState {
   }
 
   /**
-   * At startup and first in every sync run: the localStorage side of a wipe whose IndexedDB
-   * side committed (see #wipe), null marker included: a server restored to before its first
-   * clear is a wipe too, and a marker adopted at first placement leaves no pending record, so
-   * it is told apart. Resolves to whether there was one to finish. Deletes nothing from the
-   * store (see #finishWipe).
+   * At startup, after a sign-out and first in every sync run: the localStorage side of every
+   * wipe whose IndexedDB side committed (see #wipe), whichever household's and whether or not
+   * the phone is still signed in to it (#95): the record stops every write, so it must never
+   * outlive its repair. A null marker counts: a server restored to before its first clear is
+   * a wipe too, and a marker adopted at first placement leaves no pending record, so it is
+   * told apart. Resolves to whether there was one to finish. Deletes nothing from the store
+   * (see #finishWipe).
    */
   async #repairClear(): Promise<boolean> {
+    let finished = false;
+    for (const { household, wipe } of await this.store.pendingWipes()) {
+      await this.#finishWipe(household, wipe);
+      finished = true;
+    }
+    return finished;
+  }
+
+  /**
+   * Reads the stored baby, and makes sure the generation the store holds it under agrees with
+   * what is on screen (#95), however the reads interleave with a clear in another tab:
+   *
+   * - A wipe pending at the read means the stored baby may be the one being dropped: it is
+   *   finished here, and the read starts over.
+   * - A baby marked under an earlier marker than the household's is from before a clear whose
+   *   localStorage side this phone missed (a stale copy stored during a clear, say): it is
+   *   dropped like any wiped baby, notice included.
+   * - A baby with no mark under this household (a phone from before #95, or one that signed
+   *   in to another household) is marked under the marker read just before it. If the marker
+   *   moved in between, a clear committed, and the read starts over.
+   *
+   * So once this returns, either the baby shown has a mark the store checks on every write,
+   * or there is no baby. A wipe that cannot be finished (localStorage failing) leaves the baby
+   * as read, with `wipePending` set and every write refused.
+   */
+  async #readBaby(): Promise<void> {
+    const kv = this.#storage;
     const household = this.account?.householdId;
-    if (!household) return false;
-    const wipe = await this.store.pendingWipe(household);
-    if (!wipe) return false;
-    await this.#finishWipe(household, wipe);
-    return true;
+    let settled = false;
+    for (let attempt = 0; ; attempt++) {
+      settled ||= attempt >= 3;
+      if (!settled && (await this.store.pendingWipes()).length > 0) {
+        try {
+          await this.#repairClear();
+          continue;
+        } catch (e) {
+          // localStorage is failing: the baby is read as it stands, with wipePending set and
+          // every write refused, and the next sync or start tries again.
+          console.error(e);
+          settled = true;
+        }
+      }
+      const held = household ? ((await this.store.clearMark(household))?.clearId ?? null) : null;
+      const baby = loadBaby(kv);
+      if (baby && household && !settled) {
+        const mark = await this.store.babyMark(baby.id);
+        if (mark && mark.household === household && mark.clearId !== held) {
+          wipeLocal(kv, household, held, wipeAt(held));
+          continue;
+        }
+        if (!mark || mark.household !== household) {
+          try {
+            await this.store.takeBaby(baby.id, household, { clearId: held });
+          } catch (e) {
+            if (e instanceof Error && e.name === 'MarkerMoved') continue;
+            throw e;
+          }
+        }
+      }
+      this.clearNotice = loadClearNotice(kv);
+      this.baby = baby;
+      this.setupAt = loadSetupAt(kv);
+      return;
+    }
   }
 
   /** Captures the account epoch; the returned check is false once a transition has begun. */
@@ -786,9 +871,43 @@ class AppState {
     this.account = account;
   }
 
-  #adopt(baby: Baby) {
+  /**
+   * Takes `baby` as this phone's (#95): stored, marked under the household's marker so the
+   * store fences its writes, and shown. `under` is the marker of the household view the baby
+   * came from. Resolves to whether it was taken; see #mark for when it is not.
+   */
+  async #take(baby: Baby, under: ClearId): Promise<boolean> {
     saveBaby(this.#storage, baby);
     this.setupAt = markSetup(this.#storage, Date.now());
+    if (!(await this.#mark(baby, under))) return false;
+    this.#show(baby);
+    return true;
+  }
+
+  /**
+   * Marks `baby` in the store as held under the household's marker, checked against `under`,
+   * the marker of the view it came from (see EventStore.takeBaby). If the marker moved in
+   * between, the household was cleared under this placement and the baby is from before it:
+   * the clear's localStorage side runs here too (the other tab's may have run before this one
+   * stored the baby), the screens re-read, and false comes back.
+   */
+  async #mark(baby: Baby, under: ClearId): Promise<boolean> {
+    const household = this.account?.householdId;
+    if (!household) return true;
+    try {
+      await this.store.takeBaby(baby.id, household, { clearId: under });
+      return true;
+    } catch (e) {
+      if (!(e instanceof Error && e.name === 'MarkerMoved')) throw e;
+      const held = (await this.store.clearMark(household))?.clearId ?? null;
+      wipeLocal(this.#storage, household, held, wipeAt(held));
+      await this.#afterWipe();
+      return false;
+    }
+  }
+
+  /** Shows a baby already stored and marked. */
+  #show(baby: Baby) {
     this.baby = baby;
     void this.#reload();
   }
@@ -893,7 +1012,7 @@ class AppState {
       repair: async () => {
         if (this.#sync !== sync) return;
         if (await this.#repairClear()) {
-          this.#afterWipe();
+          await this.#afterWipe();
           this.#broadcast('cleared');
         }
       },
@@ -932,6 +1051,12 @@ class AppState {
     this.baby = baby;
     void this.#reload();
     void this.#persist();
+    // Signed in, the new baby is held under whatever marker is current (#95): it is new under
+    // any. The first log() waits for the mark, so no write for it goes unfenced.
+    const household = this.account?.householdId;
+    if (household) {
+      this.#taking = this.store.takeBaby(baby.id, household).catch((e) => console.error(e));
+    }
   }
 
   get showHomeNote(): boolean {
@@ -1000,6 +1125,8 @@ class AppState {
       text: `${saveFailure(e)} ${retry ? 'Nothing changed.' : 'Nothing changed. Try again.'}`,
       retry,
     };
+    // The baby on screen went with a clear this tab had not heard of (#95): the screens re-read.
+    if (e instanceof Error && e.name === 'BabyCleared') void this.#afterWipe();
   }
 
   /** Runs a failed write's retry once; a second failure puts it back in the banner. */
@@ -1033,6 +1160,7 @@ class AppState {
   ): Promise<Change> {
     const baby = this.baby;
     if (!baby) throw new Error('No baby');
+    await this.#taking;
     const change = await this.store.log(baby.id, type, data, { occurredAt: opts.occurredAt });
     this.showUndo(`${label} · ${opts.day ?? when(change.event.occurredAt, Date.now())}`, change);
     return change;

@@ -294,8 +294,17 @@ covered by `SCHEMA_VERSION` 3.
   that record stands the store refuses every local write, in the write's own transaction
   (#97): the erased baby is still on screen, an entry for it could never reach the
   server, and finishing the wipe touches only localStorage and the record, so no accepted
-  entry is ever deleted behind the parent's back. The app says why until a sync finishes
-  the wipe, and the next sync runs that first. A phone
+  entry is ever deleted behind the parent's back. The app says why until the wipe is
+  finished: at startup, after a sign-out and first in every sync run, the phone finishes
+  every pending wipe record whichever household it belongs to and whether or not it is
+  still signed in there, so the record never outlives its repair (#95). The record is
+  not the only guard: every baby a signed-in phone holds is marked in IndexedDB under the
+  household's marker when the phone takes it (placement at sign-in, adoption after a
+  clear, or Add a baby), and every local write checks that mark against the household's
+  current marker in the write's own transaction. A write for a baby from before a clear
+  is refused with `BabyCleared`, whether or not the tab that cleared has been heard from,
+  and the screens re-read; a baby taken from a household view whose marker has since moved
+  is not kept at all. A phone
   left with no baby reads `GET /api/household` after each sync that settles and takes
   the household's next, or restored, baby without a new sign-in.
 

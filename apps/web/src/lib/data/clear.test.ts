@@ -10,7 +10,7 @@ import {
 } from '../../../../server/src/db.ts';
 import { openDatabase, rowKey } from './db.ts';
 import { HttpError, isCleared, type BarrierRequest, type SyncTransport } from './protocol.ts';
-import { EventStore, WipePending } from './store.ts';
+import { BabyCleared, EventStore, MarkerMoved, WipePending } from './store.ts';
 import { failureReason, SyncClient } from './sync.ts';
 import { FakeServer, FakeTransport } from './testing/fake-server.ts';
 
@@ -161,6 +161,103 @@ describe('a pending wipe stops local writes (#97)', () => {
     expect(await rows(store)).toEqual([]);
     expect(await store.pendingWipe(household)).toBeNull();
     await expect(store.log(babyId, 'diaper', { kind: 'wet' })).resolves.toBeDefined();
+  });
+});
+
+describe('a baby is held under the household’s marker (#95)', () => {
+  // The durable guard behind the wipe record: the mark a baby was taken under is checked
+  // against the household's current marker in every write's own transaction, so a tab that
+  // never heard of a clear is refused after the record is gone, broadcast or no broadcast.
+  const pulledRow = (): BabyEvent => ({
+    id: newId(),
+    babyId,
+    authorId: newId(),
+    occurredAt: '2026-10-29T02:00:00.000Z',
+    recordedAt: '2026-10-29T02:00:00.000Z',
+    version: 1,
+    deleted: false,
+    notes: null,
+    type: 'diaper',
+    data: { kind: 'wet' },
+  });
+
+  test('a write for a baby taken before a clear is refused once the marker moves, with the wipe record long gone', async () => {
+    const store = await makeStore();
+    const m0 = newId();
+    await store.adoptClear(household, m0);
+    expect(await store.takeBaby(babyId, household, { clearId: m0 })).toEqual({
+      household,
+      clearId: m0,
+    });
+    await expect(store.log(babyId, 'diaper', { kind: 'wet' })).resolves.toBeDefined();
+
+    // Another tab clears, finishes its wipe and retires the record. This tab heard nothing.
+    const m1 = newId();
+    await store.clearAll(household, m1);
+    await store.wipeDone(household);
+    // A pull under the new marker lands a row for the old baby id (a restored server, say),
+    // so edit and undo have something to act on.
+    const pulled = pulledRow();
+    await store.applyPull(
+      { versions: [{ seq: 1, event: pulled }], next: 1, more: false, through: 1 },
+      household,
+      undefined,
+      { clearId: m1 },
+    );
+    const before = await store.snapshot(household);
+    await expect(store.log(babyId, 'diaper', { kind: 'wet' })).rejects.toBeInstanceOf(BabyCleared);
+    await expect(store.edit(pulled.id, { notes: 'x' })).rejects.toBeInstanceOf(BabyCleared);
+    await expect(store.remove(pulled.id)).rejects.toBeInstanceOf(BabyCleared);
+    await expect(store.moveBaby(newId(), babyId)).rejects.toBeInstanceOf(BabyCleared);
+    expect(await store.snapshot(household)).toEqual(before);
+    expect(await store.pending(10)).toEqual([]);
+
+    // A baby taken under the new marker writes; so does one this phone never took under a
+    // household (set up offline), which has no mark to fail.
+    const next = newId();
+    await store.takeBaby(next, household, { clearId: m1 });
+    await expect(store.log(next, 'diaper', { kind: 'wet' })).resolves.toBeDefined();
+    await expect(
+      store.log(newId(), 'bottle', { contents: 'formula', volumeMl: 60 }),
+    ).resolves.toBeDefined();
+  });
+
+  test('taking a baby under a marker the household no longer holds records nothing; a new baby takes whatever is current', async () => {
+    const store = await makeStore();
+    const m0 = newId();
+    const m1 = newId();
+    await store.adoptClear(household, m0);
+    await store.clearAll(household, m1);
+    await expect(store.takeBaby(babyId, household, { clearId: m0 })).rejects.toBeInstanceOf(
+      MarkerMoved,
+    );
+    expect(await store.babyMark(babyId)).toBeNull();
+    expect(await store.takeBaby(babyId, household)).toEqual({ household, clearId: m1 });
+    // Taken again under another household (a sign-in elsewhere), the mark follows the baby.
+    const other = newId();
+    expect(await store.takeBaby(babyId, other, null)).toEqual({ household: other, clearId: null });
+    // A view from a server without markers (undefined) is "no clear yet", the same as null.
+    await store.adoptClear(other, undefined as unknown as null);
+    await store.wipeDone(household);
+    await expect(store.log(babyId, 'diaper', { kind: 'wet' })).resolves.toBeDefined();
+  });
+
+  test('pendingWipes lists every household’s record, so repair can run under any account', async () => {
+    const store = await makeStore();
+    const other = newId();
+    expect(await store.pendingWipes()).toEqual([]);
+    const a = await store.clearAll(household, newId());
+    const b = await store.clearAll(other, null);
+    const pending = await store.pendingWipes();
+    expect(pending).toHaveLength(2);
+    expect(pending).toEqual(
+      expect.arrayContaining([
+        { household, wipe: a },
+        { household: other, wipe: b },
+      ]),
+    );
+    await store.wipeDone(household);
+    expect(await store.pendingWipes()).toEqual([{ household: other, wipe: b }]);
   });
 });
 

@@ -14,6 +14,7 @@ import {
 import type { IDBPTransaction } from 'idb';
 import {
   rowKey,
+  type BabyMark,
   type BhtDB,
   type ClearMark,
   type Database,
@@ -45,6 +46,10 @@ const devicesKey = (household: string) => `devices:${household}`;
 const clearKey = (household: string) => `clear:${household}`;
 /** A wipe whose localStorage side is still to run (#85); see PendingWipe in db.ts. */
 const wipeKey = (household: string) => `wipe:${household}`;
+/** Every household's pending wipe, whichever account the phone is under now (#95). */
+const wipeKeys = () => IDBKeyRange.bound(wipeKey(''), wipeKey('￿'));
+/** The generation a baby this phone holds was taken under (#95); see BabyMark in db.ts. */
+const babyKey = (babyId: string) => `baby:${babyId}`;
 
 /**
  * The clear marker a request was sent under (#85): what clearMark() returned just before it
@@ -66,9 +71,14 @@ export class MarkerMoved extends Error {
   }
 }
 
-/** Whether `held`, the marker in the store now, is the one the request was sent under. */
+/**
+ * Whether `held`, the marker in the store now, is the one the request was sent under. A view
+ * from a server without markers leaves the field undefined; that is null, "no clear yet".
+ */
 const sameMark = (held: ClearMark | undefined, under: SentMark) =>
-  held === undefined ? under === null : under !== null && held.clearId === under.clearId;
+  held === undefined
+    ? under === null
+    : under !== null && (held.clearId ?? null) === (under.clearId ?? null);
 
 /**
  * The write generation's meta key (step 3b). Every local write bumps it in the transaction that
@@ -103,6 +113,20 @@ export class WipePending extends Error {
   override name = 'WipePending';
   constructor() {
     super('This phone is still dropping the household’s cleared data');
+  }
+}
+
+/**
+ * A local write refused because its baby went with a clear (#95): the baby was taken under an
+ * earlier marker than the one the household holds now (see BabyMark). The wipe that moved the
+ * marker, in this tab or another, dropped the stored baby; this tab was still showing it. The
+ * check is in the write's own transaction, so it holds whether or not the other tab's
+ * broadcast has arrived, and after the wipe's pending record is gone.
+ */
+export class BabyCleared extends Error {
+  override name = 'BabyCleared';
+  constructor() {
+    super('This baby went with the household’s cleared data');
   }
 }
 
@@ -373,9 +397,52 @@ export class EventStore {
     return ((await this.db.get('meta', wipeKey(household))) as PendingWipe | undefined) ?? null;
   }
 
+  /**
+   * Every wipe whose localStorage side is still to run, whichever household it belongs to
+   * (#95): the record stops every local write, so repair must find it under any account, or
+   * none. Each comes with the household its key names.
+   */
+  async pendingWipes(): Promise<{ household: string; wipe: PendingWipe }[]> {
+    const tx = this.db.transaction('meta');
+    const keys = await tx.store.getAllKeys(wipeKeys());
+    const wipes = (await tx.store.getAll(wipeKeys())) as PendingWipe[];
+    await tx.done;
+    return keys.map((key, i) => ({
+      household: String(key).slice(wipeKey('').length),
+      wipe: wipes[i]!,
+    }));
+  }
+
   /** Records that the localStorage side of `household`'s last wipe is done (#85). */
   async wipeDone(household: string): Promise<void> {
     await this.db.delete('meta', wipeKey(household));
+  }
+
+  /** The generation `babyId` was taken under (#95), or null if this phone never took it. */
+  async babyMark(babyId: string): Promise<BabyMark | null> {
+    return ((await this.db.get('meta', babyKey(babyId))) as BabyMark | undefined) ?? null;
+  }
+
+  /**
+   * Records `babyId` as held under `household`'s current marker (#95; see BabyMark): from here
+   * every local write for the baby is refused once the marker moves. Given the marker the
+   * baby was read `under` (the household view it came from), writes nothing and throws
+   * MarkerMoved if the household's marker has changed since: the baby is from before a clear,
+   * and holding it would leave an erased baby on screen. Left undefined, for a baby added on
+   * this phone, the baby takes whatever generation is current: it is new under any.
+   */
+  async takeBaby(babyId: string, household: string, under?: SentMark): Promise<BabyMark> {
+    const tx = this.db.transaction('meta', 'readwrite');
+    const held = (await tx.store.get(clearKey(household))) as ClearMark | undefined;
+    if (under !== undefined && !sameMark(held, under)) {
+      tx.abort();
+      await tx.done.catch(() => {});
+      throw new MarkerMoved();
+    }
+    const mark: BabyMark = { household, clearId: held?.clearId ?? null };
+    await tx.store.put(mark, babyKey(babyId));
+    await tx.done;
+    return mark;
   }
 
   /**
@@ -450,7 +517,7 @@ export class EventStore {
     const recordedAt = this.now().toISOString();
     let moved = 0;
     try {
-      await refuseWhileStopped(tx);
+      await refuseWhileStopped(tx, to);
       const ids = new Set((await store.index('byBaby').getAll(from)).map((r) => r.id));
       for (const id of ids) {
         const rows = await store.index('byId').getAll(id);
@@ -609,13 +676,6 @@ export class EventStore {
    * replace an existing row.
    */
   async #append(tx: WriteTx, candidate: unknown): Promise<BabyEvent> {
-    try {
-      await refuseWhileStopped(tx);
-    } catch (e) {
-      tx.abort();
-      await tx.done.catch(() => {});
-      throw e;
-    }
     const parsed = parseEvent(candidate);
     if (!parsed.ok) {
       tx.abort();
@@ -623,6 +683,13 @@ export class EventStore {
       throw new Error(`Invalid event: ${parsed.errors.join('; ')}`);
     }
     const event = parsed.value;
+    try {
+      await refuseWhileStopped(tx, event.babyId);
+    } catch (e) {
+      tx.abort();
+      await tx.done.catch(() => {});
+      throw e;
+    }
     await tx.objectStore('versions').add({ ...toRow(event, null), pending: 1 });
     await bumpGen(tx);
     await tx.done;
@@ -634,18 +701,23 @@ export class EventStore {
 type WriteTx = IDBPTransaction<BhtDB, ['versions', 'meta'], 'readwrite'>;
 
 /**
- * Throws SigningOut if the flag is set, or WipePending if any household's wipe is still to
- * finish (#97); the caller aborts `tx`. Both are read in the write's own transaction, so a
- * write that opened before the flag or the wipe record committed lands first, and every later
- * one is refused. The wipe record is keyed by household, and a phone mid-wipe has no baby a
- * write could rightly belong to, so any record refuses.
+ * Throws SigningOut if the flag is set, WipePending if any household's wipe is still to finish
+ * (#97), or BabyCleared if `babyId` was taken under a marker its household no longer holds
+ * (#95); the caller aborts `tx`. All three are read in the write's own transaction, so a write
+ * that opened before the flag, the wipe record or the new marker committed lands first, and
+ * every later one is refused. The wipe record is keyed by household, and a phone mid-wipe has
+ * no baby a write could rightly belong to, so any record refuses. The baby's mark is the
+ * durable check: it outlives the wipe record, and needs no word from the tab that cleared.
+ * A baby this phone never took under a household (one set up offline) has no mark to fail.
  */
-async function refuseWhileStopped(tx: WriteTx): Promise<void> {
+async function refuseWhileStopped(tx: WriteTx, babyId: string): Promise<void> {
   const meta = tx.objectStore('meta');
   if ((await meta.get(SIGNING_OUT_KEY)) !== undefined) throw new SigningOut();
-  if ((await meta.count(IDBKeyRange.bound(wipeKey(''), wipeKey('\uffff')))) > 0) {
-    throw new WipePending();
-  }
+  if ((await meta.count(wipeKeys())) > 0) throw new WipePending();
+  const mark = (await meta.get(babyKey(babyId))) as BabyMark | undefined;
+  if (!mark) return;
+  const held = (await meta.get(clearKey(mark.household))) as ClearMark | undefined;
+  if (!sameMark(held, mark)) throw new BabyCleared();
 }
 
 async function bumpGen(tx: WriteTx): Promise<void> {

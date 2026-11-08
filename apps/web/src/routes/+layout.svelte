@@ -38,7 +38,7 @@
   <!-- #97: the pending wipe record refuses writes; the erased baby is still on screen meanwhile. -->
   <p class="signing-out" role="status">
     The household’s data was cleared, but this phone could not finish dropping its copy. Nothing can
-    be logged until the next sync finishes it.
+    be logged until it finishes: on the next sync, or when the app next starts.
   </p>
 {/if}
 
