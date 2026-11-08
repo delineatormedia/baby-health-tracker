@@ -59,8 +59,7 @@ function liveSession(db: DatabaseSync, tokenHash: string, now: Date) {
          AND d.removed_at IS NULL`,
     )
     .get(tokenHash, now.toISOString()) as
-    | { member_id: string; device_id: string; household_id: string }
-    | undefined;
+    { member_id: string; device_id: string; household_id: string } | undefined;
 }
 
 /** Relying party settings, from BHT_RP_ID and BHT_ORIGIN in production. */
