@@ -95,10 +95,17 @@ export const MIGRATIONS: string[] = [
   `ALTER TABLE devices ADD COLUMN signed_out_at TEXT;`,
 ];
 
-/** Opens the SQLite database, applies pragmas and runs pending migrations. ':memory:' for tests. */
+/**
+ * Opens the SQLite database, applies pragmas and runs pending migrations. ':memory:' for tests.
+ * secure_delete zeroes freed pages, so a cleared household's rows (#85) do not linger in the
+ * file; the clear also truncates the WAL afterwards.
+ */
 export function openDatabase(path: string): DatabaseSync {
   const db = new DatabaseSync(path);
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+  db.exec(
+    `PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;
+     PRAGMA secure_delete = ON;`,
+  );
   migrate(db);
   return db;
 }

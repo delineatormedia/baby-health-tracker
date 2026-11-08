@@ -23,6 +23,7 @@ import {
   type Result,
   type Session,
 } from './auth.ts';
+import { clearHousehold } from './clear.ts';
 import { pullVersions, pushVersions, recordBarrier } from './events.ts';
 
 export type { Session } from './auth.ts';
@@ -36,6 +37,8 @@ export interface AppOptions {
    */
   session?: (c: Context) => Session | null | Promise<Session | null>;
   now?: () => Date;
+  /** Operational log lines (a household cleared, with ids and counts, never data). */
+  log?: (line: string) => void;
 }
 
 type Env = { Variables: { session: Session } };
@@ -44,6 +47,7 @@ const AUTH_BODY_BYTES = 64 * 1024;
 
 export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   const now = opts.now ?? (() => new Date());
+  const log = opts.log ?? ((line: string) => console.log(line));
   const accounts = opts.auth ? new Accounts(db, opts.auth, now) : null;
   const resolveSession =
     opts.session ?? ((c: Context) => accounts?.session(getCookie(c, SESSION_COOKIE)) ?? null);
@@ -77,6 +81,7 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   app.use('/api/sync', signedIn);
   app.use('/api/sync/*', signedIn);
   app.use('/api/household', signedIn);
+  app.use('/api/household/*', signedIn);
   app.use('/api/invites', signedIn);
   app.use('/api/babies', signedIn);
   app.use('/api/devices/*', signedIn);
@@ -148,6 +153,20 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
     const result = accounts.addBaby(c.var.session.householdId, await json(c));
     if (!result.ok) return c.json({ error: result.error }, result.status);
     return c.json(result.value);
+  });
+
+  // Clearing the household's data (#85): either parent, once confirmed on the phone. Every
+  // session of the household ends with it, this one included, so the cookie goes too. Nothing
+  // here needs the passkey configuration.
+  app.post('/api/household/clear', authBody, (c) => {
+    const { householdId, memberId } = c.var.session;
+    const { clearedAt, babies, versions, sessions } = clearHousehold(db, householdId, now());
+    deleteCookie(c, SESSION_COOKIE, { path: '/', secure });
+    log(
+      `household ${householdId} cleared at ${clearedAt} by member ${memberId ?? '?'}: ` +
+        `${babies} babies and ${versions} event versions deleted, ${sessions} sessions revoked`,
+    );
+    return c.json({ clearedAt });
   });
 
   // Removing a lost phone (step 3b). Removal is the household's vouch from removedAt on.
