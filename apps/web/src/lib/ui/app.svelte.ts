@@ -16,7 +16,7 @@ import {
   httpAccount,
   signInFailure,
 } from '../data/account.ts';
-import { openDatabase } from '../data/db.ts';
+import { openDatabase, type PendingWipe } from '../data/db.ts';
 import { HttpError, httpTransport, isCleared } from '../data/protocol.ts';
 import { EventStore, type Change } from '../data/store.ts';
 import { failureReason, SyncClient, type SyncStatus } from '../data/sync.ts';
@@ -187,6 +187,12 @@ class AppState {
   signOutBlocked = $state<string | null>(null);
   /** Another tab is signing out; local writes are refused until it finishes or cancels. */
   signingOutElsewhere = $state(false);
+  /**
+   * A clear dropped this phone's IndexedDB copy but could not finish its localStorage side
+   * (#85, #97): the erased baby is still on screen, and the store refuses writes until the next
+   * sync finishes the wipe. The layout says so before anyone taps.
+   */
+  wipePending = $state(false);
   /** Entries from other phones that arrived after their windows were assessed (step 3b). */
   late = $state.raw<readonly LateEntry[]>([]);
   /** The household's data was cleared (#85) and this phone dropped its copy; shown until dismissed. */
@@ -608,6 +614,7 @@ class AppState {
     try {
       await this.#wipe(household, clearId);
     } catch (e) {
+      // IndexedDB is clear and refuses writes until the sync started here finishes the wipe.
       this.#startSync();
       throw new ClearFailed('local', saveFailure(e), { cause: e });
     }
@@ -655,10 +662,27 @@ class AppState {
    */
   async #wipe(household: string, clearId: ClearId): Promise<void> {
     const wipe = await this.store.clearAll(household, clearId);
-    wipeLocal(this.#storage, household, wipe.clearId, wipe.at);
-    await this.store.wipeDone(household);
+    await this.#finishWipe(household, wipe);
     this.#afterWipe();
     this.#broadcast('cleared');
+  }
+
+  /**
+   * The localStorage side of a wipe whose IndexedDB side committed, then the pending record.
+   * Only localStorage and that record are touched: the store's rows are never deleted here,
+   * and while the record stands the store refuses every local write (#97), so there is no
+   * accepted entry for this step to lose. If localStorage fails, `wipePending` says so until
+   * a later attempt gets through.
+   */
+  async #finishWipe(household: string, wipe: PendingWipe): Promise<void> {
+    try {
+      wipeLocal(this.#storage, household, wipe.clearId, wipe.at);
+    } catch (e) {
+      this.wipePending = true;
+      throw e;
+    }
+    await this.store.wipeDone(household);
+    this.wipePending = false;
   }
 
   /**
@@ -693,6 +717,7 @@ class AppState {
   /** Re-reads what a wipe (here or in another tab) left in localStorage. */
   #afterWipe(): void {
     const kv = this.#storage;
+    this.wipePending = false;
     this.baby = loadBaby(kv);
     this.setupAt = loadSetupAt(kv);
     this.joining = loadJoining(kv);
@@ -710,15 +735,15 @@ class AppState {
    * At startup and first in every sync run: the localStorage side of a wipe whose IndexedDB
    * side committed (see #wipe), null marker included: a server restored to before its first
    * clear is a wipe too, and a marker adopted at first placement leaves no pending record, so
-   * it is told apart. Resolves to whether there was one to finish.
+   * it is told apart. Resolves to whether there was one to finish. Deletes nothing from the
+   * store (see #finishWipe).
    */
   async #repairClear(): Promise<boolean> {
     const household = this.account?.householdId;
     if (!household) return false;
     const wipe = await this.store.pendingWipe(household);
     if (!wipe) return false;
-    wipeLocal(this.#storage, household, wipe.clearId, wipe.at);
-    await this.store.wipeDone(household);
+    await this.#finishWipe(household, wipe);
     return true;
   }
 

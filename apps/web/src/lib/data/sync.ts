@@ -422,9 +422,16 @@ export class SyncClient {
     if (serverNow !== undefined) this.#serverNow = serverNow;
   }
 
-  /** The default onCleared: the store side of the clear alone. */
+  /**
+   * The default onCleared: the store side of the clear alone. With no localStorage side for a
+   * caller to finish, the wipe is recorded done at once, so writes resume (#97).
+   */
   readonly #clearAll = (clearId: ClearId) =>
-    this.#write(this.store.clearAll(this.#opts.household, clearId)).then(() => {});
+    this.#write(
+      this.store
+        .clearAll(this.#opts.household, clearId)
+        .then(() => this.store.wipeDone(this.#opts.household)),
+    );
 
   /** Records a store write in progress for stop() to wait on. Call only right after #fence. */
   async #write<T>(write: Promise<T>): Promise<T> {

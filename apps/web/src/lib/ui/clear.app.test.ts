@@ -2,6 +2,13 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { idTime, newId, type SignedIn } from '@bht/schema';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+// The real server (#5), in process, for the #97 probes.
+import { createApp } from '../../../../server/src/app.ts';
+import {
+  ensureDevice,
+  ensureHousehold,
+  openDatabase as openServerDb,
+} from '../../../../server/src/db.ts';
 import { openDatabase } from '../data/db.ts';
 import { EventStore } from '../data/store.ts';
 
@@ -753,4 +760,126 @@ describe('the next baby after a clear', () => {
     await settle();
     expect(households).toBe(asked);
   });
+});
+
+describe('logging while a wipe is pending (#97)', () => {
+  // Adversarial's two characterisation probes against the real server, in process: a clear
+  // whose localStorage side failed leaves the erased baby on screen until a sync finishes it.
+  // An entry logged in that window used to be accepted locally, refused by the server as an
+  // unknown baby once repair had removed the profile, and then block ordinary sign-out for
+  // good. Now the store refuses it up front, with copy saying why, and repair deletes nothing.
+
+  /** The real server with `own`'s household, this phone registered as one of its devices. */
+  function realServer(own: ReturnType<typeof baby>) {
+    const db = openServerDb(':memory:');
+    const deviceId = newId();
+    kv.set('bht.author', deviceId);
+    ensureHousehold(db, own.householdId, [own.id]);
+    ensureDevice(db, own.householdId, deviceId);
+    const server = createApp(db, {
+      // Sign-in configured, as in production: the baby add and logout are 503 without it.
+      auth: { rpId: 'localhost', origin: 'http://localhost', rpName: 'Test' },
+      log: () => {},
+      session: () => ({ householdId: own.householdId, memberId: `m-${deviceId}`, deviceId }),
+    });
+    serve(async (url, init) =>
+      server.request(url, {
+        ...init,
+        headers: {
+          ...init?.headers,
+          origin: 'http://localhost',
+          'content-type': 'application/json',
+        },
+      }),
+    );
+    const holds = (eventId: string) =>
+      db.prepare('SELECT 1 FROM event_versions WHERE event_id = ?').get(eventId) !== undefined;
+    return { db, holds };
+  }
+
+  test.each(['delayed repair', 'failed repair'])(
+    'during a %s, the entry is refused with copy that says why; repair then finishes and ordinary sign-out completes',
+    async (scenario) => {
+      const { own } = await signedInPhone();
+      const { db, holds } = realServer(own);
+      const app = await loadApp();
+      await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+
+      // 'delayed repair': the repairing sync's read of the pending record is held open, so the
+      // parent's tap lands while it is in flight. 'failed repair': localStorage fails for the
+      // clear and again for the first repair, which backs off; the tap lands before the retry.
+      const pendingWipe = app.store.pendingWipe.bind(app.store);
+      let release = () => {};
+      let reached = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      const arrived = new Promise<void>((r) => (reached = r));
+      let hold = scenario === 'delayed repair';
+      app.store.pendingWipe = async (household) => {
+        const wipe = await pendingWipe(household);
+        if (wipe && hold) {
+          hold = false;
+          reached();
+          await gate;
+        }
+        return wipe;
+      };
+      const remove = localStorage.removeItem.bind(localStorage);
+      let failures = scenario === 'failed repair' ? 2 : 1;
+      vi.spyOn(localStorage, 'removeItem').mockImplementation((key) => {
+        if (key === 'bht.baby' && failures > 0) {
+          failures--;
+          throw new Error('transient storage failure');
+        }
+        remove(key);
+      });
+      await expect(app.clearData()).rejects.toMatchObject({
+        name: 'ClearFailed',
+        outcome: 'local',
+      });
+      expect(app.wipePending).toBe(true);
+      if (scenario === 'delayed repair') await arrived;
+      else await vi.waitFor(() => expect(app.syncError).toContain('could not finish dropping'));
+
+      // The erased baby is still on screen. Logging for it is refused before anything is saved,
+      // and the banner says what happened and what comes next.
+      expect(app.baby).toEqual(own);
+      const refused = await app.log('diaper', { kind: 'wet' }, 'Wet logged').catch((e) => e);
+      // By name: resetModules gives the app its own copy of store.ts.
+      expect(refused).toMatchObject({ name: 'WipePending' });
+      app.fail(refused);
+      expect(app.saveError?.text).toMatch(/^Not saved: the household’s data was cleared/);
+      expect(app.toast).toBeNull();
+      expect(await app.store.db.getAll('versions')).toEqual([]);
+
+      // Repair finishes: nothing to delete, nothing refused, the baby gone from the screen.
+      release();
+      await vi.waitFor(() => expect(app.syncStatus).toBe('idle'), { timeout: 4_000 });
+      await vi.waitFor(() => expect(app.baby).toBeNull());
+      expect(app.wipePending).toBe(false);
+      expect(await app.store.pendingWipe(own.householdId)).toBeNull();
+      expect(await app.store.rejectedCount()).toBe(0);
+      expect(await app.store.db.getAll('versions')).toEqual([]);
+      app.saveError = null;
+
+      // A replacement baby logs and syncs as usual.
+      const next = baby(own.householdId, 'Replacement');
+      app.setBaby(next);
+      const entry = await app.log('diaper', { kind: 'wet' }, 'Wet logged');
+      await vi.waitFor(() => expect(holds(entry.event.id)).toBe(true));
+      await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+      expect(await app.store.rejectedCount()).toBe(0);
+
+      // After a reload too, ordinary sign-out (barrier and all) completes.
+      await app.dispose();
+      vi.resetModules();
+      const rebooted = await loadApp();
+      await vi.waitFor(() => expect(rebooted.syncStatus).toBe('idle'));
+      expect(rebooted.wipePending).toBe(false);
+      expect(rebooted.baby).toEqual(next);
+      await rebooted.signOut();
+      expect(rebooted.signOutBlocked).toBeNull();
+      expect(rebooted.account).toBeNull();
+      db.close();
+    },
+  );
 });

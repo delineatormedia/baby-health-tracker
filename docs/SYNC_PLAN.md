@@ -290,7 +290,12 @@ covered by `SCHEMA_VERSION` 3.
   the run goes round again, so a response from before a clear (held up while another
   tab cleared, say) cannot bring rows back. The transaction that drops the rows also
   records the wipe as pending until the stored baby is gone, so a phone that dies in
-  between finishes on its next start, a null marker (restored server) included. A phone
+  between finishes on its next start, a null marker (restored server) included. While
+  that record stands the store refuses every local write, in the write's own transaction
+  (#97): the erased baby is still on screen, an entry for it could never reach the
+  server, and finishing the wipe touches only localStorage and the record, so no accepted
+  entry is ever deleted behind the parent's back. The app says why until a sync finishes
+  the wipe, and the next sync runs that first. A phone
   left with no baby reads `GET /api/household` after each sync that settles and takes
   the household's next, or restored, baby without a new sign-in.
 

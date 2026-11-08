@@ -92,6 +92,20 @@ export class SigningOut extends Error {
   }
 }
 
+/**
+ * A local write refused because a wipe is still pending (#85, #97): the household's data was
+ * cleared and IndexedDB dropped its copy, but the localStorage side has not run yet, so the
+ * screens still show the erased baby. An entry logged now would belong to a baby the server no
+ * longer has and would sit refused on this phone for good, so it is refused up front, in the
+ * transaction that would add it. Writes resume once the wipe is finished (wipeDone).
+ */
+export class WipePending extends Error {
+  override name = 'WipePending';
+  constructor() {
+    super('This phone is still dropping the household’s cleared data');
+  }
+}
+
 /** The pending rows, write generation and clear marker read in one transaction, for a barrier. */
 export interface Snapshot {
   gen: number;
@@ -436,7 +450,7 @@ export class EventStore {
     const recordedAt = this.now().toISOString();
     let moved = 0;
     try {
-      await refuseWhileSigningOut(tx);
+      await refuseWhileStopped(tx);
       const ids = new Set((await store.index('byBaby').getAll(from)).map((r) => r.id));
       for (const id of ids) {
         const rows = await store.index('byId').getAll(id);
@@ -596,7 +610,7 @@ export class EventStore {
    */
   async #append(tx: WriteTx, candidate: unknown): Promise<BabyEvent> {
     try {
-      await refuseWhileSigningOut(tx);
+      await refuseWhileStopped(tx);
     } catch (e) {
       tx.abort();
       await tx.done.catch(() => {});
@@ -619,9 +633,19 @@ export class EventStore {
 
 type WriteTx = IDBPTransaction<BhtDB, ['versions', 'meta'], 'readwrite'>;
 
-/** Throws SigningOut if the flag is set; the caller aborts `tx`. */
-async function refuseWhileSigningOut(tx: WriteTx): Promise<void> {
-  if ((await tx.objectStore('meta').get(SIGNING_OUT_KEY)) !== undefined) throw new SigningOut();
+/**
+ * Throws SigningOut if the flag is set, or WipePending if any household's wipe is still to
+ * finish (#97); the caller aborts `tx`. Both are read in the write's own transaction, so a
+ * write that opened before the flag or the wipe record committed lands first, and every later
+ * one is refused. The wipe record is keyed by household, and a phone mid-wipe has no baby a
+ * write could rightly belong to, so any record refuses.
+ */
+async function refuseWhileStopped(tx: WriteTx): Promise<void> {
+  const meta = tx.objectStore('meta');
+  if ((await meta.get(SIGNING_OUT_KEY)) !== undefined) throw new SigningOut();
+  if ((await meta.count(IDBKeyRange.bound(wipeKey(''), wipeKey('\uffff')))) > 0) {
+    throw new WipePending();
+  }
 }
 
 async function bumpGen(tx: WriteTx): Promise<void> {

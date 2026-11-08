@@ -1,6 +1,6 @@
 import { newId, parseEvent, toMl, type BabyEvent } from '@bht/schema';
 import { describe, expect, test } from 'vitest';
-import { SigningOut } from '../data/store.ts';
+import { SigningOut, WipePending } from '../data/store.ts';
 import {
   ageDays,
   CAPTION_RADIUS,
@@ -520,6 +520,12 @@ describe('saveFailure', () => {
 
   test('a write refused during sign-out points to Settings', () => {
     expect(saveFailure(new SigningOut())).toMatch(/signs out\. Finish or cancel sign-out/);
+  });
+
+  test('a write refused while a wipe is pending says the data was cleared and what comes next (#97)', () => {
+    expect(saveFailure(new WipePending())).toMatch(
+      /^Not saved: the household’s data was cleared, and this phone is still dropping its copy\. It finishes on the next sync; then add a baby to log again\.$/,
+    );
   });
 });
 

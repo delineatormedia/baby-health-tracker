@@ -44,6 +44,10 @@ export function saveFailure(e: unknown): string {
   // store.ts SigningOut, by name so this module stays free of IndexedDB.
   if (name === 'SigningOut')
     return 'Not saved while this phone signs out. Finish or cancel sign-out in Settings.';
+  // store.ts WipePending (#97): the baby on screen was erased by a clear this phone has not
+  // finished dropping; an entry for it could never reach the server.
+  if (name === 'WipePending')
+    return 'Not saved: the household’s data was cleared, and this phone is still dropping its copy. It finishes on the next sync; then add a baby to log again.';
   return 'Not saved: this phone could not write to its storage.';
 }
 

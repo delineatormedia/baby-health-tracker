@@ -10,7 +10,7 @@ import {
 } from '../../../../server/src/db.ts';
 import { openDatabase, rowKey } from './db.ts';
 import { HttpError, isCleared, type BarrierRequest, type SyncTransport } from './protocol.ts';
-import { EventStore } from './store.ts';
+import { EventStore, WipePending } from './store.ts';
 import { failureReason, SyncClient } from './sync.ts';
 import { FakeServer, FakeTransport } from './testing/fake-server.ts';
 
@@ -78,12 +78,89 @@ describe('EventStore.clearAll', () => {
     expect(await store.clearMark(household)).toEqual({ clearId });
     expect(await store.db.get('versions', rowKey(kept.event, 1))).toBeUndefined();
 
+    // Writes are refused until the wipe's localStorage side is recorded done (#97).
+    await expect(store.log(babyId, 'diaper', { kind: 'wet' })).rejects.toBeInstanceOf(WipePending);
+    await store.wipeDone(household);
+
     // adoptClear records a marker and touches nothing else.
     const entry = await store.log(babyId, 'diaper', { kind: 'wet' });
     const next = newId();
     await store.adoptClear(household, next);
     expect(await store.clearMark(household)).toEqual({ clearId: next });
     expect(await store.pending(10)).toEqual([entry.event]);
+  });
+});
+
+describe('a pending wipe stops local writes (#97)', () => {
+  test('log, edit, undo and moveBaby are refused while the record stands; wipeDone resumes them and deletes nothing', async () => {
+    const store = await makeStore();
+    const clearId = newId();
+    await store.clearAll(household, clearId);
+    // A pull under the new marker lands while the wipe is pending: not a local write.
+    const pulled: BabyEvent = {
+      id: newId(),
+      babyId,
+      authorId: newId(),
+      occurredAt: '2026-10-29T02:00:00.000Z',
+      recordedAt: '2026-10-29T02:00:00.000Z',
+      version: 1,
+      deleted: false,
+      notes: null,
+      type: 'diaper',
+      data: { kind: 'wet' },
+    };
+    await store.applyPull(
+      { versions: [{ seq: 1, event: pulled }], next: 1, more: false, through: 1 },
+      household,
+      undefined,
+      { clearId },
+    );
+    expect(await store.events(babyId)).toEqual([pulled]);
+    const before = await store.snapshot(household);
+
+    await expect(store.log(babyId, 'diaper', { kind: 'wet' })).rejects.toBeInstanceOf(WipePending);
+    await expect(store.edit(pulled.id, { notes: 'x' })).rejects.toBeInstanceOf(WipePending);
+    await expect(store.remove(pulled.id)).rejects.toBeInstanceOf(WipePending);
+    await expect(store.moveBaby(babyId, newId())).rejects.toBeInstanceOf(WipePending);
+    expect(await store.snapshot(household)).toEqual(before);
+    expect(await store.pending(10)).toEqual([]);
+
+    // Finishing the wipe touches the record alone: the pulled row stays, and writes resume.
+    await store.wipeDone(household);
+    expect(await store.pendingWipe(household)).toBeNull();
+    expect(await store.events(babyId)).toEqual([pulled]);
+    const logged = await store.log(babyId, 'diaper', { kind: 'wet' });
+    expect((await store.snapshot(household)).gen).toBe(before.gen + 1);
+    expect(await store.pending(10)).toEqual([logged.event]);
+  });
+
+  test('another tab: a write that opened before the clear is wiped with the rest, one after is refused', async () => {
+    // Two tabs on one IndexedDB. B's write opens before A's clear, so IndexedDB commits it first
+    // and the clear drops it; C's opens after and sees the pending record.
+    const name = `test-${newId()}`;
+    const [a, b] = await Promise.all(
+      [0, 1].map(async () => new EventStore(await openDatabase(name), newId())),
+    );
+    const written = b!.log(babyId, 'diaper', { kind: 'wet' });
+    const cleared = a!.clearAll(household, newId());
+    const refused = b!.log(babyId, 'bottle', { contents: 'formula', volumeMl: 60 });
+    await written;
+    await cleared;
+    await expect(refused).rejects.toBeInstanceOf(WipePending);
+    expect(await rows(a!)).toEqual([]);
+  });
+
+  test('the SyncClient’s own onCleared has no localStorage side to finish, so writes resume at once', async () => {
+    const server = new FakeServer();
+    const { store, sync } = fakePhone(server, await makeStore());
+    await store.log(babyId, 'diaper', { kind: 'wet' });
+    await sync.sync();
+    const clearId = server.clear();
+    await sync.sync();
+    expect(await store.clearMark(household)).toEqual({ clearId });
+    expect(await rows(store)).toEqual([]);
+    expect(await store.pendingWipe(household)).toBeNull();
+    await expect(store.log(babyId, 'diaper', { kind: 'wet' })).resolves.toBeDefined();
   });
 });
 
