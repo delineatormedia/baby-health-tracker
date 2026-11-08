@@ -327,6 +327,146 @@ describe('Settings → Clear all data', () => {
     expect(app.clearNotice?.clearId).toBe(clearId);
     await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
   });
+
+  test('a copy this phone could not finish dropping is finished by the next sync, before it sends or pulls anything', async () => {
+    const { own, entry } = await signedInPhone();
+    const clearId = newId();
+    let cleared = false;
+    serve(async (url) => {
+      if (url === '/api/household/clear') {
+        cleared = true;
+        return json({ clearId, clearedAt: new Date().toISOString() });
+      }
+      if (url === '/api/babies') return json(own);
+      if (url === '/api/household')
+        return json({ id: own.householdId, members: [], babies: [], clearId });
+      if (url === '/api/sync') {
+        return json({
+          results: [{ id: entry.id, version: 1, seq: 1, status: 'accepted' }],
+          serverNow: Date.now(),
+        });
+      }
+      if (url.startsWith('/api/sync?')) return json(emptyPull(cleared ? clearId : null, 1));
+      return json({ watermark: Date.now(), serverNow: Date.now() });
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+    const before = requests.length;
+
+    // IndexedDB drops its rows; removing the stored baby fails once.
+    const remove = localStorage.removeItem.bind(localStorage);
+    let failOnce = true;
+    vi.spyOn(localStorage, 'removeItem').mockImplementation((key) => {
+      if (key === 'bht.baby' && failOnce) {
+        failOnce = false;
+        throw new Error('one transient storage failure');
+      }
+      remove(key);
+    });
+    await expect(app.clearData()).rejects.toMatchObject({ name: 'ClearFailed', outcome: 'local' });
+    expect(await app.store.db.getAll('versions')).toEqual([]);
+    expect(await app.store.clearMark(own.householdId)).toEqual({ clearId });
+
+    // The sync the clear started finishes the localStorage side first: the baby and its setup
+    // time are gone, the notice is up, and the pending record is retired.
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+    expect(app.baby).toBeNull();
+    expect(kv.has('bht.baby')).toBe(false);
+    expect(kv.has('bht.setupAt')).toBe(false);
+    expect(app.clearNotice?.clearId).toBe(clearId);
+    expect(await app.store.pendingWipe(own.householdId)).toBeNull();
+    // Nothing went up or came down before the cleanup was done: the erased baby was not added
+    // again, and every sync request since the clear carries the new marker.
+    const since = requests.slice(before).filter((r) => r.url.startsWith('/api/sync'));
+    expect(since.length).toBeGreaterThan(0);
+    for (const r of since) {
+      const sent = r.url.startsWith('/api/sync?')
+        ? markerIn(r.url)
+        : ((r.body as { clearId?: string | null })?.clearId ?? null);
+      expect(sent).toBe(clearId);
+    }
+    expect(requests.slice(before).filter((r) => r.url === '/api/babies')).toEqual([]);
+  });
+});
+
+describe('a clear in another tab while this tab is mid-sync', () => {
+  test('a batch read before the clear cannot bring the baby or its entries back under the new marker', async () => {
+    const own = baby();
+    kv.set('bht.baby', JSON.stringify(own));
+    kv.set('bht.setupAt', String(Date.parse('2026-10-02T00:00:00.000Z')));
+    kv.set('bht.account', JSON.stringify({ householdId: own.householdId, memberId: newId() }));
+    const seed = new EventStore(await openDatabase(), newId());
+    await seed.adoptClear(own.householdId, null);
+    // The household as the server holds it: its marker, babies and log.
+    let marker: string | null = null;
+    const babies = new Set([own.id]);
+    const log: string[] = [];
+    serve(async (url, init) => {
+      const sent = url.startsWith('/api/sync?') ? markerIn(url) : (bodyOf(init).clearId ?? null);
+      if (url === '/api/household')
+        return json({ id: own.householdId, members: [], babies: [], clearId: marker });
+      if (url === '/api/babies' || url.startsWith('/api/sync')) {
+        if (sent !== marker) return refusal(marker);
+      }
+      if (url === '/api/babies') {
+        babies.add((bodyOf(init) as { id: string }).id);
+        return json({ ...bodyOf(init), householdId: own.householdId });
+      }
+      if (url === '/api/sync') {
+        const events = (bodyOf(init) as { events: { id: string; version: number }[] }).events;
+        log.push(...events.map((e) => e.id));
+        return json({
+          results: events.map((e, i) => ({
+            ...e,
+            seq: log.length - events.length + i + 1,
+            status: 'accepted',
+          })),
+          serverNow: Date.now(),
+        });
+      }
+      if (url.startsWith('/api/sync?')) return json(emptyPull(marker, log.length));
+      return json({ watermark: Date.now(), serverNow: Date.now() });
+    });
+    const app = await loadApp();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+
+    // The next run pauses right after reading its batch and marker, as a slow tab would.
+    let release!: () => void;
+    let reached!: () => void;
+    const arrived = new Promise<void>((r) => (reached = r));
+    const gate = new Promise<void>((r) => (release = r));
+    const snapshot = app.store.snapshot.bind(app.store);
+    let first = true;
+    app.store.snapshot = async (...args) => {
+      const read = await snapshot(...args);
+      if (first) {
+        first = false;
+        reached();
+        await gate;
+      }
+      return read;
+    };
+    const erased = (await app.store.log(own.id, 'diaper', { kind: 'wet' })).event;
+    await arrived;
+    // The other tab clears the household: the server, then this origin's shared IndexedDB.
+    // Its broadcast has not reached this tab when the run resumes.
+    marker = newId();
+    babies.clear();
+    log.length = 0;
+    await app.store.clearAll(own.householdId, marker);
+    release();
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+
+    expect([...babies], 'the erased baby must not be added back').toEqual([]);
+    expect(log, 'the erased entry must not go up under the new marker').not.toContain(erased.id);
+    expect(log).toEqual([]);
+    expect(await app.store.db.getAll('versions'), 'nothing comes back to IndexedDB').toEqual([]);
+    expect(await app.store.clearMark(own.householdId)).toEqual({ clearId: marker });
+    // The pending record the other tab's clear left is finished by this tab's run.
+    expect(app.baby).toBeNull();
+    expect(kv.has('bht.baby')).toBe(false);
+    expect(await app.store.pendingWipe(own.householdId)).toBeNull();
+  });
 });
 
 describe('at startup', () => {

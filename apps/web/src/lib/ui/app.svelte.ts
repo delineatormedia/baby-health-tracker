@@ -707,17 +707,19 @@ class AppState {
   }
 
   /**
-   * At startup: the localStorage side of a wipe whose IndexedDB side committed (see #wipe),
-   * null marker included: a server restored to before its first clear is a wipe too, and a
-   * marker adopted at first placement leaves no pending record, so it is told apart.
+   * At startup and first in every sync run: the localStorage side of a wipe whose IndexedDB
+   * side committed (see #wipe), null marker included: a server restored to before its first
+   * clear is a wipe too, and a marker adopted at first placement leaves no pending record, so
+   * it is told apart. Resolves to whether there was one to finish.
    */
-  async #repairClear(): Promise<void> {
+  async #repairClear(): Promise<boolean> {
     const household = this.account?.householdId;
-    if (!household) return;
+    if (!household) return false;
     const wipe = await this.store.pendingWipe(household);
-    if (!wipe) return;
+    if (!wipe) return false;
     wipeLocal(this.#storage, household, wipe.clearId, wipe.at);
     await this.store.wipeDone(household);
+    return true;
   }
 
   /** Captures the account epoch; the returned check is false once a transition has begun. */
@@ -855,12 +857,21 @@ class AppState {
         const wall = Date.now();
         this.#lateTracker()?.record(this.syncedSpans(wall, performance.now()), wall);
       },
+      // The add carries the marker its batch was read under (#85); see babyPreparer.
       prepare: babyPreparer(
-        async (b) =>
-          this.#api.addBaby(b, (await this.store.clearMark(household))?.clearId ?? undefined),
+        (b, clearId) => this.#api.addBaby(b, clearId),
         this.#knownBabies,
         () => this.baby,
       ),
+      // A clear whose localStorage side failed (#85) is finished before anything is sent or
+      // pulled, so "the next sync" finishes it as Settings promised; a failure here backs off.
+      repair: async () => {
+        if (this.#sync !== sync) return;
+        if (await this.#repairClear()) {
+          this.#afterWipe();
+          this.#broadcast('cleared');
+        }
+      },
       onRejected: (refused) =>
         this.#showToast({
           text: `The server refused ${refused.length === 1 ? 'an entry' : `${refused.length} entries`}. See Settings.`,

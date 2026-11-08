@@ -67,6 +67,27 @@ describe('babyPreparer', () => {
     expect(calls).toBe(0);
   });
 
+  test('the add carries the marker the batch was read under, never one read later (#85)', async () => {
+    const sent: unknown[] = [];
+    const prepare = babyPreparer(
+      async (_b, clearId) => sent.push(clearId),
+      new Set(),
+      () => ada,
+    );
+    await prepare([entry(ada.id)], { clearId: 'marker-1' });
+    await babyPreparer(
+      async (_b, clearId) => sent.push(clearId),
+      new Set(),
+      () => ada,
+    )([entry(ada.id)], { clearId: null });
+    await babyPreparer(
+      async (_b, clearId) => sent.push(clearId),
+      new Set(),
+      () => ada,
+    )([entry(ada.id)]);
+    expect(sent).toEqual(['marker-1', undefined, undefined]);
+  });
+
   test('a failed add throws, so the push waits and nothing is marked known', async () => {
     const known = new Set<string>();
     const prepare = babyPreparer(

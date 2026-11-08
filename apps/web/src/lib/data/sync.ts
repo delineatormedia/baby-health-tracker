@@ -5,7 +5,7 @@ import {
   type ClearId,
   type HouseholdDevice,
 } from '@bht/schema';
-import { MarkerMoved, type EventStore } from './store.ts';
+import { MarkerMoved, type EventStore, type SentMark } from './store.ts';
 import {
   HttpError,
   isCleared,
@@ -32,9 +32,11 @@ export interface SyncOptions {
   onRejected?: (results: PushResult[]) => void;
   /**
    * Runs before each push with the batch about to go up, e.g. to add a baby the server does
-   * not have yet. A throw fails the run like a failed push: nothing is sent, and it retries.
+   * not have yet, and the clear marker the batch was read under (#85): a request the hook makes
+   * carries that marker, not one read later, so a clear that lands in between is refused with
+   * the push. A throw fails the run like a failed push: nothing is sent, and it retries.
    */
-  prepare?: (batch: BabyEvent[]) => Promise<void>;
+  prepare?: (batch: BabyEvent[], under: SentMark) => Promise<void>;
   /** The household this client syncs; its pull cursor is kept under this id. */
   household?: string;
   /**
@@ -51,6 +53,12 @@ export interface SyncOptions {
    * adds its localStorage side and screens.
    */
   onCleared?: (clearId: ClearId) => Promise<void>;
+  /**
+   * Runs first in every run, before any request or store write: finishes what an earlier clear
+   * left undone on this phone (#85), e.g. its localStorage side. A throw fails the run, which
+   * backs off and retries, so nothing is uploaded or pulled over an unfinished clear.
+   */
+  repair?: () => Promise<void>;
 }
 
 /** Thrown inside a run that stop() has fenced off; the run ends without touching anything. */
@@ -88,8 +96,10 @@ export class SyncClient {
    * instead of clearing again and again.
    */
   #clearedTo: ClearId | undefined;
-  readonly #opts: Required<Omit<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt' | 'onCleared'>> &
-    Pick<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt' | 'onCleared'>;
+  readonly #opts: Required<
+    Omit<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt' | 'onCleared' | 'repair'>
+  > &
+    Pick<SyncOptions, 'onRejected' | 'prepare' | 'onAdopt' | 'onCleared' | 'repair'>;
 
   constructor(
     readonly store: EventStore,
@@ -211,6 +221,7 @@ export class SyncClient {
     let moved = 0;
     for (;;) {
       try {
+        await this.#repair(epoch);
         await this.#push(epoch);
         await this.#pull(epoch);
         await this.#barrier(epoch);
@@ -258,6 +269,17 @@ export class SyncClient {
     }
   }
 
+  /** Finishes what an earlier clear left undone (#85) before the run sends or writes anything. */
+  async #repair(epoch: number) {
+    if (!this.#opts.repair) return;
+    try {
+      await this.#opts.repair();
+    } catch (e) {
+      throw new RepairFailed({ cause: e });
+    }
+    this.#fence(epoch);
+  }
+
   /** Records a failed run and schedules the retry. */
   #fail(err: unknown) {
     this.#failures += 1;
@@ -271,21 +293,26 @@ export class SyncClient {
    * bytes. A 413 halves the batch for the rest of this run. A version too large to send on its
    * own (over maxPushBytes, or over pushByteBudget and answered 413) is refused on this phone
    * (`too_large`), kept and counted like a server refusal, so the rest of the backlog drains.
+   *
+   * Each batch is read with the household's clear marker in one transaction (#85), and that
+   * marker goes with the batch through prepare, the push and the write that lands its results.
+   * So a clear that commits in another tab after the read cannot lend the batch its new
+   * marker: the push carries the old one and is refused, and the cleared rows stay gone.
    */
   async #push(epoch: number) {
     let cap = MAX_PUSH_BATCH;
     for (;;) {
-      const pending = await this.store.pending(MAX_PUSH_BATCH);
+      const snapshot = await this.store.snapshot(this.#opts.household);
       this.#fence(epoch);
+      const pending = snapshot.pending.slice(0, MAX_PUSH_BATCH);
       if (pending.length === 0) return;
+      const under = snapshot.under;
       const batch = takeBatch(pending, cap, this.#opts.pushByteBudget);
       if (pushBytes(batch.slice(0, 1)) > this.#opts.maxPushBytes) {
         await this.#refuseLocally(batch[0]!);
         continue;
       }
-      await this.#opts.prepare?.(batch);
-      this.#fence(epoch);
-      const under = await this.store.clearMark(this.#opts.household);
+      await this.#opts.prepare?.(batch, under);
       this.#fence(epoch);
       let response: PushResponse;
       try {
@@ -429,7 +456,13 @@ export class SyncClient {
 
 /** A failed run's reason as Settings shows it. */
 export function failureReason(err: unknown): string {
-  if (err instanceof SeededRefusal || err instanceof MalformedDevices) return err.message;
+  if (
+    err instanceof SeededRefusal ||
+    err instanceof MalformedDevices ||
+    err instanceof RepairFailed
+  ) {
+    return err.message;
+  }
   if (!(err instanceof HttpError)) return 'No connection to the server';
   if (err.status === 413) return 'Server rejected upload size';
   if (isCleared(err))
@@ -466,6 +499,17 @@ export function takeBatch(pending: BabyEvent[], cap: number, budget: number): Ba
     n += 1;
   }
   return pending.slice(0, n);
+}
+
+/**
+ * The repair hook failed (#85): this phone still could not finish dropping its copy of the
+ * cleared data. The run fails before any request, and the retry tries the cleanup again.
+ */
+export class RepairFailed extends Error {
+  override name = 'RepairFailed';
+  constructor(options?: ErrorOptions) {
+    super('This phone could not finish dropping its copy of the cleared data', options);
+  }
 }
 
 /**

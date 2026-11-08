@@ -1,4 +1,5 @@
-import type { Baby, BabyEvent, HouseholdView } from '@bht/schema';
+import type { Baby, BabyEvent, ClearMarker, HouseholdView } from '@bht/schema';
+import type { SentMark } from '../data/store.ts';
 
 /**
  * Where this phone's baby stands after a sign-in (#5 step 3):
@@ -24,17 +25,19 @@ export function placeBaby(local: Baby | null, household: HouseholdView): Placeme
 /**
  * SyncClient's prepare hook: before a push carries entries for this phone's baby, makes sure
  * the server has that baby, or they come back "Unknown baby". `known` holds the household's
- * baby ids from sign-in; one POST adds a missing baby (the same id again is a safe retry).
+ * baby ids from sign-in; one POST adds a missing baby (the same id again is a safe retry). The
+ * add carries the clear marker the batch was read under (#85), never one read afresh: if the
+ * household was cleared since, the server refuses the add, and the cleared baby stays gone.
  */
 export function babyPreparer(
-  addBaby: (baby: Baby) => Promise<unknown>,
+  addBaby: (baby: Baby, clearId: ClearMarker) => Promise<unknown>,
   known: Set<string>,
   current: () => Baby | null,
-): (batch: BabyEvent[]) => Promise<void> {
-  return async (batch) => {
+): (batch: BabyEvent[], under?: SentMark) => Promise<void> {
+  return async (batch, under = null) => {
     const baby = current();
     if (!baby || known.has(baby.id) || !batch.some((e) => e.babyId === baby.id)) return;
-    await addBaby(baby);
+    await addBaby(baby, under?.clearId ?? undefined);
     known.add(baby.id);
   };
 }

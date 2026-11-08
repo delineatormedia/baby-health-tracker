@@ -215,6 +215,48 @@ describe('a response from before a clear in another tab', () => {
     expect(transport.barriersSent.at(-1)?.clearId).toBe(clearId);
   });
 
+  test('a batch read before the clear is sent under the marker it was read with, and refused', async () => {
+    const server = new FakeServer();
+    const store = await makeStore();
+    await store.adoptClear(household, null);
+    const { transport, sync } = fakePhone(server, store);
+    const erased = (await store.log(babyId, 'diaper', { kind: 'wet' })).event;
+    // The run pauses right after reading its batch and marker, as a slow tab would.
+    let release!: () => void;
+    let reached!: () => void;
+    const arrived = new Promise<void>((r) => (reached = r));
+    const gate = new Promise<void>((r) => (release = r));
+    const snapshot = store.snapshot.bind(store);
+    let first = true;
+    store.snapshot = async (...args) => {
+      const read = await snapshot(...args);
+      if (first) {
+        first = false;
+        reached();
+        await gate;
+      }
+      return read;
+    };
+    const running = sync.sync();
+    await arrived;
+    // The other tab clears the server, then the shared store, before this tab has sent anything.
+    const clearId = server.clear();
+    await store.clearAll(household, clearId);
+    expect(await rows(store)).toEqual([]);
+    release();
+    await running;
+    expect(sync.status).toBe('idle');
+    // The push carried the marker its batch was read under, so the server refused it: the
+    // erased entry never went up under the new marker, and nothing came back.
+    expect(transport.markers[0]).toBeNull();
+    expect(transport.pushed).toEqual([]);
+    expect(server.log).toEqual([]);
+    expect(server.current(erased.id)).toBeUndefined();
+    expect(await rows(store)).toEqual([]);
+    expect(await store.clearMark(household)).toEqual({ clearId });
+    expect(transport.markers.at(-1)).toBe(clearId);
+  });
+
   test('a delayed push answer cannot store the pushed version as synced', async () => {
     const server = new FakeServer();
     const store = await makeStore();

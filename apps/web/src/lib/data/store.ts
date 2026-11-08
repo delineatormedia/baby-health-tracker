@@ -220,6 +220,8 @@ export class EventStore {
    * read in one transaction. A write that commits after it has a higher gen, so a barrier for
    * this snapshot never claims it; a clear that commits after it changes the marker, so a
    * barrier carrying this snapshot's is refused rather than vouching for rows that are gone.
+   * Pushes read their batches the same way (#85): a batch and the marker it goes up under
+   * come from one read, so a clear between them cannot send cleared rows under its new marker.
    */
   async snapshot(household = ''): Promise<Snapshot> {
     const tx = this.db.transaction(['versions', 'meta']);
