@@ -222,6 +222,30 @@ describe('a baby is held under the household’s marker (#95)', () => {
     ).resolves.toBeDefined();
   });
 
+  test('a baby marked under no clear record (a phone from before #85) writes until a clear, and the first pull adopting null changes nothing', async () => {
+    const store = await makeStore();
+    // Startup on an upgrading phone: the record as read, which is none, so the mark is null.
+    expect(await store.takeBaby(babyId, household, await store.clearMark(household))).toEqual({
+      household,
+      clearId: null,
+    });
+    await expect(store.log(babyId, 'diaper', { kind: 'wet' })).resolves.toBeDefined();
+    // The first page adopts the server's marker, null for a household never cleared.
+    await store.applyPull(
+      { versions: [], next: 0, more: false, through: 0, clearId: null },
+      household,
+      undefined,
+      null,
+    );
+    expect(await store.clearMark(household)).toEqual({ clearId: null });
+    await expect(store.log(babyId, 'diaper', { kind: 'wet' })).resolves.toBeDefined();
+    // Another tab clears and retires its wipe record: the mark is what refuses the write.
+    await store.clearAll(household, newId());
+    await store.wipeDone(household);
+    await expect(store.log(babyId, 'diaper', { kind: 'wet' })).rejects.toBeInstanceOf(BabyCleared);
+    expect(await store.pending(10)).toEqual([]);
+  });
+
   test('taking a baby under a marker the household no longer holds records nothing; a new baby takes whatever is current', async () => {
     const store = await makeStore();
     const m0 = newId();

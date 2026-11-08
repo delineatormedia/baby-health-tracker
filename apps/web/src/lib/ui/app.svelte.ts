@@ -411,7 +411,12 @@ class AppState {
       throw e;
     }
     if (!current()) return;
-    // Held under the marker since place(); the move was fenced by that mark.
+    // The household baby is this phone's from here: stored, with a fresh setup time, so a reload
+    // shows it and not the old baby. Held under the marker since place(), and the move was
+    // fenced by that mark; a clear landing after the commit is caught at the next write or
+    // start (#readBaby drops a baby marked behind the household's marker).
+    saveBaby(this.#storage, to);
+    this.setupAt = markSetup(this.#storage, Date.now());
     this.#show(to);
     saveJoining(this.#storage, null);
     this.joining = null;
@@ -789,17 +794,21 @@ class AppState {
    *
    * So once this returns, either the baby shown has a mark the store checks on every write,
    * or there is no baby. A wipe that cannot be finished (localStorage failing) leaves the baby
-   * as read, with `wipePending` set and every write refused.
+   * as read, with `wipePending` set and every write refused. Wipes and stale marks are retried
+   * a few times, then the baby is read as it stands (a wipe still pending, so still refused); a
+   * marker that moves under the take is simply read again, since it settles as soon as the
+   * clears in other tabs stop, and the baby is never shown unmarked over it.
    */
   async #readBaby(): Promise<void> {
     const kv = this.#storage;
     const household = this.account?.householdId;
     let settled = false;
-    for (let attempt = 0; ; attempt++) {
+    for (let attempt = 0; ; ) {
       settled ||= attempt >= 3;
       if (!settled && (await this.store.pendingWipes()).length > 0) {
         try {
           await this.#repairClear();
+          attempt++;
           continue;
         } catch (e) {
           // localStorage is failing: the baby is read as it stands, with wipePending set and
@@ -808,17 +817,22 @@ class AppState {
           settled = true;
         }
       }
-      const held = household ? ((await this.store.clearMark(household))?.clearId ?? null) : null;
+      // The marker as recorded, or null for a phone that has none yet (one from before #85,
+      // whose first sync is still to adopt the server's): the mark below is checked against
+      // the record itself, so an absent one is matched, not taken for a moved marker.
+      const record = household ? await this.store.clearMark(household) : null;
+      const held = record?.clearId ?? null;
       const baby = loadBaby(kv);
       if (baby && household && !settled) {
         const mark = await this.store.babyMark(baby.id);
         if (mark && mark.household === household && mark.clearId !== held) {
           wipeLocal(kv, household, held, wipeAt(held));
+          attempt++;
           continue;
         }
         if (!mark || mark.household !== household) {
           try {
-            await this.store.takeBaby(baby.id, household, { clearId: held });
+            await this.store.takeBaby(baby.id, household, record);
           } catch (e) {
             if (e instanceof Error && e.name === 'MarkerMoved') continue;
             throw e;

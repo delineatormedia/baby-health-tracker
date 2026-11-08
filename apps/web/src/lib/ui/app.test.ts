@@ -540,6 +540,52 @@ describe('placement goes by stored rows', () => {
     expect(pushed[0]).toMatchObject({ babyId: target.id, deleted: true });
     expect(app.events).toEqual([]);
   });
+
+  test.each([
+    ['moving the entries in', true],
+    ['keeping them on this phone', false],
+  ])('the choice is kept across a reload: %s', async (_, move) => {
+    const old = baby();
+    const target = baby();
+    kv.set('bht.baby', JSON.stringify(old));
+    const store = new EventStore(await openDatabase(), newId());
+    await store.log(old.id, 'diaper', { kind: 'wet' });
+    serve(async (url, init) => {
+      if (url === '/api/household')
+        return json({ id: target.householdId, members: [], babies: [target] });
+      if (url === '/api/sync') {
+        const { events } = JSON.parse(init!.body as string) as { events: BabyEvent[] };
+        return json({
+          results: events.map((e, i) => ({
+            id: e.id,
+            version: e.version,
+            status: 'accepted',
+            seq: i + 1,
+          })),
+        });
+      }
+      return json(emptyPull());
+    });
+    const app = await loadApp();
+    await app.signIn(signedIn(target.householdId));
+    expect(app.joining).toEqual(target);
+    const before = Date.now();
+
+    await app.settleJoin(move);
+    // The household baby is this phone's now, stored with a fresh setup time (a #95 regression
+    // left it in memory only, so a reload brought the old baby back and the choice with it).
+    expect(app.baby).toEqual(target);
+    expect(JSON.parse(kv.get('bht.baby')!)).toEqual(target);
+    expect(app.setupAt).toBeGreaterThanOrEqual(before);
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+
+    await app.dispose();
+    vi.resetModules();
+    const rebooted = await loadApp();
+    expect(rebooted.baby).toEqual(target);
+    expect(rebooted.joining).toBeNull();
+    expect(rebooted.setupAt).toBe(app.setupAt);
+  });
 });
 
 describe('a seeded dev browser stays off real servers', () => {

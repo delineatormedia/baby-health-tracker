@@ -100,14 +100,18 @@ async function loadApp() {
   return app;
 }
 
-/** A signed-in phone with its baby, a setup time and one entry that has not synced. */
+/**
+ * A signed-in phone with its baby, a setup time and one entry that has not synced. As on the
+ * release before #85: no clear record and no baby mark; the first sync adopts the server's
+ * marker, and startup marks the baby (#95). Tests about a phone already holding a marker seed
+ * it with adoptClear.
+ */
 async function signedInPhone(own = baby()) {
   kv.set('bht.baby', JSON.stringify(own));
   kv.set('bht.setupAt', String(Date.parse('2026-10-02T00:00:00.000Z')));
   kv.set('bht.account', JSON.stringify({ householdId: own.householdId, memberId: newId() }));
   kv.set(`bht.late.${own.householdId}`, '[]');
   const store = new EventStore(await openDatabase(), newId());
-  await store.adoptClear(own.householdId, null);
   const entry = await store.log(own.id, 'diaper', { kind: 'wet' });
   return { own, entry: entry.event };
 }
@@ -969,46 +973,56 @@ describe('recovery boundaries after a clear (#95)', () => {
     },
   );
 
-  test('a stale tab cannot log an orphan after another tab finished the clear: the store refuses it, broadcast or none', async () => {
-    const { own } = await signedInPhone();
-    const { db, clearOnServer } = realServer(own);
-    const app = await loadApp();
-    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
-    // This phone is from before #95 (signedInPhone stores no mark): startup marked its baby
-    // under the marker it holds, so the fence covers an upgraded phone too.
-    expect(await app.store.babyMark(own.id)).toEqual({
-      household: own.householdId,
-      clearId: null,
-    });
+  test.each([
+    ['a phone from before #85, with no clear record at all', false],
+    ['a phone holding the household’s marker but no baby mark', true],
+  ])(
+    'a stale tab cannot log an orphan after another tab finished the clear: the store refuses it, broadcast or none (%s)',
+    async (_, recorded) => {
+      const { own } = await signedInPhone();
+      // Neither phone has a baby mark (signedInPhone stores none, as no phone did before #95).
+      // Every phone on the release before this one has no clear record either: its first sync
+      // is still to adopt the server's marker. Startup marks the baby under what it holds, an
+      // absent record included, so the fence covers both from their first start after upgrading.
+      if (recorded)
+        await new EventStore(await openDatabase(), newId()).adoptClear(own.householdId, null);
+      const { db, clearOnServer } = realServer(own);
+      const app = await loadApp();
+      await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
+      expect(await app.store.babyMark(own.id)).toEqual({
+        household: own.householdId,
+        clearId: null,
+      });
 
-    const clearId = await clearOnServer();
-    await tabWipes(own.householdId, clearId);
+      const clearId = await clearOnServer();
+      await tabWipes(own.householdId, clearId);
 
-    // This tab still shows the erased baby. Its write is refused before anything is saved; the
-    // banner says why; the screens re-read, and the baby is gone with the notice up.
-    expect(app.baby).toEqual(own);
-    const refused = await app.log('diaper', { kind: 'wet' }, 'Wet logged').catch((e) => e);
-    expect(refused).toMatchObject({ name: 'BabyCleared' });
-    expect(await app.store.db.getAll('versions')).toEqual([]);
-    app.fail(refused);
-    expect(app.saveError?.text).toMatch(
-      /^Not saved: the household’s data was cleared, and this baby went with it/,
-    );
-    await vi.waitFor(() => expect(app.baby).toBeNull());
-    expect(app.clearNotice).toMatchObject({ clearId });
-    expect(await app.store.rejectedCount()).toBe(0);
+      // This tab still shows the erased baby. Its write is refused before anything is saved; the
+      // banner says why; the screens re-read, and the baby is gone with the notice up.
+      expect(app.baby).toEqual(own);
+      const refused = await app.log('diaper', { kind: 'wet' }, 'Wet logged').catch((e) => e);
+      expect(refused).toMatchObject({ name: 'BabyCleared' });
+      expect(await app.store.db.getAll('versions')).toEqual([]);
+      app.fail(refused);
+      expect(app.saveError?.text).toMatch(
+        /^Not saved: the household’s data was cleared, and this baby went with it/,
+      );
+      await vi.waitFor(() => expect(app.baby).toBeNull());
+      expect(app.clearNotice).toMatchObject({ clearId });
+      expect(await app.store.rejectedCount()).toBe(0);
 
-    // After a reload, ordinary sign-out (barrier and all) completes: nothing refused is left.
-    await app.dispose();
-    vi.resetModules();
-    const refreshed = await loadApp();
-    await vi.waitFor(() => expect(refreshed.syncStatus).toBe('idle'));
-    expect(refreshed.baby).toBeNull();
-    await refreshed.signOut();
-    expect(refreshed.signOutBlocked).toBeNull();
-    expect(refreshed.account).toBeNull();
-    db.close();
-  });
+      // After a reload, ordinary sign-out (barrier and all) completes: nothing refused is left.
+      await app.dispose();
+      vi.resetModules();
+      const refreshed = await loadApp();
+      await vi.waitFor(() => expect(refreshed.syncStatus).toBe('idle'));
+      expect(refreshed.baby).toBeNull();
+      await refreshed.signOut();
+      expect(refreshed.signOutBlocked).toBeNull();
+      expect(refreshed.account).toBeNull();
+      db.close();
+    },
+  );
 
   test('a baby adopted from a household view read before a clear is not kept: the marker moved under it', async () => {
     const hh = newId();
@@ -1103,6 +1117,7 @@ describe('recovery boundaries after a clear (#95)', () => {
     const left = newId();
     const { own } = await signedInPhone();
     const store = new EventStore(await openDatabase(), newId());
+    await store.adoptClear(own.householdId, null);
     await store.takeBaby(own.id, own.householdId, { clearId: null });
     kv.set(`bht.late.${left}`, '[]');
     const wipe = await store.clearAll(left, newId());

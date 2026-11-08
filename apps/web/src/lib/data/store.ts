@@ -428,8 +428,10 @@ export class EventStore {
    * every local write for the baby is refused once the marker moves. Given the marker the
    * baby was read `under` (the household view it came from), writes nothing and throws
    * MarkerMoved if the household's marker has changed since: the baby is from before a clear,
-   * and holding it would leave an erased baby on screen. Left undefined, for a baby added on
-   * this phone, the baby takes whatever generation is current: it is new under any.
+   * and holding it would leave an erased baby on screen. Null, for a phone with no record yet,
+   * matches an absent one and marks the baby under null (see refuseWhileStopped). Left
+   * undefined, for a baby added on this phone, the baby takes whatever generation is current:
+   * it is new under any.
    */
   async takeBaby(babyId: string, household: string, under?: SentMark): Promise<BabyMark> {
     const tx = this.db.transaction('meta', 'readwrite');
@@ -717,7 +719,11 @@ async function refuseWhileStopped(tx: WriteTx, babyId: string): Promise<void> {
   const mark = (await meta.get(babyKey(babyId))) as BabyMark | undefined;
   if (!mark) return;
   const held = (await meta.get(clearKey(mark.household))) as ClearMark | undefined;
-  if (!sameMark(held, mark)) throw new BabyCleared();
+  // A phone with no clear record yet (one from before #85 whose first sync is still to adopt
+  // the server's marker) holds the null generation: the server treats a request without a
+  // marker as sent under null, so null is the only marker its first page can bring, and the
+  // one its baby was marked under at startup. An absent record is not a moved marker here.
+  if ((held?.clearId ?? null) !== mark.clearId) throw new BabyCleared();
 }
 
 async function bumpGen(tx: WriteTx): Promise<void> {

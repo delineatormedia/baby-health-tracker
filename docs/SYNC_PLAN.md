@@ -304,7 +304,10 @@ covered by `SCHEMA_VERSION` 3.
   current marker in the write's own transaction. A write for a baby from before a clear
   is refused with `BabyCleared`, whether or not the tab that cleared has been heard from,
   and the screens re-read; a baby taken from a household view whose marker has since moved
-  is not kept at all. A phone
+  is not kept at all. A phone upgrading from before #85 holds no marker record: startup
+  marks its baby under null, the one marker its first sync can adopt (the server treats a
+  request without a marker as sent under null), so the guard covers it from its first
+  start, offline included. A phone
   left with no baby reads `GET /api/household` after each sync that settles and takes
   the household's next, or restored, baby without a new sign-in.
 
