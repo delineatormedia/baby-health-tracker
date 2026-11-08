@@ -71,6 +71,14 @@ export const HouseholdView = v.strictObject({
   babies: v.array(Baby),
 });
 
+/**
+ * POST /api/household/clear (#85): deletes the household's babies and every stored version of
+ * their entries, on the server, for good, and revokes every session of the household, the
+ * caller's included. The household, its members, passkeys and phones stay; everyone signs in
+ * again and starts over. The request body is `{}`.
+ */
+export const ClearResponse = v.strictObject({ clearedAt: Timestamp });
+
 export type RegisterRequest = v.InferOutput<typeof RegisterRequest>;
 export type JoinRequest = v.InferOutput<typeof JoinRequest>;
 export type LoginRequest = v.InferOutput<typeof LoginRequest>;
@@ -80,6 +88,7 @@ export type SignedIn = v.InferOutput<typeof SignedIn>;
 export type AddBaby = v.InferOutput<typeof AddBaby>;
 export type Invite = v.InferOutput<typeof Invite>;
 export type HouseholdView = v.InferOutput<typeof HouseholdView>;
+export type ClearResponse = v.InferOutput<typeof ClearResponse>;
 
 export const ACCOUNT_SCHEMAS = {
   AddBaby,
@@ -91,4 +100,5 @@ export const ACCOUNT_SCHEMAS = {
   SignedIn,
   Invite,
   HouseholdView,
+  ClearResponse,
 };

@@ -218,6 +218,46 @@ journalctl -u bht-backup.service -n 5
 systemctl list-timers bht-backup.timer
 ```
 
+## Clearing the household's data (#85)
+
+Either parent can clear every baby and log from **Settings → Clear all data** on their
+phone. The server deletes the household's babies and every stored version of their
+entries in one transaction and revokes every session of the household; the phone drops
+its own copy once the server has answered and is back at the welcome screen. Every other
+phone is refused on its next request and drops its copy too, so nothing it logged
+before, or while it was offline, comes back. The household, the passkeys and the pairing
+stay: everyone signs in again and starts over. The ids of the deleted babies are kept,
+so a phone that signed out before the clear cannot add its old baby back either.
+
+The server logs one line per clear, with the household id, the time, who ran it and
+the row counts, never any data:
+
+```sh
+journalctl -u bht | grep ' cleared at '
+```
+
+*Check:* right after a clear, both counts are `0`:
+
+```sh
+sudo -u bht sqlite3 /var/lib/bht/bht.db 'SELECT COUNT(*) FROM babies; SELECT COUNT(*) FROM event_versions'
+```
+
+The database opens with `secure_delete`, and the clear checkpoints and truncates the
+write-ahead log, so the deleted rows are not left in `bht.db` or `bht.db-wal`.
+**Snapshots taken before the clear still hold everything**, in `backup.directory`
+and in any off-site copy, until they age out (`backup.keep`, one week by default).
+The app's confirm says as much. Delete those snapshots by hand if the data must go
+sooner, and remember the off-site copy.
+
+### Undo a mistaken clear
+
+The only way back is a restore (below), to the newest snapshot from before the time
+`journalctl -u bht | grep ' cleared at '` shows. Entries logged between the clear and
+the restore are lost. The restored database still has the sessions from before the
+clear, so a phone that has not opened the app since the clear carries on; a phone that
+already dropped its copy is at the welcome screen and signs in again, then pulls the
+restored log.
+
 ## Restore
 
 A restore puts the server back to the snapshot. Entries logged after it are lost (see

@@ -4,10 +4,17 @@ import {
   type BabyEvent,
   type EventData,
   type EventType,
+  BABY_CLEARED,
   type HouseholdDevice,
   type SignedIn,
 } from '@bht/schema';
-import { Account, AccountError, browserPasskeys, httpAccount } from '../data/account.ts';
+import {
+  Account,
+  AccountError,
+  browserPasskeys,
+  httpAccount,
+  signInFailure,
+} from '../data/account.ts';
 import { openDatabase } from '../data/db.ts';
 import { HttpError, httpTransport } from '../data/protocol.ts';
 import { EventStore, type Change } from '../data/store.ts';
@@ -28,6 +35,7 @@ import {
   loadBaby,
   loadJoining,
   loadSetupAt,
+  loadWipeNotice,
   markSetup,
   loadHomeNoteDismissed,
   loadPrefs,
@@ -40,8 +48,11 @@ import {
   saveJoining,
   savePrefs,
   saveWelcomed,
+  saveWipeNotice,
+  wipeLocal,
   type Prefs,
   type StoredAccount,
+  type WipeNotice,
 } from './prefs.ts';
 import { babyPreparer, placeBaby } from './session.ts';
 import { editLink, saveFailure, type EditPath } from './logic.ts';
@@ -81,7 +92,13 @@ const FLUSH_MS = 15_000;
 const SIGN_OUT_LOCK = 'bht-sign-out';
 /** Tells the other tabs about a sign-out. The meta flag, not this, is what stops their writes. */
 const ACCOUNT_CHANNEL = 'bht-account';
-type AccountMessage = 'signing-out' | 'cancelled' | 'signed-out';
+/** `wiped` (#85): this tab dropped the phone's copy of the logs; the others drop theirs. */
+type AccountMessage = 'signing-out' | 'cancelled' | 'signed-out' | 'wiped';
+
+/** What Settings says under a clear the server did not run: nothing was deleted anywhere. */
+export function clearFailure(e: unknown): string {
+  return `Nothing was deleted: ${signInFailure(e)}`;
+}
 
 /**
  * App state shared by every screen. Writes go to IndexedDB through EventStore and are visible
@@ -144,6 +161,8 @@ class AppState {
   signingOutElsewhere = $state(false);
   /** Entries from other phones that arrived after their windows were assessed (step 3b). */
   late = $state.raw<readonly LateEntry[]>([]);
+  /** This phone dropped its copy of the logs (#85); the layout says why until dismissed. */
+  wipeNotice = $state.raw<WipeNotice | null>(null);
 
   #store: EventStore | null = null;
   #kv: Storage | null = null;
@@ -196,6 +215,7 @@ class AppState {
       });
       this.homeNoteDismissed = loadHomeNoteDismissed(kv);
       this.welcomed = loadWelcomed(kv);
+      this.wipeNotice = loadWipeNotice(kv);
       if (this.baby) void this.#persist();
       this.account = loadAccount(kv);
       this.joining = loadJoining(kv);
@@ -296,6 +316,7 @@ class AppState {
       if (e instanceof AccountError && e.status === 401) {
         this.syncStatus = 'signed_out';
         this.syncError = null;
+        this.#revoked(current);
       } else {
         this.syncStatus = 'offline';
         this.syncError = `Could not load your household: ${failureReason(e)}`;
@@ -362,9 +383,14 @@ class AppState {
       try {
         await this.#api.logout(gen);
       } catch (e) {
-        // An expired session is signed out already. Offline, "anyway" signs out here only.
-        const expired = e instanceof AccountError && e.status === 401;
-        if (!expired && !(opts.anyway && !(e instanceof HttpError))) {
+        // A session the server has ended already (a clear, #85; removal; expiry) is a refusal
+        // like any other: the phone's copy goes with it, or an old log could be signed back in.
+        if (e instanceof AccountError && e.status === 401) {
+          await this.#wipe('signed_out');
+          return;
+        }
+        // Offline, "anyway" signs out here only.
+        if (!(opts.anyway && !(e instanceof HttpError))) {
           this.#resumeAccount();
           if (!this.#releaseSignOut) throw e;
           this.signOutBlocked = `Could not sign out: ${failureReason(e)}.`;
@@ -468,6 +494,10 @@ class AppState {
     this.#channel = new BroadcastChannel(ACCOUNT_CHANNEL);
     this.#channel.onmessage = (e: MessageEvent<AccountMessage>) => {
       this.signingOutElsewhere = e.data === 'signing-out';
+      if (e.data === 'wiped') {
+        void this.#wipedElsewhere();
+        return;
+      }
       if (e.data !== 'signed-out') return;
       // The other tab cleared the stored account before saying so. A sign-in here that is still
       // running, or that stored its account since, may hold a session set after that logout:
@@ -494,6 +524,103 @@ class AppState {
       this.syncStatus = 'idle';
       this.syncError = null;
     });
+  }
+
+  /**
+   * Another tab dropped the phone's copy (#85): the storage this tab shares is empty already,
+   * so this is the same wipe again, for this tab's state and anything written since.
+   */
+  #wipedElsewhere(): Promise<void> {
+    return this.#serial('signOut', async () => {
+      if (!this.account && !this.baby) return;
+      this.#transition();
+      await this.#wipe(loadWipeNotice(this.#storage)?.reason ?? 'signed_out');
+    });
+  }
+
+  /**
+   * Settings → Clear all data (#85). The server deletes the household's babies and every log
+   * and signs every phone out, this one included; then this phone drops its own copy and goes
+   * back to the welcome screen. Nothing local is touched until the server has answered, so a
+   * refused or lost request deletes nothing here and sync carries on (a request that did run
+   * is found out by the next sync's 401, which wipes). The other phones drop their copies when
+   * their next request is refused; see #revoked. A sign-in in flight is aborted, as at sign-out.
+   */
+  clearData(): Promise<void> {
+    for (const ceremony of this.#ceremonies) ceremony.abort();
+    return this.#serial('signOut', async () => {
+      if (!this.account) throw new Error('Sign in first.');
+      this.#transition();
+      await this.#dropSync();
+      try {
+        await this.#api.clear();
+      } catch (e) {
+        this.#resumeAccount();
+        throw e;
+      }
+      await this.#wipe('cleared');
+    });
+  }
+
+  dismissWipeNotice(): void {
+    this.wipeNotice = null;
+    try {
+      saveWipeNotice(this.#storage, null);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  /**
+   * The server refused this phone's session or its baby (#85): the session was revoked by a
+   * clear, by removal, or expired, or the baby was deleted by a clear. Logs left here could not
+   * reach the server as they stand, and after a clear they must not, so the phone drops its
+   * copy and goes back to the welcome screen; the parent signs in again. Queued behind any
+   * account transition under way, and dropped if one has begun since the refusal.
+   */
+  #revoked(current: () => boolean): void {
+    this.#serial('signOut', async () => {
+      if (!current() || !this.account) return;
+      this.#transition();
+      await this.#wipe('signed_out');
+    }).catch((e: unknown) => console.error(e));
+  }
+
+  /**
+   * Drops everything this phone holds: every row in IndexedDB (EventStore.clearAll), then the
+   * baby, the account and the rest in localStorage (wipeLocal), leaving the prefs, the author
+   * id and a notice saying why. The screens go back to the welcome screen, and the other tabs
+   * are told. A storage failure is logged and the state still resets: whatever is left is
+   * retried at the next start (a stored account syncs, is refused and wipes again), and signing
+   * in again or reinstalling is the fallback.
+   */
+  async #wipe(reason: WipeNotice['reason']): Promise<void> {
+    const household = this.account?.householdId ?? null;
+    const notice: WipeNotice = { reason, at: Date.now() };
+    await this.#dropSync();
+    try {
+      await this.#endSignOut();
+      await this.store.clearAll();
+      wipeLocal(this.#storage, household, notice);
+    } catch (e) {
+      console.error(e);
+    }
+    this.#knownBabies = new Set();
+    this.#late = null;
+    this.baby = null;
+    this.setupAt = null;
+    this.joining = null;
+    this.account = null;
+    this.welcomed = false;
+    this.homeNoteDismissed = false;
+    this.seeded = false;
+    this.late = [];
+    this.signOutBlocked = null;
+    this.syncStatus = 'idle';
+    this.syncError = null;
+    this.wipeNotice = notice;
+    this.#broadcast('wiped');
+    await this.#reload();
   }
 
   /**
@@ -556,6 +683,14 @@ class AppState {
     void this.#reload();
   }
 
+  /**
+   * Ends this tab's session: stops the sync client, so no retry runs on after the app is gone.
+   * For tests tearing down a phone; a browser leaves with the page.
+   */
+  dispose(): Promise<void> {
+    return this.#dropSync();
+  }
+
   /** Stops the sync client, if any, and waits for a store write its run had started. */
   async #dropSync(): Promise<void> {
     const stop = this.#stopSync;
@@ -616,8 +751,14 @@ class AppState {
       return;
     }
     const household = this.account?.householdId ?? '';
+    const current = this.#fence();
     let adopted = false;
     let adoptions = 0;
+    const addBaby = babyPreparer(
+      (b) => this.#api.addBaby(b),
+      this.#knownBabies,
+      () => this.baby,
+    );
     const sync = new SyncClient(this.store, httpTransport(), {
       household,
       // The watermarks cover what the store holds once the pull reached through, not what this
@@ -637,11 +778,17 @@ class AppState {
         const wall = Date.now();
         this.#lateTracker()?.record(this.syncedSpans(wall, performance.now()), wall);
       },
-      prepare: babyPreparer(
-        (b) => this.#api.addBaby(b),
-        this.#knownBabies,
-        () => this.baby,
-      ),
+      // A baby a clear deleted cannot come back (#85): this phone's copy of it goes instead.
+      prepare: async (batch) => {
+        try {
+          await addBaby(batch);
+        } catch (e) {
+          if (e instanceof AccountError && e.status === 409 && e.reason === BABY_CLEARED) {
+            if (this.#sync === sync) this.#revoked(current);
+          }
+          throw e;
+        }
+      },
       onRejected: (refused) =>
         this.#showToast({
           text: `The server refused ${refused.length === 1 ? 'an entry' : `${refused.length} entries`}. See Settings.`,
@@ -650,6 +797,7 @@ class AppState {
     sync.onStatus((s) => {
       this.syncStatus = s;
       this.syncError = sync.error;
+      if (s === 'signed_out' && this.#sync === sync) this.#revoked(current);
     });
     this.#sync = sync;
     this.#stopSync = sync.start();

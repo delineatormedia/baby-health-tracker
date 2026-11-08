@@ -18,6 +18,7 @@ const FINGERPRINTS: Record<number, string> = {
   3: 'ff6f2b76b610d3fe',
   4: '20820452d79aa06a',
   5: 'fe9deb53aa9e28c9',
+  6: 'd64b95b8af1058ac',
 };
 
 /**

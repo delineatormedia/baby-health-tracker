@@ -1,5 +1,6 @@
 import {
   AddBaby,
+  BABY_CLEARED,
   CeremonyResponse,
   DEVICE_ELSEWHERE,
   DEVICE_REMOVED,
@@ -32,6 +33,33 @@ export interface Session {
   /** The signed-in member; absent only for sessions injected by tests. */
   memberId?: string;
   deviceId?: string;
+  /** Hash of the cookie token, for sessionLive; absent only for sessions injected by tests. */
+  tokenHash?: string;
+}
+
+/**
+ * Whether the session is still live: not revoked, not expired, and its phone not removed. A
+ * request's session is resolved before its body is read, and a clear (#85) or a removal can
+ * commit in between; so every write for a session checks this inside its own transaction,
+ * under the write lock, where nothing can land in the gap. Sessions injected by tests have no
+ * token and count as live.
+ */
+export function sessionLive(db: DatabaseSync, session: Session, now: Date): boolean {
+  if (session.tokenHash === undefined) return true;
+  return liveSession(db, session.tokenHash, now) !== undefined;
+}
+
+function liveSession(db: DatabaseSync, tokenHash: string, now: Date) {
+  return db
+    .prepare(
+      `SELECT s.member_id, s.device_id, m.household_id
+       FROM sessions s JOIN members m ON m.id = s.member_id
+       JOIN devices d ON d.id = s.device_id AND d.member_id = s.member_id
+       WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?
+         AND d.removed_at IS NULL`,
+    )
+    .get(tokenHash, now.toISOString()) as
+    { member_id: string; device_id: string; household_id: string } | undefined;
 }
 
 /** Relying party settings, from BHT_RP_ID and BHT_ORIGIN in production. */
@@ -54,6 +82,8 @@ export const REGISTRATION_CLOSED =
   'This server already has a household. Ask a parent in it for an invite.';
 
 export const SESSION_COOKIE = 'bht_session';
+/** The 401 every signed-in route gives a session that is gone. */
+export const SIGN_IN = 'Sign in';
 export const SESSION_DAYS = 180;
 /** Binds a ceremony to the browser that asked for its options; see Accounts. */
 export const FLOW_COOKIE = 'bht_flow';
@@ -106,6 +136,7 @@ export class Accounts {
     if (this.#registrationClosed()) return fail(403, REGISTRATION_CLOSED);
     if (this.#exists('households', request.householdId)) return fail(409, 'Household exists');
     if (this.#exists('babies', request.baby.id)) return fail(409, 'Baby exists');
+    if (this.#exists('cleared_babies', request.baby.id)) return fail(409, BABY_CLEARED);
     // Refused before the phone makes a passkey this server would never keep.
     const device = this.#deviceRefusal(request.deviceId, request.householdId);
     if (device) return device;
@@ -195,6 +226,7 @@ export class Accounts {
         if (this.#registrationClosed()) return fail(403, REGISTRATION_CLOSED);
         if (this.#exists('households', request.householdId)) return fail(409, 'Household exists');
         if (this.#exists('babies', request.baby.id)) return fail(409, 'Baby exists');
+        if (this.#exists('cleared_babies', request.baby.id)) return fail(409, BABY_CLEARED);
         householdId = request.householdId;
         this.db
           .prepare('INSERT INTO households (id, created_at) VALUES (?, ?)')
@@ -310,18 +342,15 @@ export class Accounts {
   /** The live session for a cookie token, or null. */
   session(token: string | undefined): Session | null {
     if (!token) return null;
-    const row = this.db
-      .prepare(
-        `SELECT s.member_id, s.device_id, m.household_id
-         FROM sessions s JOIN members m ON m.id = s.member_id
-         JOIN devices d ON d.id = s.device_id AND d.member_id = s.member_id
-         WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?
-           AND d.removed_at IS NULL`,
-      )
-      .get(hashSecret(token), this.now().toISOString()) as
-      { member_id: string; device_id: string; household_id: string } | undefined;
+    const tokenHash = hashSecret(token);
+    const row = liveSession(this.db, tokenHash, this.now());
     if (!row) return null;
-    return { householdId: row.household_id, memberId: row.member_id, deviceId: row.device_id };
+    return {
+      householdId: row.household_id,
+      memberId: row.member_id,
+      deviceId: row.device_id,
+      tokenHash,
+    };
   }
 
   /**
@@ -359,6 +388,7 @@ export class Accounts {
     if (deviceId === session.deviceId) return fail(409, 'Sign out to remove this phone');
     const at = this.now().toISOString();
     return this.#transaction(() => {
+      if (!this.#live(session)) return fail(401, SIGN_IN);
       const row = this.db
         .prepare(
           `UPDATE devices SET removed_at = coalesce(removed_at, ?)
@@ -375,31 +405,41 @@ export class Accounts {
   }
 
   /** A single-use invite into the caller's household, valid for INVITE_HOURS. */
-  createInvite(session: Required<Session>): Invite {
+  createInvite(session: Session): Result<Invite> {
+    const { householdId, memberId } = session;
+    if (!memberId) return fail(401, SIGN_IN);
     const code = inviteCode();
     const now = this.now();
     const expiresAt = new Date(now.getTime() + INVITE_HOURS * 3_600_000).toISOString();
-    this.db
-      .prepare(
-        `INSERT INTO invites (code_hash, household_id, created_by, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(hashSecret(code), session.householdId, session.memberId, now.toISOString(), expiresAt);
-    return { code, expiresAt };
+    return this.#transaction(() => {
+      if (!this.#live(session)) return fail(401, SIGN_IN);
+      this.db
+        .prepare(
+          `INSERT INTO invites (code_hash, household_id, created_by, created_at, expires_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(hashSecret(code), householdId, memberId, now.toISOString(), expiresAt);
+      return { ok: true, value: { code, expiresAt } };
+    });
   }
 
   /**
    * Adds a baby to the caller's household. The same id again in this household answers the
-   * stored baby (a retry after a lost response); an id held by another household is 409.
+   * stored baby (a retry after a lost response); an id held by another household is 409. So is
+   * a baby deleted by a clear (#85, BABY_CLEARED): the phone asking still holds the cleared log,
+   * and this is where it would come back from.
    */
-  addBaby(householdId: string, input: unknown): Result<Baby> {
+  addBaby(session: Session, input: unknown): Result<Baby> {
     const parsed = v.safeParse(AddBaby, input);
     if (!parsed.success) return fail(400, 'Expected { id, name, birthAt, sex }');
     const { id, name, birthAt, sex } = parsed.output;
+    const { householdId } = session;
     return this.#transaction(() => {
+      if (!this.#live(session)) return fail(401, SIGN_IN);
       const held = this.db.prepare('SELECT household_id FROM babies WHERE id = ?').get(id) as
         { household_id: string } | undefined;
       if (held && held.household_id !== householdId) return fail(409, 'Baby exists');
+      if (!held && this.#exists('cleared_babies', id)) return fail(409, BABY_CLEARED);
       if (!held) {
         this.db
           .prepare(
@@ -555,8 +595,13 @@ export class Accounts {
     return this.db.prepare('SELECT 1 FROM households LIMIT 1').get() !== undefined;
   }
 
-  #exists(table: 'households' | 'babies' | 'credentials', id: string): boolean {
+  #exists(table: 'households' | 'babies' | 'credentials' | 'cleared_babies', id: string): boolean {
     return this.db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id) !== undefined;
+  }
+
+  /** sessionLive over this database and clock; call it inside #transaction. */
+  #live(session: Session): boolean {
+    return sessionLive(this.db, session, this.now());
   }
 
   #transaction<T>(fn: () => Result<T>): Result<T> {

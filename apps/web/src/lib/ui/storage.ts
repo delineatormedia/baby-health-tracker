@@ -53,9 +53,10 @@ export function showHomeScreenNote(s: {
 }
 
 /**
- * The welcome screen (#86): a phone with no baby that is not signed in, once. A signed-in
- * phone with no baby (after a clear, #85) goes to Add a baby instead: its household exists,
- * and registering would refuse a second one.
+ * The welcome screen (#86): a phone with no baby that is not signed in, once. A phone whose
+ * copy of the logs was dropped (a clear, #85) is back here: the flag went with the rest. A
+ * signed-in phone with no baby goes to Add a baby instead: its household exists, and
+ * registering would refuse a second one.
  */
 export function showWelcome(s: {
   hasBaby: boolean;

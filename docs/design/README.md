@@ -374,9 +374,9 @@ Technology" 11 px mono caps `dim`; wordmark `smt` 700 `acc`, a 0.1 em gap, `baby
 purpose 17 px; "Join with a code" (`.go2`) over "Start a household" (`.go`), both
 in flow at the bottom. The plain-text name stays "SMT/Baby". The wordmark is set in
 the system sans, so the weights are the phone's own 700 and 400. Start opens Add
-a baby; Join opens it on the invite code. A signed-in phone with no baby (after a
-clear, #85) goes to Add a baby instead: registering would refuse a second
-household.
+a baby; Join opens it on the invite code. A signed-in phone with no baby goes to
+Add a baby instead: registering would refuse a second household. After Clear all
+data (#85) every phone is signed out and back here, under a banner saying so.
 
 Reports: day (top and scrolled), week, month, Day starts at, and History's
 "Reports ›" header. Cases: 25 h day, 23 h day, Day starts at 8 AM vs midnight.

@@ -370,6 +370,53 @@ after the wait, two screen changes and a relaunch, report it as a failure of 10.
 screen reloads while you're entering something, or the feed is lost or logged twice,
 report it as a failure of the step where it happened.
 
+### 11. Clear all data (A + B, 5 min)
+
+Clearing deletes every baby and log from the household, on the server and on both phones,
+and signs both phones out (#85). The passkeys stay, so both sign back in. Use test data:
+once cleared, only a server restore from a snapshot brings it back. Before you start,
+both phones show the same baby and at least one entry each, and Settings on both reads
+"Synced with your household."
+
+1. **Both online.** On A, Settings → **Clear all data**.
+   *Expected:* the button does nothing yet. A note appears: "This deletes <baby>'s
+   profile and every log, for good, from the server and from every phone. Every phone is
+   signed out, this one included; sign in again to start over. …" with **Delete
+   everything** and **Keep**. Tap **Keep**: nothing changes. Tap **Clear all data**, then
+   **Delete everything**.
+   *Expected:* A shows the welcome screen under a banner "The household's data was
+   cleared <date and time>. Every baby and log is gone from the server and from every
+   phone, and every phone was signed out. Sign in again to start over." with an **OK**.
+   Then on B, switch away from the app and back.
+   *Expected:* within a few seconds B shows the welcome screen under a banner "This phone
+   was signed out by the server <date and time>. Its copy of the logs went with the
+   session. …". Nothing of the old baby remains on either phone.
+2. **The database is empty.** On the server, run the check from DEPLOY.md, "Clearing the
+   household's data": both counts are `0`. `journalctl -u bht | grep ' cleared at '`
+   shows one new line with the household id and the counts deleted and revoked, and no
+   names.
+3. **Start over.** On A, **Start a household**, add a new baby, then Settings → **Sign
+   in** and use A's passkey.
+   *Expected:* Settings reads "Synced with your household." and A's Home shows the new
+   baby with no entries. On B, **Start a household** is wrong here (the household exists):
+   instead go to Settings → **Sign in** with B's passkey.
+   *Expected:* B shows the new baby too, with no entries.
+4. **The other phone was offline.** On B, turn on airplane mode and log a wet diaper and
+   a bottle. On A, Settings → **Clear all data** → **Delete everything**.
+   *Expected:* A is at the welcome screen with the cleared banner. On B, still in
+   airplane mode, the two entries are still there. Turn airplane mode off and switch away
+   from the app and back.
+   *Expected:* B is at the welcome screen with the signed-out banner. The two entries B
+   logged offline are gone from B and never reach the server: the check from step 2 still
+   gives `0` and `0`, and after A signs in and adds a baby, A shows no diaper or bottle.
+5. **A clear that cannot reach the server deletes nothing.** On B, sign in and add a baby,
+   then tap **Clear all data**, turn on airplane mode and tap **Delete everything**.
+   *Expected:* B keeps its baby and shows "Nothing was deleted: No connection to the
+   server. Try again." Turn airplane mode off and wait for "Synced with your
+   household.": B still has the baby, and so does A after it signs in.
+6. **Dismiss the banner.** On each phone, tap **OK** on the banner.
+   *Expected:* it goes and stays gone after a reload.
+
 ## What to send back
 
 For each failed check, open a GitHub issue titled `Acceptance <check>.<step>: <what went

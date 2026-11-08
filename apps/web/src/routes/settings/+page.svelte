@@ -3,7 +3,7 @@
   import type { VolumeDisplay } from '@bht/schema';
   import type { Invite } from '@bht/schema';
   import { signInFailure } from '../../lib/data/account.ts';
-  import { app } from '../../lib/ui/app.svelte.ts';
+  import { app, clearFailure } from '../../lib/ui/app.svelte.ts';
   import SignIn from '../../lib/ui/SignIn.svelte';
   import SyncStatus from '../../lib/ui/SyncStatus.svelte';
   import type { Theme, WeightUnit } from '../../lib/ui/prefs.ts';
@@ -36,6 +36,26 @@
   /** The phone whose Remove was tapped, waiting for the confirm. */
   let removing = $state<string | null>(null);
   const phones = $derived(otherPhones(app.devices, app.store.authorId));
+  /** Clear all data was tapped, waiting for the confirm (#85). */
+  let clearing = $state(false);
+  /** The clear needs the server and no other account change under way. */
+  const canClear = $derived(
+    app.transition === null && !app.signOutBlocked && !app.signingOutElsewhere,
+  );
+
+  /** Runs the confirmed clear. A failed request deleted nothing, and the note says so. */
+  async function clear() {
+    busy = true;
+    syncError = null;
+    try {
+      await app.clearData();
+      clearing = false;
+    } catch (e) {
+      syncError = clearFailure(e);
+    } finally {
+      busy = false;
+    }
+  }
 
   /** Runs a sync-section action; its failure shows under the section. */
   async function act(run: () => Promise<unknown>) {
@@ -167,9 +187,7 @@
     {/if}
   {:else}
     <div class="acts">
-      {#if app.syncStatus === 'signed_out'}
-        <SignIn mode="login" />
-      {:else if app.account.placed === false}
+      {#if app.account.placed === false}
         <button class="go2" disabled={busy} onclick={() => act(() => app.place())}>Try again</button
         >
       {:else}
@@ -214,6 +232,38 @@
       Signing out keeps this phone's logs here. It first makes sure the server has them, so the
       other phone gets them when it syncs.
     </p>
+
+    {#if app.account.placed !== false}
+      <!-- Clearing the household's data (#85). The confirm is the same inline step as Remove. -->
+      <div class="sec lab">Data</div>
+      {#if clearing}
+        <!-- One baby per household in v1 (session.ts), so the name keeps the confirm concrete. -->
+        <p class="note">
+          This deletes {app.baby
+            ? `${app.baby.name}’s profile and every log`
+            : 'every baby and every log'}, for good, from the server and from every phone. Every
+          phone is signed out, this one included; sign in again to start over. The app can’t undo
+          this. Only the server’s backups keep a copy, for up to a week.
+        </p>
+        <div class="acts">
+          <button class="go2 danger" disabled={busy || !canClear} onclick={clear}>
+            {busy ? 'Deleting…' : 'Delete everything'}
+          </button>
+          <button class="go2" disabled={busy} onclick={() => (clearing = false)}>Keep</button>
+        </div>
+      {:else}
+        <div class="acts">
+          <button class="go2" disabled={busy || !canClear} onclick={() => (clearing = true)}
+            >Clear all data</button
+          >
+        </div>
+        <p class="note">
+          {canClear
+            ? 'Deletes every baby and log from this household and signs out every phone.'
+            : 'Finish the sync change above first.'}
+        </p>
+      {/if}
+    {/if}
 
     {#if app.account.placed !== false && phones.length > 0}
       <div class="sec lab">Phones</div>

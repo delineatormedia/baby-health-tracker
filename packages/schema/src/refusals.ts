@@ -7,3 +7,9 @@ export const DEVICE_REMOVED = 'This phone was removed from the household';
 
 /** 409 from a sign-in with a phone id another household holds. */
 export const DEVICE_ELSEWHERE = 'This phone id belongs to another household';
+
+/**
+ * 409 from adding (or registering with) a baby that a clear deleted (#85). The phone asking
+ * still holds that baby and its log from before the clear; it drops them and starts over.
+ */
+export const BABY_CLEARED = 'This baby was deleted when the household’s data was cleared';

@@ -13,6 +13,7 @@ import {
   type PushResult,
   type SyncTransport,
 } from './protocol.ts';
+import { AccountError } from './account.ts';
 import { SeededRefusal } from './seeded.ts';
 import type { ClockSample } from './watermarks.ts';
 
@@ -362,6 +363,8 @@ export class SyncClient {
 /** A failed run's reason as Settings shows it. */
 export function failureReason(err: unknown): string {
   if (err instanceof SeededRefusal || err instanceof MalformedDevices) return err.message;
+  // The baby add before a push (session.ts) was refused: the server said why.
+  if (err instanceof AccountError) return err.reason;
   if (!(err instanceof HttpError)) return 'No connection to the server';
   if (err.status === 413) return 'Server rejected upload size';
   if (err.status === 409) return 'Server needs an update before this app can sync';
