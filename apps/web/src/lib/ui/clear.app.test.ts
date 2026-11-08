@@ -58,7 +58,10 @@ beforeEach(() => {
   vi.stubGlobal('navigator', { locks: undefined });
   vi.stubGlobal('BroadcastChannel', undefined);
 });
-afterEach(() => {
+afterEach(async () => {
+  // Each app's sync client is stopped here, before the globals go: left running, a failed run's
+  // backoff retry would land in a later test's request log.
+  for (const app of loaded.splice(0)) await app.dispose();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -80,8 +83,12 @@ const bodyOf = (init?: RequestInit) =>
   (typeof init?.body === 'string' ? JSON.parse(init.body) : {}) as { clearId?: string | null };
 const markerIn = (url: string) => new URL(url, 'http://localhost').searchParams.get('clearId');
 
+/** The apps this test loaded, for afterEach to stop. */
+const loaded: { dispose(): Promise<void> }[] = [];
+
 async function loadApp() {
   const { app } = await import('./app.svelte.ts');
+  loaded.push(app);
   await app.init();
   return app;
 }

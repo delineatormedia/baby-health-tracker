@@ -766,6 +766,14 @@ class AppState {
     void this.#reload();
   }
 
+  /**
+   * Ends this phone's session: stops the sync client, so no retry runs on after the app is gone.
+   * For tests tearing down a phone; a browser leaves with the page.
+   */
+  dispose(): Promise<void> {
+    return this.#dropSync();
+  }
+
   /** Stops the sync client, if any, and waits for a store write its run had started. */
   async #dropSync(): Promise<void> {
     const stop = this.#stopSync;
