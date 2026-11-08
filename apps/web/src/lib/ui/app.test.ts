@@ -709,20 +709,30 @@ describe('Readings waits on the other phones (#5 step 3b)', () => {
     kv.set('bht.author', self);
     kv.set('bht.account', JSON.stringify({ householdId: home.householdId, memberId: newId() }));
     const me = { ...sam(null), deviceId: self, memberName: 'Maya' };
+    const joined = sam(null);
     await (await openDatabase()).put('meta', [me], `devices:${home.householdId}`);
     const pull = held();
-    serve(async (url) => (url.startsWith('/api/sync?') ? pull.response : json({})));
+    // Only the first pull is held: a Response body reads once, so the sign-out's own pull
+    // below needs a fresh page, or its run fails and the engine outlives this test (#96).
+    const page = () => json({ ...emptyPull(), serverNow: Date.now(), devices: [me, joined] });
+    let pulled = 0;
+    serve(async (url) => {
+      if (!url.startsWith('/api/sync?')) return json({});
+      return ++pulled === 1 ? pull.response : page();
+    });
     const app = await loadApp();
     await vi.waitFor(() => expect(app.devices).toEqual([me]));
     expect(app.clockSample).toBeNull();
     expect(through(app.syncedSpans(Date.now(), performance.now()))).toBeNull();
 
-    const joined = sam(null);
-    pull.release(json({ ...emptyPull(), serverNow: Date.now(), devices: [me, joined] }));
+    pull.release(page());
     await vi.waitFor(() => expect(app.devicesCurrent).toBe(true));
     expect(app.devices).toEqual([me, joined]);
     expect(through(app.syncedSpans(Date.now(), performance.now()))).toBeNull();
     await app.signOut();
+    // A blocked sign-out would leave the engine retrying into later tests (#96).
+    expect(app.signOutBlocked).toBeNull();
+    expect(app.account).toBeNull();
   });
 
   test('offline, a kept one-phone list waits; once a pull lands it is synced through now', async () => {
