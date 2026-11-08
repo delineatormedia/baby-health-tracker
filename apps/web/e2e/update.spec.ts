@@ -69,8 +69,67 @@ function newer(n: number): string {
   expect(swapped).toBeGreaterThanOrEqual(
     3 + readdirSync(join(BUILD, '_app/immutable/nodes')).length,
   );
+  const worker = join(dir, 'service-worker.js');
+  writeFileSync(worker, readFileSync(worker, 'utf8') + diagnostics(n));
   return dir;
 }
+
+/**
+ * Lines added to a copy's worker, never the product one (#92): it reports when it is evaluated,
+ * installs, finishes or fails its `addAll`, skips waiting and activates, to the test server's
+ * `/__diag` route. A swap that never comes then says which of those the new worker reached.
+ *
+ * Every report is fire-and-forget: nothing here is awaited and nothing goes through `waitUntil`,
+ * so a slow or lost report can never lengthen the lifecycle it watches. The price is that a
+ * missing report means only that none arrived, never that the worker did not get there.
+ */
+const diagnostics = (n: number) => `
+// e2e only (#92): this copy reports its install to the test server, never waiting on it.
+{
+  const say = (what) => {
+    try {
+      fetch('/__diag/n${n}:' + what, { cache: 'no-store' }).catch(() => {});
+    } catch {
+      // Reporting is best effort.
+    }
+  };
+  const addAll = Cache.prototype.addAll;
+  Cache.prototype.addAll = function (urls) {
+    return addAll.call(this, urls).then(
+      (r) => (say('addAll-ok'), r),
+      (e) => {
+        say('addAll-failed:' + encodeURIComponent(String((e && e.message) || e)));
+        throw e;
+      },
+    );
+  };
+  const skip = self.skipWaiting.bind(self);
+  self.skipWaiting = () => (say('skipWaiting'), skip());
+  self.addEventListener('install', () => say('install'));
+  self.addEventListener('activate', () => say('activate'));
+  say('evaluated');
+}
+`;
+
+/** The stages a copy's worker reports on a healthy swap, as they appear in `Served.diag`. */
+const STAGES = ['evaluated', 'install', 'addAll-ok', 'skipWaiting', 'activate'];
+
+/**
+ * Waits, bounded, for copy N+`n`'s worker to have reported every stage. Reports are not awaited
+ * by the worker, so they can land after the swap; a shortfall here is a telemetry failure (the
+ * report did not arrive), which is all it can mean.
+ */
+const reported = (s: Served, n: number) =>
+  expect
+    .poll(
+      () =>
+        s.diag
+          .map((l) => l.slice(l.indexOf(' ') + 1))
+          .filter((l) => l.startsWith(`worker n${n}:`))
+          .sort(),
+      { timeout: 5_000 },
+    )
+    .toEqual(STAGES.map((e) => `worker n${n}:${e}`).sort());
 
 let next: string;
 let next2: string;
@@ -88,15 +147,36 @@ test.afterAll(() => {
 type Headers = 'immutable' | 'no-cache';
 
 /**
+ * A served build: `diag` holds what the newer copies' workers reported, timestamped, as each
+ * report arrives (#92). `hold(report)` keeps the replies to one report back until the returned
+ * function is called, the way a slow network would.
+ */
+interface Served {
+  url: string;
+  switchTo: (dir: string) => void;
+  server: Server;
+  diag: string[];
+  hold: (report: string) => () => void;
+}
+
+/**
  * Serves a build the way the family server does: files, else the SPA shell; no API. A missing
  * file with an extension is a 404, so a page asking for an old build's file gets nothing.
  */
-async function serve(
-  headers: Headers,
-): Promise<{ url: string; switchTo: (dir: string) => void; server: Server }> {
+async function serve(headers: Headers): Promise<Served> {
   let root = BUILD;
+  const diag: string[] = [];
+  const held = new Map<string, (() => void)[]>();
   const server = createServer((req, res) => {
     const path = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
+    if (path.startsWith('/__diag/')) {
+      const report = path.slice('/__diag/'.length);
+      diag.push(`${Date.now()} worker ${report}`);
+      const reply = () => res.writeHead(204).end();
+      if (held.has(report)) held.get(report)!.push(reply);
+      else reply();
+      return;
+    }
     if (path.startsWith('/api')) {
       res.writeHead(404).end();
       return;
@@ -121,10 +201,28 @@ async function serve(
   });
   await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
   const { port } = server.address() as AddressInfo;
-  return { url: `http://127.0.0.1:${port}`, switchTo: (dir) => (root = dir), server };
+  const hold = (report: string) => {
+    held.set(report, []);
+    return () => {
+      for (const reply of held.get(report) ?? []) reply();
+      held.delete(report);
+    };
+  };
+  return { url: `http://127.0.0.1:${port}`, switchTo: (dir) => (root = dir), server, diag, hold };
 }
 
-/** Waits until build N's worker controls the page, and marks this page load. */
+/** What the page saw of the worker swap (#92): `swlog` lines are `<Date.now()> page <event>`. */
+interface Watched {
+  loadN: boolean;
+  tookOver: boolean;
+  swlog: string[];
+}
+
+/**
+ * Waits until build N's worker controls the page, and marks this page load. From here the page
+ * also keeps a log of the swap (#92): each `registration.update()` the app makes and how it
+ * settled, `updatefound`, the new worker's states, and `controllerchange`.
+ */
 async function installed(page: Page) {
   await expect
     .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), {
@@ -133,24 +231,79 @@ async function installed(page: Page) {
     .toBe(true);
   await activated(page);
   await page.evaluate(() => {
-    (window as unknown as { loadN: boolean }).loadN = true;
+    const w = window as unknown as Watched;
+    w.loadN = true;
+    w.swlog = [];
+    const log = (event: string) => w.swlog.push(`${Date.now()} page ${event}`);
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      (window as unknown as { tookOver: boolean }).tookOver = true;
+      w.tookOver = true;
+      log('controllerchange');
+    });
+    const update = ServiceWorkerRegistration.prototype.update;
+    ServiceWorkerRegistration.prototype.update = function (this: ServiceWorkerRegistration) {
+      log('update() called');
+      return update.call(this).then(
+        (r) => (log('update() resolved'), r),
+        (e: unknown) => {
+          log(`update() rejected: ${e instanceof Error ? e.message : String(e)}`);
+          throw e;
+        },
+      );
+    };
+    void navigator.serviceWorker.getRegistration().then((r) => {
+      r?.addEventListener('updatefound', () => {
+        const fresh = r.installing;
+        log(`updatefound, installing ${fresh?.state ?? 'null'}`);
+        fresh?.addEventListener('statechange', () => log(`new worker ${fresh.state}`));
+      });
     });
   });
 }
 
 /** Switches the server to a newer build (N+1 by default) and resumes the app, which asks for a new worker. */
-async function update(page: Page, s: { switchTo: (dir: string) => void }, to = next) {
-  await page.evaluate(() => ((window as unknown as { tookOver: boolean }).tookOver = false));
+async function update(page: Page, s: Served, to = next) {
+  await page.evaluate(() => ((window as unknown as Watched).tookOver = false));
   s.switchTo(to);
+  const resumed = Date.now();
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-  await expect
-    .poll(() => page.evaluate(() => (window as unknown as { tookOver?: boolean }).tookOver), {
-      timeout: 15_000,
+  try {
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as Watched).tookOver), {
+        timeout: 15_000,
+      })
+      .toBe(true);
+    await activated(page);
+  } catch (e) {
+    // Only a swap that never came, or never finished activating, pays for this (#92): the page's
+    // and the worker's logs, so the failure names the stage the new worker reached, and the
+    // registration's end state.
+    const timeline = await swapTimeline(page, s, resumed);
+    await test.info().attach('worker-swap-timeline', { body: timeline, contentType: 'text/plain' });
+    throw new Error(
+      `${(e as Error).message}\n\nWorker swap timeline (ms after the resume):\n${timeline}`,
+      { cause: e },
+    );
+  }
+}
+
+/** Both sides' logs merged in time order, relative to `since`, then the registration's state. */
+async function swapTimeline(page: Page, s: Served, since: number): Promise<string> {
+  const swlog = await page.evaluate(() => (window as unknown as Watched).swlog ?? []);
+  const lines = [...swlog, ...s.diag]
+    .map((l) => {
+      const at = Number(l.slice(0, l.indexOf(' ')));
+      return { at, text: `${String(at - since).padStart(6)} ${l.slice(l.indexOf(' ') + 1)}` };
     })
-    .toBe(true);
-  await activated(page);
+    .sort((a, b) => a.at - b.at)
+    .map((l) => l.text);
+  const state = await page.evaluate(async () => {
+    const r = await navigator.serviceWorker.getRegistration();
+    const worker = (w: ServiceWorker | null) => w?.state ?? 'null';
+    return r
+      ? `installing ${worker(r.installing)}, waiting ${worker(r.waiting)}, active ${worker(r.active)}, controller ${worker(navigator.serviceWorker.controller)}`
+      : 'no registration';
+  });
+  return [...lines, `registration now: ${state}`].join('\n');
 }
 
 // controllerchange fires as the new worker starts activating, before its activate handler has
@@ -337,6 +490,9 @@ for (const headers of ['immutable', 'no-cache'] as const) {
       await installed(page);
       await update(page, s);
       expect(await samePage(page)).toBe(true);
+      // The copy's worker reports to the test server (#92): checked once here, on a healthy
+      // swap, so the reporting itself is known to work when a failure's timeline is read.
+      await reported(s, 1);
 
       await page.evaluate(() => {
         Object.defineProperty(document, 'visibilityState', {
@@ -348,6 +504,20 @@ for (const headers of ['immutable', 'no-cache'] as const) {
       await onNext(page);
       await page.locator('.rail').waitFor();
       expect(await samePage(page)).toBe(false);
+      expect(errors).toEqual([]);
+      await ctx.close();
+      s.server.close();
+    });
+
+    test('a slow report from the new worker never holds the swap (#92)', async ({ browser }) => {
+      const { s, ctx, page, errors } = await armed(browser, headers);
+      // The server sits on the reply to the install report, as a slow network would. The swap
+      // watches nothing of ours: it completes in its usual time, and the report lands later.
+      const release = s.hold('n1:install');
+      await update(page, s);
+      expect(await samePage(page)).toBe(true);
+      release();
+      await reported(s, 1);
       expect(errors).toEqual([]);
       await ctx.close();
       s.server.close();
