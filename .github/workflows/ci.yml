@@ -62,7 +62,7 @@ jobs:
         with:
           name: playwright-traces
           path: apps/web/test-results
-          retention-days: 7
+          retention-days: 30
 
   nix:
     runs-on: ubuntu-latest
