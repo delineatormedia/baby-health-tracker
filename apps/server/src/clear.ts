@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { sessionLive, type Session } from './auth.ts';
 
 /** The 409 a baby deleted by a clear gets when a phone tries to add it again. */
 export { BABY_CLEARED } from '@bht/schema';
@@ -28,6 +29,9 @@ export interface ClearOutcome {
  * watermark from before the clear would vouch for windows of a log that no longer exists, so
  * those go too.
  *
+ * Null, and nothing changed, if the caller's session is no longer live (sessionLive): a phone
+ * signed out by an earlier clear cannot clear what the household has entered since.
+ *
  * Everything commits together or not at all, so a crash partway leaves the household as it
  * was and the parent retries. After the commit the WAL is checkpointed and truncated, so with
  * secure_delete (db.ts) the deleted rows are not left in the database files. Backups taken
@@ -35,14 +39,19 @@ export interface ClearOutcome {
  */
 export function clearHousehold(
   db: DatabaseSync,
-  householdId: string,
+  session: Session,
   now = new Date(),
-): ClearOutcome {
+): ClearOutcome | null {
+  const { householdId } = session;
   const clearedAt = now.toISOString();
   const members = 'SELECT id FROM members WHERE household_id = ?';
   let outcome: ClearOutcome;
   db.exec('BEGIN IMMEDIATE');
   try {
+    if (!sessionLive(db, session, now)) {
+      db.exec('ROLLBACK');
+      return null;
+    }
     if (db.prepare('SELECT 1 FROM households WHERE id = ?').get(householdId) === undefined) {
       throw new Error(`No household ${householdId}`);
     }

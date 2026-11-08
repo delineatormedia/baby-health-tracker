@@ -19,6 +19,7 @@ import {
   FLOW_MINUTES,
   SESSION_COOKIE,
   SESSION_DAYS,
+  SIGN_IN,
   type AuthConfig,
   type Result,
   type Session,
@@ -74,7 +75,7 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   // Every signed-in route is scoped to the caller's household; there is no unscoped query.
   const signedIn = async (c: Context<Env>, next: () => Promise<void>) => {
     const session = await resolveSession(c);
-    if (!session) return c.json({ error: 'Sign in' }, 401);
+    if (!session) return c.json({ error: SIGN_IN }, 401);
     c.set('session', session);
     await next();
   };
@@ -150,17 +151,21 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
 
   app.post('/api/babies', authBody, async (c) => {
     if (!accounts) return c.json({ error: 'Sign-in is not configured' }, 503);
-    const result = accounts.addBaby(c.var.session.householdId, await json(c));
+    const result = accounts.addBaby(c.var.session, await json(c));
     if (!result.ok) return c.json({ error: result.error }, result.status);
     return c.json(result.value);
   });
 
   // Clearing the household's data (#85): either parent, once confirmed on the phone. Every
   // session of the household ends with it, this one included, so the cookie goes too. Nothing
-  // here needs the passkey configuration.
+  // here needs the passkey configuration. Like every write, it rechecks the session inside its
+  // transaction (sessionLive), so a request that was signed in when it arrived but is not by the
+  // time it writes gets 401 and changes nothing.
   app.post('/api/household/clear', authBody, (c) => {
     const { householdId, memberId } = c.var.session;
-    const { clearedAt, babies, versions, sessions } = clearHousehold(db, householdId, now());
+    const outcome = clearHousehold(db, c.var.session, now());
+    if (!outcome) return c.json({ error: SIGN_IN }, 401);
+    const { clearedAt, babies, versions, sessions } = outcome;
     deleteCookie(c, SESSION_COOKIE, { path: '/', secure });
     log(
       `household ${householdId} cleared at ${clearedAt} by member ${memberId ?? '?'}: ` +
@@ -180,9 +185,10 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
   });
 
   app.post('/api/invites', (c) => {
-    const { householdId, memberId, deviceId } = c.var.session;
-    if (!accounts || !memberId || !deviceId) return c.json({ error: 'Sign in' }, 401);
-    return c.json(accounts.createInvite({ householdId, memberId, deviceId }));
+    if (!accounts || !c.var.session.memberId) return c.json({ error: SIGN_IN }, 401);
+    const result = accounts.createInvite(c.var.session);
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(result.value);
   });
 
   app.post(
@@ -210,6 +216,7 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
       }
       const at = now();
       const results = pushVersions(db, c.var.session, body.events, at);
+      if (!results) return c.json({ error: SIGN_IN }, 401);
       return c.json({ results, serverNow: at.getTime() });
     },
   );
@@ -219,11 +226,12 @@ export function createApp(db: DatabaseSync, opts: AppOptions = {}): Hono<Env> {
     const body = await json(c);
     if (!v.is(BarrierRequest, body))
       return c.json({ error: 'Expected { deviceId, gen, at }' }, 400);
-    const { householdId, deviceId } = c.var.session;
-    if (body.deviceId !== deviceId) return c.json({ error: 'Not this session’s device' }, 409);
+    if (body.deviceId !== c.var.session.deviceId) {
+      return c.json({ error: 'Not this session’s device' }, 409);
+    }
     const at = now();
-    const watermark = recordBarrier(db, householdId, body, at);
-    if (watermark === null) return c.json({ error: 'Sign in' }, 401);
+    const watermark = recordBarrier(db, c.var.session, body, at);
+    if (watermark === null) return c.json({ error: SIGN_IN }, 401);
     return c.json({ watermark, serverNow: at.getTime() });
   });
 

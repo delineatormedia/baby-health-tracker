@@ -1,4 +1,11 @@
-import { BABY_CLEARED, newId, type BabyEvent, type ClearResponse, type Invite } from '@bht/schema';
+import {
+  BABY_CLEARED,
+  newId,
+  SCHEMA_VERSION,
+  type BabyEvent,
+  type ClearResponse,
+  type Invite,
+} from '@bht/schema';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -296,5 +303,102 @@ describe('on disk', () => {
     expect(after.some((b) => b.includes(baby.id))).toBe(true);
     expect(after.some((b) => b.includes(home.householdId))).toBe(true);
     db.close();
+  });
+});
+
+describe('a session revoked while a request is in flight', () => {
+  /**
+   * A POST whose body arrives only when `release` is called. The route's session check has
+   * passed by the time `requested` resolves (the handler is waiting on the body), so a clear
+   * run in between is exactly the gap a check outside the write transaction leaves open.
+   */
+  function delayed(phone: Phone, path: string, body: unknown) {
+    let release!: () => void;
+    let requested!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const asked = new Promise<void>((r) => (requested = r));
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        async pull(controller) {
+          requested();
+          await gate;
+          controller.enqueue(new TextEncoder().encode(JSON.stringify(body)));
+          controller.close();
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const response = phone.app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: phone.origin, cookie: phone.cookie! },
+      body: stream,
+      duplex: 'half',
+    } as RequestInit);
+    return { requested: asked, release, response };
+  }
+
+  test('a baby and its entry whose bodies arrive after the clear are refused, so neither lands', async () => {
+    const { db, app } = server();
+    const { phone, home } = await filled(app);
+    const other = await joined(app, phone, home.baby.id);
+    // A baby the other phone added offline: not on the server yet, so cleared_babies cannot
+    // know it. Its add and its first entry are in flight, past the session check, when the
+    // clear runs.
+    const baby = { id: newId(), name: 'Noor', birthAt: '2026-11-02T04:00:00.000Z', sex: 'female' };
+    const add = delayed(other.phone, '/api/babies', baby);
+    const upload = delayed(other.phone, '/api/sync', {
+      schemaVersion: SCHEMA_VERSION,
+      events: [wet(baby.id, other.phone.deviceId)],
+    });
+    const barrier = delayed(other.phone, '/api/sync/barrier', {
+      deviceId: other.phone.deviceId,
+      gen: 9,
+      at: T0,
+    });
+    const remove = delayed(other.phone, '/api/devices/remove', { deviceId: phone.deviceId });
+    await Promise.all([add.requested, upload.requested, barrier.requested, remove.requested]);
+
+    await clearOk(phone);
+    expect(liveSessions(db, home.householdId)).toBe(0);
+
+    add.release();
+    expect((await add.response).status).toBe(401);
+    upload.release();
+    expect((await upload.response).status).toBe(401);
+    barrier.release();
+    expect((await barrier.response).status).toBe(401);
+    remove.release();
+    expect((await remove.response).status).toBe(401);
+
+    expect(count(db, 'babies', home.householdId)).toBe(0);
+    expect(count(db, 'event_versions', home.householdId)).toBe(0);
+    expect(
+      db
+        .prepare('SELECT watermark, gen, removed_at FROM devices WHERE id IN (?, ?)')
+        .all(phone.deviceId, other.phone.deviceId),
+    ).toEqual([
+      { watermark: null, gen: null, removed_at: null },
+      { watermark: null, gen: null, removed_at: null },
+    ]);
+  });
+
+  test('the phone that cleared cannot clear or invite again on the same session', async () => {
+    const { db, app, clock } = server();
+    const { phone, home } = await filled(app);
+    const stale = phone.cookie;
+    await clearOk(phone);
+    clock.t += 60_000;
+    // The next parent signs in and starts over.
+    const again = new Phone(app, ORIGIN, phone.passkeys, phone.deviceId);
+    const { verify } = await again.ceremony('login', { deviceId: again.deviceId });
+    expect((await verify()).status).toBe(200);
+    const next = { id: newId(), name: 'Next', birthAt: '2026-11-01T10:00:00.000Z', sex: 'female' };
+    await again.json('/api/babies', next);
+
+    phone.cookie = stale;
+    expect((await clear(phone)).status).toBe(401);
+    expect((await phone.request('/api/invites', {})).status).toBe(401);
+    expect(count(db, 'babies', home.householdId)).toBe(1);
+    expect(count(db, 'invites', home.householdId)).toBe(0);
   });
 });

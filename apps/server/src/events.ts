@@ -9,7 +9,7 @@ import {
   type PushResult,
 } from '@bht/schema';
 import type { DatabaseSync } from 'node:sqlite';
-import type { Session } from './auth.ts';
+import { sessionLive, type Session } from './auth.ts';
 
 /**
  * Stores pushed versions for one household in a single transaction and returns a verdict
@@ -18,13 +18,14 @@ import type { Session } from './auth.ts';
  * and is superseded if resolveCurrent over that event's versions does not pick it. An event
  * id already held by another household is refused without saying so, and so is a babyId that
  * is not one of this household's babies. Each stored version records the member who pushed it.
+ * Null, and nothing stored, if the session is no longer live (sessionLive).
  */
 export function pushVersions(
   db: DatabaseSync,
   session: Session,
   inputs: readonly unknown[],
   now = new Date(),
-): PushResult[] {
+): PushResult[] | null {
   const { householdId } = session;
   const memberId = session.memberId ?? null;
   const babies = new Set(
@@ -48,6 +49,10 @@ export function pushVersions(
 
   db.exec('BEGIN IMMEDIATE');
   try {
+    if (!sessionLive(db, session, now)) {
+      db.exec('ROLLBACK');
+      return null;
+    }
     const results = inputs.map((input): PushResult => {
       const parsed = parseEvent(input);
       if (!parsed.ok) return rejected(input, parsed.errors.join('; '));
@@ -159,32 +164,43 @@ function householdDevices(db: DatabaseSync, householdId: string): HouseholdDevic
  * Records a write barrier for the session's own device (step 3b) and returns its watermark.
  * `at` is clamped to the server's clock and the watermark never moves back, so a delayed or
  * replayed barrier changes nothing. The versions it covers were committed by earlier requests,
- * so they are on disk before this row is. Null if the device is not this household's, or
- * removed.
+ * so they are on disk before this row is. Null if the session is no longer live (sessionLive),
+ * or the device is not this household's, or removed.
  */
 export function recordBarrier(
   db: DatabaseSync,
-  householdId: string,
+  session: Session,
   barrier: BarrierRequest,
   now = new Date(),
 ): number | null {
-  const row = db
-    .prepare(
-      `UPDATE devices
-       SET watermark = max(coalesce(watermark, 0), ?), gen = max(coalesce(gen, 0), ?),
-           last_seen_at = ?
-       WHERE id = ? AND removed_at IS NULL
-         AND member_id IN (SELECT id FROM members WHERE household_id = ?)
-       RETURNING watermark`,
-    )
-    .get(
-      Math.min(barrier.at, now.getTime()),
-      barrier.gen,
-      now.toISOString(),
-      barrier.deviceId,
-      householdId,
-    ) as { watermark: number } | undefined;
-  return row?.watermark ?? null;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (!sessionLive(db, session, now)) {
+      db.exec('ROLLBACK');
+      return null;
+    }
+    const row = db
+      .prepare(
+        `UPDATE devices
+         SET watermark = max(coalesce(watermark, 0), ?), gen = max(coalesce(gen, 0), ?),
+             last_seen_at = ?
+         WHERE id = ? AND removed_at IS NULL
+           AND member_id IN (SELECT id FROM members WHERE household_id = ?)
+         RETURNING watermark`,
+      )
+      .get(
+        Math.min(barrier.at, now.getTime()),
+        barrier.gen,
+        now.toISOString(),
+        barrier.deviceId,
+        session.householdId,
+      ) as { watermark: number } | undefined;
+    db.exec('COMMIT');
+    return row?.watermark ?? null;
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 
 function verdict(
