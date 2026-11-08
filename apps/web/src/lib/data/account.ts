@@ -3,6 +3,7 @@ import {
   DEVICE_REMOVED,
   type Baby,
   type CeremonyOptions,
+  type ClearResponse,
   type HouseholdView,
   type Invite,
   type JoinRequest,
@@ -145,6 +146,14 @@ export class Account {
 
   household(): Promise<HouseholdView> {
     return this.http.get('/api/household');
+  }
+
+  /**
+   * Clears the household's data (#85): the server deletes every baby and log and signs every
+   * phone out, this one included. Resolves once it has; the caller drops this phone's copy.
+   */
+  clear(): Promise<ClearResponse> {
+    return this.http.post('/api/household/clear', {});
   }
 
   /** Adds a baby this phone made after sign-up. The same id again is a safe retry. */

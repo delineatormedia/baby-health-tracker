@@ -192,6 +192,39 @@ describe('EventStore', () => {
     await store.resetCursor();
     expect(await store.cursor()).toBe(0);
   });
+
+  test('clearAll drops every version and every meta row, and tells the screens (#85)', async () => {
+    const store = await makeStore();
+    const household = newId();
+    await store.log(babyId, 'diaper', { kind: 'wet' });
+    await store.applyPull({ versions: [], next: 7, more: false, through: 7 }, household, [
+      {
+        deviceId: newId(),
+        memberName: 'Sam',
+        watermark: null,
+        lastSeenAt: 1,
+        removedAt: null,
+        signedOutAt: null,
+      },
+    ]);
+    await store.beginSignOut();
+    let changes = 0;
+    store.subscribe(() => changes++);
+
+    await store.clearAll();
+    expect(await store.db.getAll('versions')).toEqual([]);
+    expect(await store.db.getAll('meta')).toEqual([]);
+    expect(await store.events(babyId)).toEqual([]);
+    expect(await store.pending(10)).toEqual([]);
+    expect(await store.cursor(household)).toBe(0);
+    expect(await store.devices(household)).toBeNull();
+    expect(await store.signingOut()).toBe(false);
+    expect((await store.snapshot()).gen).toBe(0);
+    expect(changes).toBe(1);
+    // Writes work again, from a fresh generation.
+    await store.log(babyId, 'diaper', { kind: 'wet' });
+    expect((await store.snapshot()).gen).toBe(1);
+  });
 });
 
 describe('sign-out stops local writes (step 3b)', () => {

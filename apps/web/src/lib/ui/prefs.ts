@@ -43,6 +43,7 @@ export const KEYS = {
   account: 'bht.account',
   joining: 'bht.joining',
   seeded: 'bht.seeded',
+  wiped: 'bht.wiped',
 } as const;
 
 type KV = Pick<Storage, 'getItem' | 'setItem'>;
@@ -187,4 +188,49 @@ export const loadWelcomed = (kv: KV): boolean => kv.getItem(KEYS.welcomed) === '
 
 export function saveWelcomed(kv: KV): void {
   kv.setItem(KEYS.welcomed, '1');
+}
+
+/**
+ * Why this phone dropped its copy of the logs (#85), shown until dismissed: a clear it ran, or
+ * a session the server refused (revoked by a clear on another phone, by removal, or expired).
+ */
+export interface WipeNotice {
+  reason: 'cleared' | 'signed_out';
+  /** When, epoch ms. */
+  at: number;
+}
+
+export function loadWipeNotice(kv: KV): WipeNotice | null {
+  const raw = readJson(kv, KEYS.wiped) as Partial<WipeNotice> | null;
+  if (!raw || typeof raw.at !== 'number' || !Number.isFinite(raw.at)) return null;
+  if (raw.reason !== 'cleared' && raw.reason !== 'signed_out') return null;
+  return { reason: raw.reason, at: raw.at };
+}
+
+export function saveWipeNotice(kv: KVRemove, notice: WipeNotice | null): void {
+  if (notice) kv.setItem(KEYS.wiped, JSON.stringify(notice));
+  else kv.removeItem(KEYS.wiped);
+}
+
+/**
+ * The localStorage side of a wipe (#85): this phone's baby and setup time, the join in
+ * progress, the account, the welcome and home-note flags (the phone starts over at the welcome
+ * screen), the test-data badge and `household`'s late-arrival notes (late.ts). The prefs and
+ * the author id stay: nothing personal is in them. Leaves `notice` saying why. The IndexedDB
+ * side is EventStore.clearAll.
+ */
+export function wipeLocal(kv: KVRemove, household: string | null, notice: WipeNotice): void {
+  if (household) kv.removeItem(`bht.late.${household}`);
+  for (const key of [
+    KEYS.baby,
+    KEYS.setupAt,
+    KEYS.joining,
+    KEYS.account,
+    KEYS.welcomed,
+    KEYS.homeNoteDismissed,
+    KEYS.seeded,
+  ]) {
+    kv.removeItem(key);
+  }
+  saveWipeNotice(kv, notice);
 }

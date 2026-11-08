@@ -181,56 +181,44 @@ describe('sign-out fences the sync run in flight', () => {
   });
 });
 
-describe('the pull cursor belongs to its household', () => {
-  test('after a 401, signing in to another household pulls it from 0', async () => {
-    const a = baby();
-    const b = baby();
-    kv.set('bht.baby', JSON.stringify(a));
-    kv.set('bht.account', JSON.stringify({ householdId: a.householdId, memberId: newId() }));
-    await (await openDatabase()).put('meta', 91, `cursor:${a.householdId}`);
-    let session = false;
-    serve(async (url) => {
-      if (url === '/api/household') return json({ id: b.householdId, members: [], babies: [b] });
-      if (url.startsWith('/api/sync?')) return session ? json(emptyPull(20)) : json({}, 401);
-      return json({});
-    });
-    const app = await loadApp();
-    await vi.waitFor(() => expect(app.syncStatus).toBe('signed_out'));
-    expect(pulls()[0]).toContain('after=91');
-
-    // No explicit sign-out: the expired session's account is replaced by B's.
-    await app.signIn(async () => {
-      session = true;
-      return signedIn(b.householdId)();
-    });
-    await vi.waitFor(() => expect(pulls()).toHaveLength(2));
-
-    expect(pulls()[1]).toContain('after=0');
-    await vi.waitFor(async () => expect(await app.store.cursor(b.householdId)).toBe(20));
-    expect(await app.store.cursor(a.householdId)).toBe(91);
-  });
-
-  test('after a 401, signing back in to the same household keeps its cursor', async () => {
+describe('a refused session drops the phone’s copy (#85)', () => {
+  test('after a 401 nothing is left but prefs and the author id; signing in again pulls from 0', async () => {
     const a = baby();
     kv.set('bht.baby', JSON.stringify(a));
+    kv.set('bht.welcomed', '1');
     kv.set('bht.account', JSON.stringify({ householdId: a.householdId, memberId: newId() }));
-    await (await openDatabase()).put('meta', 91, `cursor:${a.householdId}`);
+    const db = await openDatabase();
+    await db.put('meta', 91, `cursor:${a.householdId}`);
+    const store = new EventStore(db, newId());
+    await store.log(a.id, 'diaper', { kind: 'wet' });
     let session = false;
     serve(async (url) => {
       if (url === '/api/household') return json({ id: a.householdId, members: [], babies: [a] });
-      if (url.startsWith('/api/sync?')) return session ? json(emptyPull(95)) : json({}, 401);
+      if (url.startsWith('/api/sync')) return session ? json(emptyPull(95)) : json({}, 401);
       return json({});
     });
     const app = await loadApp();
-    await vi.waitFor(() => expect(app.syncStatus).toBe('signed_out'));
+    await vi.waitFor(() => expect(app.account).toBeNull());
+    expect(pushes()).toHaveLength(1);
 
+    // The session was revoked (a clear on another phone, say): the logs it held could never
+    // reach the server as they stand, so they go, and the phone is back at the welcome screen.
+    expect(app.baby).toBeNull();
+    expect(app.showWelcome).toBe(true);
+    expect(app.wipeNotice).toMatchObject({ reason: 'signed_out' });
+    expect(await app.store.db.getAll('versions')).toEqual([]);
+    expect(await app.store.cursor(a.householdId)).toBe(0);
+    expect([...kv.keys()].sort()).toEqual(['bht.author', 'bht.wiped']);
+
+    // Signing in again adopts the household's baby and pulls from the start.
     await app.signIn(async () => {
       session = true;
       return signedIn(a.householdId)();
     });
-    await vi.waitFor(() => expect(pulls()).toHaveLength(2));
-
-    expect(pulls()[1]).toContain('after=91');
+    await vi.waitFor(() => expect(pulls()).toHaveLength(1));
+    expect(pulls()[0]).toContain('after=0');
+    expect(app.baby).toEqual(a);
+    await vi.waitFor(async () => expect(await app.store.cursor(a.householdId)).toBe(95));
   });
 });
 
@@ -349,13 +337,12 @@ describe('an account transition fences placement in flight', () => {
 
 describe('a sign-out aborts the sign-in in flight, and waits for its verify', () => {
   /**
-   * A phone whose session expired: Settings shows both the login button and Sign out. The
-   * server's session follows verify and logout; every other route is 401 without one.
+   * A phone with a baby, not signed in: Settings shows Sign in. The server's session follows
+   * verify and logout; every other route is 401 without one.
    */
   async function expiredWithLogin(answer: Partial<Record<string, Promise<Response>>>) {
     const a = baby();
     kv.set('bht.baby', JSON.stringify(a));
-    kv.set('bht.account', JSON.stringify({ householdId: a.householdId, memberId: newId() }));
     const server = { session: false };
     const prompts: AbortSignal[] = [];
     const credential = answer.credential;
@@ -386,7 +373,6 @@ describe('a sign-out aborts the sign-in in flight, and waits for its verify', ()
       return json({ error: 'Signed out' }, 401);
     });
     const app = await loadApp();
-    await vi.waitFor(() => expect(app.syncStatus).toBe('signed_out'));
     return { app, server, passkey, prompts };
   }
   const verifies = () => requests.filter((r) => r === 'POST /api/auth/login/verify');

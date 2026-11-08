@@ -8,11 +8,14 @@ import {
   loadBaby,
   loadJoining,
   loadPrefs,
+  loadWipeNotice,
   mintAuthorId,
   saveAccount,
   saveBaby,
   saveJoining,
   savePrefs,
+  saveWipeNotice,
+  wipeLocal,
 } from './prefs.ts';
 import { fromLocalInput, toLocalInput } from './time.ts';
 
@@ -128,5 +131,43 @@ describe('datetime-local', () => {
     saveJoining(s, null);
     expect(s.m.has(KEYS.joining)).toBe(false);
     expect(() => saveJoining(s, { ...baby, name: '' })).toThrow('Invalid baby');
+  });
+});
+
+describe('wipeLocal (#85)', () => {
+  test('drops the baby, account, flags and the household’s late notes; keeps prefs and author; leaves the notice', () => {
+    const household = newId();
+    const s = kv({
+      [KEYS.prefs]: JSON.stringify({ ...DEFAULT_PREFS, theme: 'night' }),
+      [KEYS.author]: newId(),
+      [KEYS.baby]: '{}',
+      [KEYS.setupAt]: '1',
+      [KEYS.joining]: '{}',
+      [KEYS.account]: '{}',
+      [KEYS.welcomed]: '1',
+      [KEYS.homeNoteDismissed]: '1',
+      [KEYS.seeded]: '1',
+      [`bht.late.${household}`]: '[]',
+      'bht.late.other': '[]',
+    });
+    const notice = { reason: 'cleared' as const, at: 1_700_000_000_000 };
+    wipeLocal(s, household, notice);
+    expect([...s.m.keys()].sort()).toEqual(
+      [KEYS.prefs, KEYS.author, KEYS.wiped, 'bht.late.other'].sort(),
+    );
+    expect(loadPrefs(s).theme).toBe('night');
+    expect(loadWipeNotice(s)).toEqual(notice);
+    saveWipeNotice(s, null);
+    expect(loadWipeNotice(s)).toBeNull();
+  });
+
+  test('a damaged notice reads as none', () => {
+    expect(loadWipeNotice(kv({ [KEYS.wiped]: '{"reason":"x","at":1}' }))).toBeNull();
+    expect(loadWipeNotice(kv({ [KEYS.wiped]: '{"reason":"cleared"}' }))).toBeNull();
+    expect(loadWipeNotice(kv({ [KEYS.wiped]: 'nope' }))).toBeNull();
+    expect(loadWipeNotice(kv({ [KEYS.wiped]: '{"reason":"signed_out","at":5}' }))).toEqual({
+      reason: 'signed_out',
+      at: 5,
+    });
   });
 });

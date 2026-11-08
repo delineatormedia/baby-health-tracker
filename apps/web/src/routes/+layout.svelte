@@ -34,6 +34,24 @@
   </p>
 {/if}
 
+{#if app.wipeNotice}
+  <!-- This phone dropped its copy of the logs (#85). Stays until OK. -->
+  <div class="wiped" role="status">
+    <span>
+      {app.wipeNotice.reason === 'cleared'
+        ? 'The household’s data was cleared'
+        : 'This phone was signed out by the server'}
+      {new Date(app.wipeNotice.at).toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })}. {app.wipeNotice.reason === 'cleared'
+        ? 'Every baby and log is gone from the server and from every phone, and every phone was signed out. Sign in again to start over.'
+        : 'Its copy of the logs went with the session. Sign in again to pick up the household’s logs.'}
+    </span>
+    <button onclick={() => app.dismissWipeNotice()}>OK</button>
+  </div>
+{/if}
+
 {#if app.saveError}
   <div class="save-fail" role="alert">
     <span>{app.saveError?.text}</span>
@@ -88,6 +106,24 @@
     background: var(--panel);
     font-size: 15px;
     text-align: center;
+  }
+  /* The wipe notice (#85): the sign-out banner's shape, with the OK on the right. */
+  .wiped {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0;
+    padding: calc(8px + env(safe-area-inset-top)) 16px 8px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+    font-size: 15px;
+  }
+  .wiped button {
+    flex: none;
+    min-height: 44px;
+    padding: 0 16px;
+    font-weight: 600;
   }
   .save-fail {
     position: fixed;

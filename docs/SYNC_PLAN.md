@@ -275,7 +275,21 @@ covered by `SCHEMA_VERSION` 3.
 | `POST /api/auth/logout` | `{}` | revokes the session, clears the cookie |
 | `GET /api/household` | signed in | `{id, members, babies}` |
 | `POST /api/invites` | signed in | `{code, expiresAt}` |
-| `POST /api/babies` | signed in, `{id, name, birthAt, sex}` | the baby; same id again is a safe retry, another household's id is 409 |
+| `POST /api/babies` | signed in, `{id, name, birthAt, sex}` | the baby; same id again is a safe retry, another household's id is 409, and so is a baby a clear deleted (`BABY_CLEARED`) |
+| `POST /api/household/clear` | signed in, `{}` (#85) | `{clearedAt}`: the household's babies and every stored version are deleted, and every session of the household is revoked, the caller's included |
+
+- **Clear all data (#85, `SCHEMA_VERSION` 6).** One server transaction deletes the
+  household's babies and every version of their entries, keeps the deleted babies'
+  ids in `cleared_babies`, resets its phones' watermarks and revokes every one of its
+  sessions. The household, members, passkeys, phones and invites stay. The phone that
+  asked drops its IndexedDB and localStorage copy (prefs and author id excepted) and is
+  back at the welcome screen; every other phone and tab gets 401 on its next request,
+  and the app treats any 401 the same way: drop the copy, welcome screen, sign in again.
+  Pending uploads die with the session. A phone that signed out before the clear still
+  holds its log; when it signs in again it cannot add its old baby back (`BABY_CLEARED`),
+  so the app drops that copy too. Out of scope, by decision: unsynced entries on other
+  phones are lost; a phone with no baby does not pick up a new household baby until it
+  signs in again; a failed local wipe is recovered by signing in again or reinstalling.
 
 - A flow (challenge) is single-use and lives 5 minutes. An invite is single-use
   and lives 24 hours; it is consumed in the same transaction that creates the

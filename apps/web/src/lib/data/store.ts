@@ -359,6 +359,21 @@ export class EventStore {
   }
 
   /**
+   * Drops everything this phone holds (#85): every version, and every meta row with them (the
+   * cursors, the device lists, the write generation and the sign-out flag). One transaction,
+   * for a clear or for a session the server refused; the next sync starts from nothing.
+   */
+  clearAll(): Promise<void> {
+    return this.track(async () => {
+      const tx = this.db.transaction(['versions', 'meta'], 'readwrite');
+      await tx.objectStore('versions').clear();
+      await tx.objectStore('meta').clear();
+      await tx.done;
+      this.#emit();
+    });
+  }
+
+  /**
    * Whether this phone holds any row for `babyId`: a visible entry, a tombstone, a pending,
    * refused or local-only version. Placement at sign-in asks by this, not by visible entries,
    * so an undone entry's versions are never uploaded under a household that lacks the baby.
