@@ -257,14 +257,22 @@ describe('Settings → Clear all data', () => {
   });
 
   test('a refusal from the server deleted nothing, and the note says exactly that', async () => {
-    const { own } = await signedInPhone();
+    const { own, entry } = await signedInPhone();
     serve(async (url) => {
       if (url === '/api/household/clear') return json({ error: 'Not allowed' }, 403);
       if (url === '/api/babies') return json(own);
+      if (url === '/api/sync') {
+        return json({
+          results: [{ id: entry.id, version: 1, seq: 1, status: 'accepted' }],
+          serverNow: Date.now(),
+        });
+      }
       if (url.startsWith('/api/sync?')) return json(emptyPull(null, 1));
       return json({ watermark: Date.now(), serverNow: Date.now() });
     });
     const app = await loadApp();
+    // Settled before the clear: a sync left failing here would retry into the tests that follow.
+    await vi.waitFor(() => expect(app.syncStatus).toBe('idle'));
     const { clearFailure } = await import('./app.svelte.ts');
     const failure: unknown = await app.clearData().catch((e: unknown) => e);
     expect(failure).toMatchObject({ name: 'ClearFailed', outcome: 'nothing' });
