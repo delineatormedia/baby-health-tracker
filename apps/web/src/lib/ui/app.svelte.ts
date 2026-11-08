@@ -803,7 +803,7 @@ class AppState {
     const kv = this.#storage;
     const household = this.account?.householdId;
     let settled = false;
-    for (let attempt = 0; ; ) {
+    for (let attempt = 0; ;) {
       settled ||= attempt >= 3;
       if (!settled && (await this.store.pendingWipes()).length > 0) {
         try {
