@@ -78,11 +78,21 @@ function newer(n: number): string {
  * Lines added to a copy's worker, never the product one (#92): it reports when it is evaluated,
  * installs, finishes or fails its `addAll`, skips waiting and activates, to the test server's
  * `/__diag` route. A swap that never comes then says which of those the new worker reached.
+ *
+ * Every report is fire-and-forget: nothing here is awaited and nothing goes through `waitUntil`,
+ * so a slow or lost report can never lengthen the lifecycle it watches. The price is that a
+ * missing report means only that none arrived, never that the worker did not get there.
  */
 const diagnostics = (n: number) => `
-// e2e only (#92): this copy reports its install to the test server.
+// e2e only (#92): this copy reports its install to the test server, never waiting on it.
 {
-  const say = (what) => fetch('/__diag/n${n}:' + what, { cache: 'no-store' }).catch(() => {});
+  const say = (what) => {
+    try {
+      fetch('/__diag/n${n}:' + what, { cache: 'no-store' }).catch(() => {});
+    } catch {
+      // Reporting is best effort.
+    }
+  };
   const addAll = Cache.prototype.addAll;
   Cache.prototype.addAll = function (urls) {
     return addAll.call(this, urls).then(
@@ -95,11 +105,31 @@ const diagnostics = (n: number) => `
   };
   const skip = self.skipWaiting.bind(self);
   self.skipWaiting = () => (say('skipWaiting'), skip());
-  self.addEventListener('install', (e) => e.waitUntil(say('install')));
-  self.addEventListener('activate', (e) => e.waitUntil(say('activate')));
+  self.addEventListener('install', () => say('install'));
+  self.addEventListener('activate', () => say('activate'));
   say('evaluated');
 }
 `;
+
+/** The stages a copy's worker reports on a healthy swap, as they appear in `Served.diag`. */
+const STAGES = ['evaluated', 'install', 'addAll-ok', 'skipWaiting', 'activate'];
+
+/**
+ * Waits, bounded, for copy N+`n`'s worker to have reported every stage. Reports are not awaited
+ * by the worker, so they can land after the swap; a shortfall here is a telemetry failure (the
+ * report did not arrive), which is all it can mean.
+ */
+const reported = (s: Served, n: number) =>
+  expect
+    .poll(
+      () =>
+        s.diag
+          .map((l) => l.slice(l.indexOf(' ') + 1))
+          .filter((l) => l.startsWith(`worker n${n}:`))
+          .sort(),
+      { timeout: 5_000 },
+    )
+    .toEqual(STAGES.map((e) => `worker n${n}:${e}`).sort());
 
 let next: string;
 let next2: string;
@@ -116,12 +146,17 @@ test.afterAll(() => {
 
 type Headers = 'immutable' | 'no-cache';
 
-/** A served build: `diag` holds what the newer copies' workers reported, timestamped (#92). */
+/**
+ * A served build: `diag` holds what the newer copies' workers reported, timestamped, as each
+ * report arrives (#92). `hold(report)` keeps the replies to one report back until the returned
+ * function is called, the way a slow network would.
+ */
 interface Served {
   url: string;
   switchTo: (dir: string) => void;
   server: Server;
   diag: string[];
+  hold: (report: string) => () => void;
 }
 
 /**
@@ -131,11 +166,15 @@ interface Served {
 async function serve(headers: Headers): Promise<Served> {
   let root = BUILD;
   const diag: string[] = [];
+  const held = new Map<string, (() => void)[]>();
   const server = createServer((req, res) => {
     const path = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
     if (path.startsWith('/__diag/')) {
-      diag.push(`${Date.now()} worker ${path.slice('/__diag/'.length)}`);
-      res.writeHead(204).end();
+      const report = path.slice('/__diag/'.length);
+      diag.push(`${Date.now()} worker ${report}`);
+      const reply = () => res.writeHead(204).end();
+      if (held.has(report)) held.get(report)!.push(reply);
+      else reply();
       return;
     }
     if (path.startsWith('/api')) {
@@ -162,7 +201,14 @@ async function serve(headers: Headers): Promise<Served> {
   });
   await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
   const { port } = server.address() as AddressInfo;
-  return { url: `http://127.0.0.1:${port}`, switchTo: (dir) => (root = dir), server, diag };
+  const hold = (report: string) => {
+    held.set(report, []);
+    return () => {
+      for (const reply of held.get(report) ?? []) reply();
+      held.delete(report);
+    };
+  };
+  return { url: `http://127.0.0.1:${port}`, switchTo: (dir) => (root = dir), server, diag, hold };
 }
 
 /** What the page saw of the worker swap (#92): `swlog` lines are `<Date.now()> page <event>`. */
@@ -226,9 +272,11 @@ async function update(page: Page, s: Served, to = next) {
         timeout: 15_000,
       })
       .toBe(true);
+    await activated(page);
   } catch (e) {
-    // Only a swap that never came pays for this (#92): the page's and the worker's logs, so
-    // the failure names the stage the new worker reached, and the registration's end state.
+    // Only a swap that never came, or never finished activating, pays for this (#92): the page's
+    // and the worker's logs, so the failure names the stage the new worker reached, and the
+    // registration's end state.
     const timeline = await swapTimeline(page, s, resumed);
     await test.info().attach('worker-swap-timeline', { body: timeline, contentType: 'text/plain' });
     throw new Error(
@@ -236,7 +284,6 @@ async function update(page: Page, s: Served, to = next) {
       { cause: e },
     );
   }
-  await activated(page);
 }
 
 /** Both sides' logs merged in time order, relative to `since`, then the registration's state. */
@@ -443,14 +490,9 @@ for (const headers of ['immutable', 'no-cache'] as const) {
       await installed(page);
       await update(page, s);
       expect(await samePage(page)).toBe(true);
-      // The copy's worker reports to the test server (#92): checked once here, so a failure's
-      // timeline that has no worker lines means the worker never ran, not that reporting broke.
-      // Sorted: two reports milliseconds apart can reach the server in either order.
-      expect(s.diag.map((l) => l.slice(l.indexOf(' ') + 1)).sort()).toEqual(
-        ['evaluated', 'install', 'addAll-ok', 'skipWaiting', 'activate']
-          .map((e) => `worker n1:${e}`)
-          .sort(),
-      );
+      // The copy's worker reports to the test server (#92): checked once here, on a healthy
+      // swap, so the reporting itself is known to work when a failure's timeline is read.
+      await reported(s, 1);
 
       await page.evaluate(() => {
         Object.defineProperty(document, 'visibilityState', {
@@ -462,6 +504,20 @@ for (const headers of ['immutable', 'no-cache'] as const) {
       await onNext(page);
       await page.locator('.rail').waitFor();
       expect(await samePage(page)).toBe(false);
+      expect(errors).toEqual([]);
+      await ctx.close();
+      s.server.close();
+    });
+
+    test('a slow report from the new worker never holds the swap (#92)', async ({ browser }) => {
+      const { s, ctx, page, errors } = await armed(browser, headers);
+      // The server sits on the reply to the install report, as a slow network would. The swap
+      // watches nothing of ours: it completes in its usual time, and the report lands later.
+      const release = s.hold('n1:install');
+      await update(page, s);
+      expect(await samePage(page)).toBe(true);
+      release();
+      await reported(s, 1);
       expect(errors).toEqual([]);
       await ctx.close();
       s.server.close();
