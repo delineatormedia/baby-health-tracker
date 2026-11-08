@@ -60,7 +60,10 @@ beforeEach(() => {
   vi.stubGlobal('navigator', { locks: fakeLocks() });
   vi.stubGlobal('BroadcastChannel', undefined);
 });
-afterEach(() => {
+afterEach(async () => {
+  // Each app's sync client is stopped here, before the globals go: left running (a sign-out
+  // held or blocked on purpose), a backoff retry would land in a later test's request log.
+  for (const app of loaded.splice(0)) await app.dispose();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -98,8 +101,12 @@ function serve(handler: Fetch) {
 const pushes = () => requests.filter((r) => r === 'POST /api/sync');
 const pulls = () => requests.filter((r) => r.startsWith('GET /api/sync?'));
 
+/** The apps this test loaded, for afterEach to stop. */
+const loaded: { dispose(): Promise<void> }[] = [];
+
 async function loadApp() {
   const { app } = await import('./app.svelte.ts');
+  loaded.push(app);
   await app.init();
   return app;
 }
